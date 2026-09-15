@@ -10,7 +10,7 @@ rs.mock("@/core/i18n/hooks", () => ({
   useI18n: () => ({
     t: {
       pages: {
-        appName: "DeerFlow",
+        appName: "CECE",
         newChat: "New chat",
         untitled: "Untitled",
       },

@@ -778,7 +778,7 @@ export const zhCN: Translations = {
 
   // Page titles (document title)
   pages: {
-    appName: "DeerFlow",
+    appName: "CECE",
     chats: "对话",
     newChat: "新对话",
     untitled: "未命名",

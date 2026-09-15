@@ -817,7 +817,7 @@ export const enUS: Translations = {
 
   // Page titles (document title)
   pages: {
-    appName: "DeerFlow",
+    appName: "CECE",
     chats: "Chats",
     newChat: "New chat",
     untitled: "Untitled",
