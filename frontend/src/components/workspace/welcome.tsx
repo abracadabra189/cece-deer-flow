@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 
@@ -27,6 +28,7 @@ export function Welcome({
 }) {
   const { t } = useI18n();
   const searchParams = useSearchParams();
+  const isSkillMode = searchParams.get("mode") === "skill";
   const isUltra = useMemo(() => mode === "ultra", [mode]);
   const colors = useMemo(() => {
     if (isUltra) {
@@ -34,9 +36,11 @@ export function Welcome({
     }
     return ["var(--color-foreground)"];
   }, [isUltra]);
+
   useEffect(() => {
     waved = true;
   }, []);
+
   return (
     <div
       className={cn(
@@ -44,27 +48,50 @@ export function Welcome({
         className,
       )}
     >
-      <div className="max-w-full text-2xl font-bold">
-        {searchParams.get("mode") === "skill" ? (
-          `✨ ${t.welcome.createYourOwnSkill} ✨`
-        ) : (
-          <div className="flex max-w-full flex-wrap items-center justify-center gap-2">
-            <div className={cn("inline-block", !waved ? "animate-wave" : "")}>
-              {isUltra ? "🚀" : "👋"}
-            </div>
-            <AuroraText colors={colors}>{t.welcome.greeting}</AuroraText>
+      {isSkillMode ? (
+        <>
+          <div className="max-w-full text-2xl font-bold">
+            {t.welcome.createYourOwnSkill}
           </div>
-        )}
-      </div>
-      {searchParams.get("mode") === "skill" ? (
-        <div className="text-muted-foreground max-w-full text-sm">
-          <WelcomeDescription>
-            {t.welcome.createYourOwnSkillDescription}
-          </WelcomeDescription>
-        </div>
+          <div className="text-muted-foreground max-w-full text-sm">
+            <WelcomeDescription>
+              {t.welcome.createYourOwnSkillDescription}
+            </WelcomeDescription>
+          </div>
+        </>
       ) : (
-        <div className="text-muted-foreground max-w-full text-sm">
-          <WelcomeDescription>{t.welcome.description}</WelcomeDescription>
+        <div className="flex max-w-3xl items-stretch justify-center gap-4 text-left">
+          <div
+            className={cn(
+              "flex shrink-0 items-center",
+              !waved ? "animate-wave" : "",
+            )}
+          >
+            <Image
+              src="/images/welcome-greeting.png"
+              alt="Welcome"
+              width={72}
+              height={72}
+              priority
+              className="h-full w-auto object-contain"
+            />
+          </div>
+          <div className="flex min-w-0 flex-col justify-center gap-1">
+            <div className="flex flex-wrap items-center gap-3 text-2xl font-bold">
+              <AuroraText colors={colors}>{"hi,\u6211\u662f"}</AuroraText>
+              <Image
+                src="/images/CECE.svg"
+                alt="CECE"
+                width={160}
+                height={48}
+                priority
+                className="h-[1em] w-auto object-contain"
+              />
+            </div>
+            <div className="text-muted-foreground max-w-full text-sm">
+              <WelcomeDescription>{t.welcome.description}</WelcomeDescription>
+            </div>
+          </div>
         </div>
       )}
     </div>
