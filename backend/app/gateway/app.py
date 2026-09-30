@@ -595,11 +595,11 @@ def create_app() -> FastAPI:
     openapi_url = "/openapi.json" if config.enable_docs else None
 
     app = FastAPI(
-        title="DeerFlow API Gateway",
+        title="CECE API Gateway",
         description="""
-## DeerFlow API Gateway
+## CECE API Gateway
 
-API Gateway for DeerFlow - A LangGraph-based AI agent backend with sandbox execution capabilities.
+API Gateway for CECE - A LangGraph-based AI agent backend with sandbox execution capabilities.
 
 ### Features
 

@@ -199,6 +199,7 @@ services:
       # take effect on `make docker-restart` without requiring an image rebuild.
       - ./dev-entrypoint.sh:/usr/local/bin/dev-entrypoint.sh:ro
       - ../backend/:/app/backend/
+      - gateway-data:/app/backend/.deer-flow
       # Preserve the .venv built during Docker image build — mounting the full backend/
       # directory above would otherwise shadow it with the (empty) host directory.
       - gateway-venv:/app/backend/.venv
@@ -260,6 +261,7 @@ volumes:
   # image build are not shadowed by the host backend/ directory mount.
   gateway-venv:
   gateway-uv-cache:
+  gateway-data:
   redis-data:
 
 networks:

@@ -119,6 +119,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const { t } = useI18n();
   const [activeSection, setActiveSection] =
     useState<SettingsSection>(defaultSection);
+  const enabledSections: SettingsSection[] = ["account", "appearance"];
 
   useEffect(() => {
     // When opening the dialog, ensure the active section follows the caller's intent.
@@ -202,16 +203,24 @@ export function SettingsDialog(props: SettingsDialogProps) {
             <ul className="space-y-1 pr-1">
               {sections.map(({ id, label, icon: Icon }) => {
                 const active = activeSection === id;
+                const enabled = enabledSections.includes(id as SettingsSection);
                 return (
                   <li key={id}>
                     <button
                       type="button"
-                      onClick={() => setActiveSection(id as SettingsSection)}
+                      disabled={!enabled}
+                      onClick={() => {
+                        if (enabled) {
+                          setActiveSection(id as SettingsSection);
+                        }
+                      }}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                         active
                           ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          : enabled
+                            ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            : "text-muted-foreground/50 cursor-not-allowed opacity-60",
                       )}
                     >
                       <Icon className="size-4" />

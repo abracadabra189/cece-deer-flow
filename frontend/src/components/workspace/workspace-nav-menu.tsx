@@ -1,11 +1,11 @@
 "use client";
 
 import {
-  BugIcon,
+  // BugIcon,
   ChevronsUpDown,
-  GlobeIcon,
-  InfoIcon,
-  MailIcon,
+  // GlobeIcon,
+  // InfoIcon,
+  // MailIcon,
   Settings2Icon,
   SettingsIcon,
 } from "lucide-react";
@@ -16,7 +16,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuSeparator,
+  // DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useI18n } from "@/core/i18n/hooks";
 
-import { GithubIcon } from "./github-icon";
+// import { GithubIcon } from "./github-icon";
 import { useSettingsDialog } from "./settings";
 
 function NavMenuButtonContent({
@@ -88,6 +88,7 @@ export function WorkspaceNavMenu() {
                     <Settings2Icon />
                     {t.common.settings}
                   </DropdownMenuItem>
+                  {/*
                   <DropdownMenuSeparator />
                   <a
                     href="https://deerflow.tech/"
@@ -126,16 +127,17 @@ export function WorkspaceNavMenu() {
                       {t.workspace.contactUs}
                     </DropdownMenuItem>
                   </a>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      openSettings("about");
+                    }}
+                  >
+                    <InfoIcon />
+                    {t.workspace.about}
+                  </DropdownMenuItem>
+                  */}
                 </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    openSettings("about");
-                  }}
-                >
-                  <InfoIcon />
-                  {t.workspace.about}
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
