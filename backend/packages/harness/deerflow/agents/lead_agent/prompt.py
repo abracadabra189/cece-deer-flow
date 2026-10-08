@@ -1150,7 +1150,7 @@ def apply_prompt_template(
         interaction_thinking_guidance=interaction_policy.thinking_guidance,
         clarification_system=interaction_policy.clarification_system,
         clarification_reminder=interaction_policy.clarification_reminder,
-        agent_name=agent_name or "DeerFlow 2.0",
+        agent_name=agent_name or "CECE 3.0",
         soul=get_agent_soul(agent_name, user_id=user_id),
         self_update_section=_build_self_update_section(agent_name),
         skills_section=skills_section,
