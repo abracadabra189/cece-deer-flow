@@ -32,7 +32,7 @@ from deerflow.config.paths import VIRTUAL_PATH_PREFIX
 from deerflow.sandbox.remote_list_dir import parse_remote_list_dir_output, remote_list_dir_command
 from deerflow.sandbox.remote_search import parse_remote_search_output, remote_search_command
 from deerflow.sandbox.sandbox import Sandbox, _validate_extra_env
-from deerflow.sandbox.search import GrepMatch, path_matches, should_ignore_path, truncate_line
+from deerflow.sandbox.search import GrepMatch, path_matches, should_ignore_path_under_root, truncate_line
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -274,6 +274,9 @@ class TenkiSandbox(Sandbox):
             output = f"{stdout}\n{stderr}"
         else:
             output = stdout or stderr
+        if result.timed_out:
+            message = "Error: command timed out\nExit Code: 124"
+            return f"{output}\n{message}" if output else message
         if result.exit_code not in (0, None):
             # Mirror LocalSandbox: preserve a nonzero exit in the output text
             # even when the command produced output (see e2b_sandbox).
@@ -282,13 +285,27 @@ class TenkiSandbox(Sandbox):
 
     # ── file operations ─────────────────────────────────────────────────
 
-    def read_file(self, path: str) -> str:
+    def read_file(
+        self,
+        path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+    ) -> str:
         resolved = self._resolve_path(path)
         try:
-            return self._fs_op(lambda fs: fs.read_text(resolved))
+            content = self._fs_op(lambda fs: fs.read_text(resolved))
         except Exception as e:
             logger.error("read_file %s failed: %s", resolved, e)
             return f"Error: {e}"
+        if start_line is None and end_line is None:
+            return content
+        lines = (content or "").splitlines()
+        # Clamp like LocalSandbox.read_file: a negative start would otherwise
+        # wrap around through Python's negative-index slicing instead of
+        # reading from the first line.
+        start = max(start_line or 1, 1)
+        end = max(end_line, 0) if end_line is not None else len(lines)
+        return "\n".join(lines[start - 1 : end])
 
     def write_file(self, path: str, content: str, append: bool = False) -> None:
         self._write_bytes(self._resolve_path(path), content.encode("utf-8"), append=append)
@@ -403,15 +420,19 @@ class TenkiSandbox(Sandbox):
             # Do NOT strip: trailing whitespace can be part of the filename.
             if not entry or (entry != root and not entry.startswith(root_prefix)):
                 continue
-            if should_ignore_path(entry):
+            if should_ignore_path_under_root(entry, root):
                 continue
             rel_path = entry[len(root) :].lstrip("/")
             if not rel_path:
                 continue
             if path_matches(pattern, rel_path):
                 matches.append(self._virtual_path(entry))
-                if len(matches) >= max_results:
-                    return matches, True
+                # Look one match past the cap before deciding: returning on the
+                # max-th match cannot tell a search that held exactly
+                # ``max_results`` from one that held more, so an exhausted tree
+                # was reported as truncated.
+                if len(matches) > max_results:
+                    return matches[:max_results], True
         return matches, output.truncated
 
     def grep(
@@ -460,7 +481,7 @@ class TenkiSandbox(Sandbox):
                 line_number = int(line_no_str)
             except ValueError:
                 continue
-            if should_ignore_path(file_path):
+            if should_ignore_path_under_root(file_path, root):
                 continue
             if glob is not None:
                 # Match the caller's real directory scope: a pattern like
@@ -472,9 +493,9 @@ class TenkiSandbox(Sandbox):
                 if not path_matches(glob, rel_path):
                     continue
             matches.append(GrepMatch(path=self._virtual_path(file_path), line_number=line_number, line=truncate_line(line_text)))
-            if len(matches) >= max_results:
-                truncated = True
-                break
+            # Same one-match-past-the-cap rule as glob() above.
+            if len(matches) > max_results:
+                return matches[:max_results], True
         return matches, truncated
 
 

@@ -114,6 +114,15 @@ def _fit_text(item: dict, room: int) -> str:
     return text[:low]
 
 
+def conversation_references_enabled(app_config: AppConfig) -> bool:
+    """Whether runs may carry references: the opt-in tool is in the configured tool list.
+
+    Shared by run admission and ``/api/features`` so the UI gate and the
+    server check cannot drift.
+    """
+    return any(tool.use == CONVERSATION_TOOL_USE for tool in app_config.tools)
+
+
 def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
@@ -143,7 +152,7 @@ def prepare_conversation_reader(
     """
     if not references:
         return None
-    if not any(tool.use == CONVERSATION_TOOL_USE for tool in app_config.tools):
+    if not conversation_references_enabled(app_config):
         raise HTTPException(status_code=400, detail="read_conversation is not enabled")
     auth = getattr(request.state, "auth", None)
     if auth is None or not auth.is_authenticated or not auth.has_permission("runs", "read") or not user_id:
@@ -152,6 +161,41 @@ def prepare_conversation_reader(
         ids = tuple(dict.fromkeys(_source_id(reference, str(request.url)) for reference in references))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _prepare_owner_bound_conversation_reader(ids, user_id=user_id, run_context=run_context, run_manager=run_manager, app_config=app_config)
+
+
+def prepare_scheduled_conversation_reader(
+    references: list[str],
+    *,
+    owner_user_id: str,
+    run_context: RunContext,
+    run_manager: RunManager,
+    app_config: AppConfig,
+) -> tuple[Callable[..., Awaitable[str]], tuple[str, ...]] | None:
+    """Bind server-selected previous occurrences to the scheduled task owner.
+
+    This internal entry point accepts thread IDs only. Its caller must obtain
+    the owner and references from scheduled-task repositories, never request
+    metadata or runtime context. Each read repeats strict live ownership checks.
+    An operator who has not enabled read_conversation grants no capability.
+    """
+    if not references or not conversation_references_enabled(app_config):
+        return None
+    if not isinstance(owner_user_id, str) or not owner_user_id:
+        raise ValueError("A scheduled conversation reader requires a task owner")
+    ids = tuple(dict.fromkeys(validate_thread_id(reference) for reference in references))
+    return _prepare_owner_bound_conversation_reader(ids, user_id=owner_user_id, run_context=run_context, run_manager=run_manager, app_config=app_config)
+
+
+def _prepare_owner_bound_conversation_reader(
+    ids: tuple[str, ...],
+    *,
+    user_id: str,
+    run_context: RunContext,
+    run_manager: RunManager,
+    app_config: AppConfig,
+) -> tuple[Callable[..., Awaitable[str]], tuple[str, ...]]:
+    """Construct the non-serializable grant shared by authenticated hosts."""
     allowed_ids = frozenset(ids)
     output_limit = _inline_output_limit(app_config)
     thread_store = run_context.thread_store

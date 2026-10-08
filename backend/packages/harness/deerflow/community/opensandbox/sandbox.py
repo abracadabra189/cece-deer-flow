@@ -15,7 +15,7 @@ from deerflow.config.paths import VIRTUAL_PATH_PREFIX
 from deerflow.sandbox.remote_list_dir import parse_remote_list_dir_output, remote_list_dir_command
 from deerflow.sandbox.remote_search import parse_remote_search_output, remote_search_command
 from deerflow.sandbox.sandbox import Sandbox, _validate_extra_env
-from deerflow.sandbox.search import GrepMatch, path_matches, should_ignore_path, truncate_line
+from deerflow.sandbox.search import GrepMatch, path_matches, should_ignore_path_under_root, truncate_line
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -272,8 +272,10 @@ class OpenSandboxSandbox(Sandbox):
         if start_line is None and end_line is None:
             return content or ""
         lines = (content or "").splitlines()
-        start = start_line or 1
-        end = end_line if end_line is not None else len(lines)
+        # Clamp like LocalSandbox.read_file: a negative start would otherwise
+        # wrap around through Python's negative-index slicing.
+        start = max(start_line or 1, 1)
+        end = max(end_line, 0) if end_line is not None else len(lines)
         return "\n".join(lines[start - 1 : end])
 
     def write_file(self, path: str, content: str, append: bool = False) -> None:
@@ -355,13 +357,17 @@ class OpenSandboxSandbox(Sandbox):
         root_prefix = root if root == "/" else f"{root}/"
         for entry in output.text.splitlines():
             # Do NOT strip: trailing whitespace can be part of the filename.
-            if not entry or (entry != root and not entry.startswith(root_prefix)) or should_ignore_path(entry):
+            if not entry or (entry != root and not entry.startswith(root_prefix)) or should_ignore_path_under_root(entry, root):
                 continue
             relative = entry[len(root) :].lstrip("/")
             if relative and path_matches(pattern, relative):
                 matches.append(entry)
-                if len(matches) >= max_results:
-                    return matches, True
+                # Look one match past the cap before deciding: returning on the
+                # max-th match cannot tell a search that held exactly
+                # ``max_results`` from one that held more, so an exhausted tree
+                # was reported as truncated.
+                if len(matches) > max_results:
+                    return matches[:max_results], True
         return matches, output.truncated
 
     def grep(
@@ -387,7 +393,7 @@ class OpenSandboxSandbox(Sandbox):
         if glob is not None:
             include_pattern = glob.split("/")[-1] or glob
             flags.append(shlex.quote(f"--include={include_pattern}"))
-        per_file_cap = max(max_results, 50)
+        per_file_cap = max(max_results + 1, 50)
         flags.append(f"-m{per_file_cap}")
         hard_limit = max(max_results * 4, max_results + 50)
         arguments = f" -e {shlex.quote(pattern)} {shlex.quote(resolved)} 2>/dev/null"
@@ -410,7 +416,7 @@ class OpenSandboxSandbox(Sandbox):
                 line_number = int(line_number_text)
             except ValueError:
                 continue
-            if should_ignore_path(file_path):
+            if should_ignore_path_under_root(file_path, root):
                 continue
             if glob is not None:
                 if file_path != root and not file_path.startswith(root_prefix):
@@ -423,8 +429,9 @@ class OpenSandboxSandbox(Sandbox):
                 continue
             seen_positions.add(position)
             matches.append(GrepMatch(path=file_path, line_number=line_number, line=truncate_line(line)))
-            if len(matches) >= max_results:
-                return matches, True
+            # Same one-match-past-the-cap rule as glob() above.
+            if len(matches) > max_results:
+                return matches[:max_results], True
         return matches, output.truncated
 
     def ping(self, timeout: float = 10) -> bool:
