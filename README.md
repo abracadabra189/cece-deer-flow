@@ -328,6 +328,8 @@ For MindIE XML tool calls, see the
        supports_thinking: true
    ```
 
+   `ClaudeChatModel` normalizes manual extended-thinking budgets when `auto_thinking_budget: true` (the default). An omitted or null budget gets 80% of `max_tokens`, with a minimum of 1024 tokens. Explicit budgets must be integers of at least 1024 and, for ordinary thinking, strictly below `max_tokens`; output limits of 1024 or less fail locally. For supported manual interleaved thinking, configure tools and `betas: ["interleaved-thinking-2025-05-14"]`: the thinking budget may equal or exceed the positive output limit. See [Anthropic's interleaved-thinking rules](https://platform.claude.com/docs/en/build-with-claude/extended-thinking#interleaved-thinking-in-manual-mode) for supported models. `auto_thinking_budget: false` bypasses this normalization and validation; disabled and adaptive thinking are unchanged.
+
    - Codex CLI reads `~/.codex/auth.json`
    - Codex function tools preserve explicit `strict: true` or `strict: false` in wrapped or flat dictionary definitions. Missing or null settings keep the provider default. `bind_tools` applies the same conversion to dictionaries and `BaseTool` schemas.
    - Completed Codex responses still return their text and tool calls when token usage is null, omitted, or empty; usage metadata remains unavailable.
@@ -736,6 +738,7 @@ Tool-produced paths and URLs can be retained as short artifact handles across co
 
 DeerFlow supports configurable MCP servers and skills to extend its capabilities.
 For HTTP/SSE MCP servers, OAuth token flows are supported (`client_credentials`, `refresh_token`).
+Missing, malformed, or out-of-range token response `expires_in` values use a one-hour default lifetime. This includes lifetimes that cannot be added to the current time without overflowing the expiry timestamp.
 Durable HTTP/SSE task status and cancellation calls select configured `user_auth` credentials using the persisted task owner, including after restart; per-request secrets are not retained for background calls. If a request-scoped credential overrides submit authentication, both credentials must authorize access to the same remote task.
 For stdio MCP servers, per-tool call timeouts can be configured with `tool_call_timeout`; durable background-task calls honor the same setting for HTTP/SSE servers as well.
 For stdio file outputs, a bare filename is linked to a uniquely matching file created or changed by that call. Filenames embedded in unrelated paths, including Windows backslash paths, are left intact.
@@ -2028,7 +2031,7 @@ AIO directory listings discard missing shell sessions so the next request can re
 After a dropped connection, directory listings and persistent shell commands report an
 unknown outcome without replaying the operation; later calls use a fresh session.
 
-Uploaded Markdown outlines recognize ATX heading syntax, clean closing markers with a linear suffix scan, and skip fenced and indented code examples, so hashtags and code comments do not
+Uploaded Markdown outlines recognize ATX heading syntax, clean closing markers with a linear suffix scan, and skip HTML comment blocks and fenced and indented code examples, so hashtags and code comments do not
 crowd out real document sections from the agent's heading preview. Indented bold examples are also excluded; PDF-style bold headings with up to three leading spaces remain supported.
 Split-bold numeric table rows, including parenthesized years, signed values, and
 currency-prefixed amounts, are excluded when any block after the section number
@@ -2122,6 +2125,9 @@ failing the upload; hidden staging files are left for the startup sweep.
 Uploads, new skill support files, and new local sandbox paths reject Windows
 reserved device names on every platform, including `COM¹`, `LPT²`, the console
 aliases `CONIN$` and `CONOUT$`, and names with extensions such as `com³.txt`.
+ASCII spaces before the extension do not make a device name portable:
+`NUL .txt` and `COM1  .log` are rejected too. Ordinary names such as
+`report .txt` are preserved unchanged.
 Rename these files before creating or uploading them so the same file tree
 remains usable on Windows.
 
@@ -2451,6 +2457,11 @@ New shelf names, including explicit upload `name` and promotion `shelf_name`,
 follow ordinary upload filename validation. Names containing NUL, Windows
 reserved device names (such as `CON.txt`), or trailing dots are rejected with
 `400` before bytes are staged.
+
+On native Windows, the document shelf uses extended-length filesystem paths
+so deep workspace directories and long filenames can be uploaded, downloaded,
+restored, and purged without enabling the system-wide long-path setting.
+Filesystem limits on individual path components still apply.
 
 Runs on member threads also receive a bounded `<documents>` index rendered per
 run from the pinned snapshot (capped by `projects.shelf_index_max_entries` and
