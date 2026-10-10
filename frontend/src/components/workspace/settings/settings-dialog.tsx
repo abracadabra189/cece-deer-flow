@@ -103,7 +103,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const { t } = useI18n();
   const [activeSection, setActiveSection] =
     useState<SettingsSection>(defaultSection);
-  const enabledSections: SettingsSection[] = ["account", "appearance"];
+  const enabledSections: SettingsSection[] = [
+    "models",
+    "account",
+    "appearance",
+  ];
 
   useEffect(() => {
     // When opening the dialog, ensure the active section follows the caller's intent.
