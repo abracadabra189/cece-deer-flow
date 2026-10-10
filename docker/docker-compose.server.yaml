@@ -1,0 +1,117 @@
+# Offline server test deployment.
+#
+# All images must be built and exported on a connected build machine, then
+# imported with `docker load` on the server. This file intentionally has no
+# `build:` entries and does not start the Kubernetes-only provisioner.
+#
+# Required .env values:
+#   BIND_HOST=0.0.0.0
+#   PORT=17178
+#   DEER_FLOW_HOME=/data/mayl/cece1010/runtime/deer-flow-home
+#   DEER_FLOW_CONFIG_PATH=/data/mayl/cece1010/config.yaml
+#   DEER_FLOW_EXTENSIONS_CONFIG_PATH=/data/mayl/cece1010/extensions_config.json
+#   BETTER_AUTH_SECRET=<server-only-random-secret>
+#   DEER_FLOW_INTERNAL_AUTH_TOKEN=<server-only-random-token>
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: deer-flow-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - deer-flow
+    restart: unless-stopped
+
+  gateway:
+    image: cece1010-gateway:dev224
+    container_name: deer-flow-gateway
+    command: sh -c "cd backend && PYTHONPATH=. uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --workers ${GATEWAY_WORKERS:-1} --timeout-graceful-shutdown 10"
+    stop_grace_period: 90s
+    volumes:
+      - ${DEER_FLOW_CONFIG_PATH}:/app/backend/config.yaml:ro
+      - ${DEER_FLOW_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json
+      - ../skills:/app/skills:ro
+      - ${DEER_FLOW_HOME}:/app/backend/.deer-flow
+    working_dir: /app
+    environment:
+      CI: "true"
+      DEER_FLOW_PROJECT_ROOT: /app
+      DEER_FLOW_HOME: /app/backend/.deer-flow
+      DEER_FLOW_CONFIG_PATH: /app/backend/config.yaml
+      DEER_FLOW_EXTENSIONS_CONFIG_PATH: /app/backend/extensions_config.json
+      DEER_FLOW_STREAM_BRIDGE_REDIS_URL: ${DEER_FLOW_STREAM_BRIDGE_REDIS_URL:-redis://redis:6379/0}
+      DEER_FLOW_CHANNELS_LANGGRAPH_URL: ${DEER_FLOW_CHANNELS_LANGGRAPH_URL:-http://gateway:8001/api}
+      DEER_FLOW_CHANNELS_GATEWAY_URL: ${DEER_FLOW_CHANNELS_GATEWAY_URL:-http://gateway:8001}
+      DEER_FLOW_INTERNAL_AUTH_TOKEN: ${DEER_FLOW_INTERNAL_AUTH_TOKEN}
+      DEER_FLOW_HOST_BASE_DIR: ${DEER_FLOW_HOME}
+      DEER_FLOW_SANDBOX_HOST: host.docker.internal
+      NO_PROXY: ${NO_PROXY:-}${NO_PROXY:+,}localhost,127.0.0.1,::1,gateway,frontend,nginx,host.docker.internal
+      no_proxy: ${no_proxy:-}${no_proxy:+,}localhost,127.0.0.1,::1,gateway,frontend,nginx,host.docker.internal
+    env_file:
+      - path: ../.env
+        required: false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; response = urllib.request.urlopen('http://127.0.0.1:8001/health/ready', timeout=5); raise SystemExit(0 if response.status == 200 else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - deer-flow
+    restart: unless-stopped
+
+  frontend:
+    image: cece1010-frontend:dev224
+    container_name: deer-flow-frontend
+    environment:
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      DEER_FLOW_INTERNAL_GATEWAY_BASE_URL: http://gateway:8001
+    env_file:
+      - path: ../frontend/.env
+        required: false
+    networks:
+      - deer-flow
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: deer-flow-nginx
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${PORT:-17178}:2026"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        cp /etc/nginx/nginx.conf.template /etc/nginx/nginx.conf
+        test -e /proc/net/if_inet6 || sed -i '/^[[:space:]]*listen[[:space:]]\+\[::\]:2026[[:space:]]/d' /etc/nginx/nginx.conf
+        exec nginx -g 'daemon off;'
+    depends_on:
+      frontend:
+        condition: service_started
+      gateway:
+        condition: service_healthy
+    networks:
+      - deer-flow
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+
+networks:
+  deer-flow:
+    driver: bridge
