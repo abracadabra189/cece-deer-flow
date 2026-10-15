@@ -5,6 +5,7 @@ import {
   CalendarClock,
   MessagesSquare,
   BlocksIcon,
+  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -50,65 +51,67 @@ export function WorkspaceNavChatList() {
               </Link>
             </SidebarMenuButton>
           ) : (
-            // Disabled: aria-disabled drives the sidebar CVA to suppress
-            // pointer events on the button, so wrap it in a hoverable span
-            // that still surfaces the "feature not enabled" tooltip for mouse
-            // users. The button stays in the tab order (no tabIndex={-1}) and
-            // is wired via aria-describedby to a visually-hidden reason, so
-            // keyboard and screen-reader users also learn why it is disabled.
-            <Tooltip>
-              <TooltipTrigger asChild>
-                {/* cursor-not-allowed lives on the span (the element that
-                    still receives pointer events), not the inert button. */}
-                <span className="block w-full cursor-not-allowed">
-                  <SidebarMenuButton
-                    className="text-muted-foreground/50"
-                    aria-disabled
-                    aria-describedby="agents-disabled-reason"
-                  >
-                    <BotIcon />
-                    <span>{t.sidebar.agents}</span>
-                  </SidebarMenuButton>
-                  <span id="agents-disabled-reason" className="sr-only">
-                    {t.sidebar.agentsDisabledTooltip}
-                  </span>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                {t.sidebar.agentsDisabledTooltip}
-              </TooltipContent>
-            </Tooltip>
+            <DisabledNavigationItem
+              icon={BotIcon}
+              label={t.sidebar.agents}
+              reason={t.sidebar.agentsDisabledTooltip}
+              reasonId="agents-disabled-reason"
+            />
           )}
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/scheduled-tasks")}
-            asChild
-          >
-            <Link
-              className="text-muted-foreground"
-              href="/workspace/scheduled-tasks"
-            >
-              <CalendarClock />
-              <span>{t.sidebar.scheduledTasks}</span>
-            </Link>
-          </SidebarMenuButton>
+          <DisabledNavigationItem
+            icon={CalendarClock}
+            label={t.sidebar.scheduledTasks}
+            reason={t.sidebar.agentsDisabledTooltip}
+            reasonId="scheduled-tasks-disabled-reason"
+          />
         </SidebarMenuItem>
         <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/capabilities")}
-            asChild
-          >
-            <Link
-              className="text-muted-foreground"
-              href="/workspace/capabilities"
-            >
-              <BlocksIcon />
-              <span>{t.capabilities.title}</span>
-            </Link>
-          </SidebarMenuButton>
+          <DisabledNavigationItem
+            icon={BlocksIcon}
+            label={t.capabilities.title}
+            reason={t.sidebar.agentsDisabledTooltip}
+            reasonId="capabilities-disabled-reason"
+          />
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarGroup>
+  );
+}
+
+function DisabledNavigationItem({
+  icon: Icon,
+  label,
+  reason,
+  reasonId,
+}: {
+  icon: LucideIcon;
+  label: string;
+  reason: string;
+  reasonId: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* Keep the wrapper interactive so disabled navigation still explains
+            itself on hover. The button remains keyboard-focusable and exposes
+            the same reason through aria-describedby. */}
+        <span className="block w-full cursor-not-allowed">
+          <SidebarMenuButton
+            className="text-muted-foreground/50"
+            aria-disabled
+            aria-describedby={reasonId}
+          >
+            <Icon />
+            <span>{label}</span>
+          </SidebarMenuButton>
+          <span id={reasonId} className="sr-only">
+            {reason}
+          </span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="right">{reason}</TooltipContent>
+    </Tooltip>
   );
 }
