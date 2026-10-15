@@ -1,0 +1,29 @@
+# CECE's general-purpose DeerFlow AIO sandbox.
+#
+# Build with the docker/ directory as context so the repository-level
+# .dockerignore cannot exclude this Dockerfile or requirements file:
+#   docker build -t cece-aio-sandbox:base-v1 -f docker/Dockerfile.sandbox docker
+#
+# Do not replace ENTRYPOINT or CMD.  The upstream image starts the HTTP API
+# consumed by DeerFlow's AioSandboxProvider.
+FROM enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:1.11.0
+
+USER root
+
+# Graphviz supplies the `dot` executable. Noto CJK keeps Chinese labels in
+# matplotlib/Graphviz output readable rather than rendering as missing glyphs.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl \
+        fonts-noto-cjk \
+        git \
+        graphviz \
+        jq \
+        unzip \
+        zip \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.sandbox.txt /tmp/requirements.sandbox.txt
+
+RUN python -m pip install --no-cache-dir -r /tmp/requirements.sandbox.txt \
+    && rm -f /tmp/requirements.sandbox.txt
