@@ -50,6 +50,15 @@ class _FakeRepo:
         self.users[str(user.id)] = user
         return user
 
+    async def set_disabled(self, user_id: str, disabled: bool) -> User:
+        user = self.users.get(user_id)
+        if user is None:
+            from app.gateway.auth.repositories.base import UserNotFoundError
+
+            raise UserNotFoundError(f"User {user_id} no longer exists")
+        user.disabled = disabled
+        return user
+
     async def update_system_role(self, user_id: str, system_role: str) -> User:
         from app.gateway.auth.repositories.base import LastAdminRemainsError, UserNotFoundError
 
@@ -96,6 +105,20 @@ def test_admin_lists_users_with_roles(monkeypatch):
 
     assert response.status_code == 200
     assert {row["system_role"] for row in response.json()} == {"admin", "guest"}
+
+
+def test_admin_can_disable_and_reenable_an_account(monkeypatch):
+    admin = _make_user(system_role="admin")
+    target = _make_user()
+    client = _make_client(monkeypatch, caller=admin, repo=_FakeRepo([admin, target]))
+
+    disabled = client.patch(f"/api/v1/admin/users/{target.id}", json={"disabled": True})
+    reenabled = client.patch(f"/api/v1/admin/users/{target.id}", json={"disabled": False})
+
+    assert disabled.status_code == 200
+    assert disabled.json()["disabled"] is True
+    assert reenabled.status_code == 200
+    assert reenabled.json()["disabled"] is False
 
 
 def test_assigns_configured_custom_role(monkeypatch):
