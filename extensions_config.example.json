@@ -1,9 +1,87 @@
 {
   "middlewares": [],
-  "mcpInterceptors": [
-    "my_package.mcp.auth:build_auth_interceptor"
-  ],
+  "mcpInterceptors": [],
   "mcpServers": {
+    "enterprise": {
+      "enabled": true,
+      "type": "http",
+      "url": "http://192.168.9.86:8908/cece-mcp-servers/enterprise/stream",
+      "headers": {
+        "Authorization": "Bearer $MCP_AUTH_TOKEN"
+      },
+      "tool_name_prefix": true,
+      "session_init_timeout": 60,
+      "description": "Enterprise data MCP server",
+      "routing": {
+        "mode": "prefer",
+        "priority": 100,
+        "keywords": ["enterprise", "company", "business", "企业", "公司", "股东", "高管", "招投标"]
+      }
+    },
+    "entity_resolve": {
+      "enabled": true,
+      "type": "http",
+      "url": "http://192.168.9.86:8910/cece-mcp-servers/NER/stream",
+      "headers": {
+        "Authorization": "Bearer $MCP_AUTH_TOKEN"
+      },
+      "tool_name_prefix": true,
+      "session_init_timeout": 60,
+      "description": "Entity resolution MCP server",
+      "routing": {
+        "mode": "prefer",
+        "priority": 100,
+        "keywords": ["entity", "主体", "实体", "公司名称", "人名", "行业", "区域"]
+      }
+    },
+    "pevc": {
+      "enabled": true,
+      "type": "http",
+      "url": "http://192.168.9.86:8907/cece-mcp-servers/PEVC/stream",
+      "headers": {
+        "Authorization": "Bearer $MCP_AUTH_TOKEN"
+      },
+      "tool_name_prefix": true,
+      "session_init_timeout": 60,
+      "description": "Private equity and venture capital MCP server",
+      "routing": {
+        "mode": "prefer",
+        "priority": 90,
+        "keywords": ["financing", "fund", "investment", "融资", "创投", "基金", "私募", "风投"]
+      }
+    },
+    "person": {
+      "enabled": true,
+      "type": "http",
+      "url": "http://192.168.9.86:8909/cece-mcp-servers/person/stream",
+      "headers": {
+        "Authorization": "Bearer $MCP_AUTH_TOKEN"
+      },
+      "tool_name_prefix": true,
+      "session_init_timeout": 60,
+      "description": "Person profile MCP server",
+      "routing": {
+        "mode": "prefer",
+        "priority": 95,
+        "keywords": ["person", "人物", "人物画像", "高管", "企业家", "简历"]
+      }
+    },
+    "industry": {
+      "enabled": true,
+      "type": "http",
+      "url": "http://192.168.9.86:8912/cece-mcp-servers/industry/stream",
+      "headers": {
+        "Authorization": "Bearer $MCP_AUTH_TOKEN"
+      },
+      "tool_name_prefix": true,
+      "session_init_timeout": 60,
+      "description": "Industry data MCP server",
+      "routing": {
+        "mode": "prefer",
+        "priority": 95,
+        "keywords": ["industry", "产业", "行业", "赛道", "产业链", "产业园区"]
+      }
+    },
     "github": {
       "enabled": false,
       "type": "stdio",
@@ -28,6 +106,41 @@
         "User-Agent": "deer-flow"
       },
       "description": "Optional anonymous Parallel Search tools for web search and fetching requested URLs"
+    },
+    "qwen-enhanced-search": {
+      "enabled": false,
+      "type": "http",
+      "url": "https://dashscope.aliyuncs.com/api/v1/mcps/EnhancedSearch/mcp",
+      "headers": {
+        "Authorization": "$DASHSCOPE_SEARCH_AUTHORIZATION"
+      },
+      "tool_name_prefix": true,
+      "session_init_timeout": 60,
+      "description": "Alibaba Cloud Model Studio Enhanced Search MCP for real-time web information",
+      "routing": {
+        "mode": "prefer",
+        "priority": 80,
+        "keywords": [
+          "latest",
+          "today",
+          "news",
+          "policy",
+          "announcement",
+          "real-time",
+          "market",
+          "price",
+          "search",
+          "最新",
+          "今日",
+          "新闻",
+          "政策",
+          "公告",
+          "实时",
+          "市场",
+          "价格",
+          "联网搜索"
+        ]
+      }
     },
     "openviking": {
       "enabled": false,
