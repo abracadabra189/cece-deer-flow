@@ -21,6 +21,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
@@ -102,6 +107,14 @@ export type SettingsSection =
   | "notification"
   | "about";
 
+const DISABLED_SECTIONS = new Set<SettingsSection>([
+  "notification",
+  "channels",
+  "memory",
+  "subagents",
+  "about",
+]);
+
 type SettingsDialogProps = React.ComponentProps<typeof Dialog> & {
   defaultSection?: SettingsSection;
 };
@@ -180,9 +193,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
     t.settings.sections.notification,
     t.settings.sections.about,
   ]);
-  const activeId = sections.some((section) => section.id === activeSection)
+  const activeId = sections.some(
+    (section) =>
+      section.id === activeSection && !DISABLED_SECTIONS.has(section.id),
+  )
     ? activeSection
-    : sections[0]!.id;
+    : sections.find((section) => !DISABLED_SECTIONS.has(section.id))!.id;
   return (
     <Dialog
       {...dialogProps}
@@ -203,21 +219,43 @@ export function SettingsDialog(props: SettingsDialogProps) {
             <ul className="space-y-1 pr-1">
               {sections.map(({ id, label, icon: Icon }) => {
                 const active = activeId === id;
+                const enabled = !DISABLED_SECTIONS.has(id);
+                const button = (
+                  <button
+                    type="button"
+                    disabled={!enabled}
+                    onClick={() => {
+                      if (enabled) setActiveSection(id);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                      active
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : enabled
+                          ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          : "text-muted-foreground/50 cursor-not-allowed opacity-60",
+                    )}
+                  >
+                    <Icon className="size-4" />
+                    <span>{label}</span>
+                  </button>
+                );
                 return (
                   <li key={id}>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSection(id)}
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                        active
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="size-4" />
-                      <span>{label}</span>
-                    </button>
+                    {enabled ? (
+                      button
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="block cursor-not-allowed">
+                            {button}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          {t.sidebar.agentsDisabledTooltip}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                   </li>
                 );
               })}
