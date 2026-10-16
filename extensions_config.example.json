@@ -107,6 +107,41 @@
       },
       "description": "Optional anonymous Parallel Search tools for web search and fetching requested URLs"
     },
+    "qwen-enhanced-search": {
+      "enabled": false,
+      "type": "http",
+      "url": "https://dashscope.aliyuncs.com/api/v1/mcps/EnhancedSearch/mcp",
+      "headers": {
+        "Authorization": "$DASHSCOPE_SEARCH_AUTHORIZATION"
+      },
+      "tool_name_prefix": true,
+      "session_init_timeout": 60,
+      "description": "Alibaba Cloud Model Studio Enhanced Search MCP for real-time web information",
+      "routing": {
+        "mode": "prefer",
+        "priority": 80,
+        "keywords": [
+          "latest",
+          "today",
+          "news",
+          "policy",
+          "announcement",
+          "real-time",
+          "market",
+          "price",
+          "search",
+          "最新",
+          "今日",
+          "新闻",
+          "政策",
+          "公告",
+          "实时",
+          "市场",
+          "价格",
+          "联网搜索"
+        ]
+      }
+    },
     "openviking": {
       "enabled": false,
       "type": "http",
