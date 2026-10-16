@@ -1,0 +1,31 @@
+# Incremental Python dependencies for cece-aio-sandbox:base-v1.
+# The upstream AIO image already includes pandas, numpy, matplotlib, openpyxl,
+# python-pptx, requests, and jinja2; do not needlessly replace those versions.
+
+# Tables and data exchange
+XlsxWriter>=3.2,<4
+tabulate>=0.9,<1
+
+# Charts: static, interactive, and financial candlesticks
+seaborn>=0.13,<1
+mplfinance>=0.12.10b0,<0.13
+plotly>=6,<7
+kaleido>=1,<2
+
+# Word, PDF, and image artefacts
+python-docx>=1.1,<2
+reportlab>=4,<5
+pypdf>=5,<7
+Pillow>=10,<13
+
+# HTTP and HTML parsing
+httpx>=0.27,<1
+beautifulsoup4>=4.12,<5
+lxml>=5,<7
+
+# General statistical and lightweight machine-learning analysis
+scipy>=1.10,<2
+scikit-learn>=1.3,<2
+
+# Python bindings for the system Graphviz installation
+graphviz>=0.20,<1
