@@ -113,6 +113,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const isAdmin = user?.system_role === "admin";
   const [activeSection, setActiveSection] =
     useState<SettingsSection>(defaultSection);
+
   useEffect(() => {
     // When opening the dialog, ensure the active section follows the caller's intent.
     // This allows triggers like "About" to open the dialog directly on that page.
@@ -160,6 +161,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
       },
       { id: "about", label: t.settings.sections.about, icon: InfoIcon },
     ];
+    // User management is meaningless (and confusing) for non-admins, so the
+    // entry point itself is hidden; the page still guards independently in
+    // case a stale dialog store ever activates the section.
     if (isAdmin) {
       items.splice(1, 0, {
         id: "users",
@@ -180,6 +184,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
     t.settings.sections.notification,
     t.settings.sections.about,
   ]);
+  // A `?settings=<section>` deep link (or a stale dialog store) can activate
+  // a section this user's nav does not offer — e.g. user management for a
+  // non-admin — so fall back to the first available section instead of
+  // rendering a panel with no highlighted entry. The base list above is
+  // non-empty, so the fallback itself always resolves.
   const activeId = sections.some((section) => section.id === activeSection)
     ? activeSection
     : sections[0]!.id;

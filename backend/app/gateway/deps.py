@@ -31,6 +31,8 @@ from langgraph.types import Checkpointer
 from app.gateway.auth.errors import AuthErrorCode
 from deerflow.community.browser_automation.session import browser_multi_worker_error
 from deerflow.config.app_config import AppConfig, get_app_config
+from deerflow.config.channel_leader_lease_config import CHANNEL_LEADER_LEASE_FIELD, ChannelLeaderLeaseConfig, ChannelLeaderLeaseConfigError, channel_leader_lease_from_app_config
+from deerflow.config.credentials_key import CREDENTIALS_KEY_ENV_VAR, CREDENTIALS_KEY_FILENAME, GENERATE_KEY_COMMAND, CredentialsKeyError, parse_credentials_keys
 from deerflow.config.deployment_config import multi_instance_declaration
 from deerflow.persistence.feedback import FeedbackRepository
 from deerflow.runtime import ORPHAN_RECOVERY_STOP_REASON, STARTUP_ORPHAN_RECOVERY_ERROR, RunContext, RunManager, StreamBridge
@@ -159,6 +161,17 @@ def _enforce_postgres_for_multi_worker(config: AppConfig) -> None:
     7. ``sandbox.ownership.type`` must not be an explicit ``memory``: an
        in-process ownership store cannot see peers, so reconciliation would
        adopt and idle-destroy another instance's live containers (#4206).
+    8. ``channels.leader_lease.enabled`` must not be ``false`` while an IM
+       channel other than GitHub is enabled: every instance would open the
+       platform connection with the same bot credentials (Telegram rejects
+       the second poller with 409, Discord answers every message twice).
+       ``auto`` (the default) and ``true`` hand each provider's connection to
+       the one instance holding its ``channel_leases`` row.
+
+    On a single instance only one lease rule applies: an explicit
+    ``channels.leader_lease.enabled: true`` needs a SQL database for its lease
+    table, so ``database.backend: memory`` is refused while a channel the lease
+    arbitrates is enabled.
 
     This gate runs once at startup before any persistence engine is
     initialised so the error message is clear and the process exits
@@ -179,8 +192,20 @@ def _enforce_postgres_for_multi_worker(config: AppConfig) -> None:
     if multi_instance_requested and (run_ownership is None or not run_ownership.heartbeat_enabled):
         raise SystemExit("scheduler.multi_instance=true requires run_ownership.heartbeat_enabled=true so peer runs retain a valid lease. Set scheduler.multi_instance=false or enable run ownership heartbeats.")
 
+    # A malformed channels.leader_lease block is refused on every topology:
+    # ChannelService would otherwise raise the same error later in the
+    # lifespan, after the persistence engine is already up.
+    leader_lease = _channel_leader_lease(config)
+
     signal = _multi_process_signal(config)
     if signal is None:
+        if leader_lease.enabled is True and backend not in ("sqlite", "postgres"):
+            providers = _enabled_channel_transport_providers(config)
+            if providers:
+                raise SystemExit(
+                    f"{CHANNEL_LEADER_LEASE_FIELD}.enabled=true needs the shared application database for its lease table, but database.backend is '{backend}' "
+                    f"while IM channels {', '.join(providers)} are enabled. Set database.backend to sqlite or postgres, or set {CHANNEL_LEADER_LEASE_FIELD}.enabled to auto."
+                )
         return
     reason, rollback = signal
 
@@ -226,6 +251,96 @@ def _enforce_postgres_for_multi_worker(config: AppConfig) -> None:
             "peer instances, so startup reconciliation would adopt and idle-destroy containers another instance is "
             "using (#4206). Set sandbox.ownership.type='redis', or omit the section so it is inferred from the redis stream bridge."
         )
+
+    if leader_lease.explicitly_disabled:
+        providers = _enabled_channel_transport_providers(config)
+        if providers:
+            raise SystemExit(
+                f"{reason} cannot run with {CHANNEL_LEADER_LEASE_FIELD}.enabled=false while IM channels {', '.join(providers)} are enabled: "
+                "every instance would open the platform connection with the same bot credentials (Telegram rejects the second poller "
+                "with 409 Conflict, Discord answers every message twice, and per-process channel state diverges). "
+                f"Set {CHANNEL_LEADER_LEASE_FIELD}.enabled to auto (the default) or true so one instance holds each provider's connection; "
+                f"alternatively {rollback[0].lower()}{rollback[1:]}, or disable those channels (channels.<provider>.enabled=false and channel_connections.<provider>.enabled=false)."
+            )
+
+
+def multi_process_deployment(config: AppConfig) -> bool:
+    """Whether this process must assume peer Gateway processes (the gate's multi-process signal).
+
+    ``channels.leader_lease: auto`` follows exactly this signal, so the lease
+    turns on wherever the gate enforced the multi-process prerequisites.
+    """
+    return _multi_process_signal(config) is not None
+
+
+def _channel_leader_lease(config: AppConfig) -> ChannelLeaderLeaseConfig:
+    """Parse ``channels.leader_lease``; a malformed block exits with the dotted path in the message."""
+    try:
+        return channel_leader_lease_from_app_config(config)
+    except ChannelLeaderLeaseConfigError as exc:
+        raise SystemExit(str(exc)) from None
+
+
+def _enabled_channel_transport_providers(config: AppConfig) -> list[str]:
+    """Non-GitHub IM providers whose platform connection this deployment may open.
+
+    Imported lazily: ``app.channels.service`` pulls in every channel module and
+    the gate runs before the lifespan has any reason to load them.
+    """
+    from app.channels.service import enabled_transport_providers
+
+    return enabled_transport_providers(config)
+
+
+def credentials_key_consumers(config: AppConfig) -> list[str]:
+    """Return the enabled features that store data under ``DEER_FLOW_CREDENTIALS_KEY``.
+
+    Each entry is the setting that enabled the feature, as refusal text spells
+    it. The Gateway loads the key only when this list is non-empty, and the
+    multi-instance gate below refuses a missing key only for these features, so
+    a deployment that stores no credentials keeps booting without one.
+    """
+    consumers: list[str] = []
+    connections = getattr(config, "channel_connections", None)
+    if connections is not None and getattr(connections, "enabled", False):
+        # ChannelConnectionRepository encrypts per-connection credentials, and
+        # the runtime config store the bot credentials entered in the web UI.
+        consumers.append("channel_connections.enabled=true")
+    return consumers
+
+
+def _enforce_credentials_key(config: AppConfig) -> None:
+    """Refuse a malformed credentials key, or a missing one where instances cannot share the generated file.
+
+    A set ``DEER_FLOW_CREDENTIALS_KEY`` must parse (any topology): starting with
+    a key that cannot decrypt anything would silently hide stored credentials.
+    Without it each instance generates ``{base_dir}/.credentials_key``. Workers
+    of one process tree share that file and converge on one key through its
+    exclusive create, so only the explicit multi-instance declaration -- Pods or
+    hosts that need not share a runtime home -- requires the variable, and only
+    when a feature from :func:`credentials_key_consumers` is enabled.
+    """
+    raw = os.environ.get(CREDENTIALS_KEY_ENV_VAR, "")
+    if raw.strip():
+        try:
+            parse_credentials_keys(raw)
+        except CredentialsKeyError as exc:
+            raise SystemExit(str(exc)) from None
+        return
+    declaration = multi_instance_declaration(config)
+    if declaration is None:
+        return
+    consumers = credentials_key_consumers(config)
+    if not consumers:
+        return
+    enabled = ", ".join(consumers)
+    disabled = ", ".join(consumer.removesuffix("=true") + "=false" for consumer in consumers)
+    raise SystemExit(
+        f"{declaration.knob} with {enabled} requires {CREDENTIALS_KEY_ENV_VAR}: without it every instance generates its own "
+        f"{{base_dir}}/{CREDENTIALS_KEY_FILENAME}, and credentials one instance stores cannot be decrypted on its peers. "
+        f"Generate one key with {GENERATE_KEY_COMMAND} and set the same value on every instance (the Helm chart and "
+        f"scripts/deploy.sh generate and inject it automatically), {declaration.rollback}, or set {disabled}."
+    )
 
 
 def _validate_agent_storage(config: AppConfig) -> None:
@@ -600,11 +715,18 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
     # SQLite write-locks cannot support concurrent multi-process access.
     # ------------------------------------------------------------------
     _enforce_postgres_for_multi_worker(startup_config)
+    # Reject a malformed DEER_FLOW_CREDENTIALS_KEY, or a missing one where
+    # declared instances store credentials but cannot share the generated file.
+    _enforce_credentials_key(startup_config)
     # Reject agent_storage.backend='db' on a non-durable database, and warn on
     # node-divergent file storage under multi-worker Postgres.
     _validate_agent_storage(startup_config)
     # Warn when login lockouts stay per-process under several Gateway processes.
     _validate_login_throttle_storage(startup_config)
+    # IM chat-to-thread bindings need no companion warning: ``resolve_channel_store``
+    # keeps them in the shared ``channel_thread_bindings`` table for every
+    # sqlite/postgres database, and the gate above already refuses a memory
+    # database -- the only JSON-file case -- under any multi-process signal.
     # Warn when a declared multi-instance deployment shares DeerMem's SQLite
     # retrieval index across instances through the memory volume.
     _validate_memory_retrieval_index(startup_config)
@@ -732,6 +854,14 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
         from deerflow.extensions.gateway import start_services, stop_services
 
         extensions = getattr(app.state, "extensions", EMPTY_EXTENSIONS)
+        from deerflow.extensions.host_capabilities import HostCapabilities
+
+        host_capabilities = HostCapabilities(config, app.state.run_store, app.state.run_event_store)
+        app.state.skill_mutation_host = host_capabilities
+        # Own partial startup and cancellation before acquiring any locks or
+        # worker resources. LIFO shutdown stops plugins before host recovery.
+        stack.push_async_callback(host_capabilities.close)
+        await host_capabilities.start()
         attempted_services: list[tuple[str, Any]] = []
 
         async def stop_extension_services() -> None:
@@ -753,6 +883,7 @@ async def langgraph_runtime(app: FastAPI, startup_config: AppConfig) -> AsyncGen
                 config,
                 sf,
                 run_evidence_reader=app.state.run_evidence_reader,
+                host_capabilities=host_capabilities.bindings,
                 attempted_services=attempted_services,
             )
         )

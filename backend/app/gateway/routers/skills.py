@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import tempfile
-from collections.abc import AsyncGenerator, Callable, Coroutine
+import threading
+from collections.abc import AsyncGenerator, Callable, Coroutine, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, BinaryIO, Literal
 
@@ -39,6 +41,7 @@ from deerflow.config.extensions_config import (
 )
 from deerflow.runtime.user_context import get_effective_user_id
 from deerflow.skills import Skill
+from deerflow.skills.diagnostics import SkillLoadDiagnostic
 from deerflow.skills.export import SkillExportError, build_skill_export, export_manifest
 from deerflow.skills.installer import SkillAlreadyExistsError, SkillSecurityScanError
 from deerflow.skills.security_scanner import scan_skill_content
@@ -54,6 +57,12 @@ from deerflow.utils.file_io import await_drained
 from deerflow.utils.thread_id import ThreadId
 
 logger = logging.getLogger(__name__)
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None  # type: ignore[assignment]
+    import msvcrt
 
 router = APIRouter(prefix="/api", tags=["skills"])
 
@@ -104,6 +113,10 @@ class SkillsListResponse(BaseModel):
     skills: list[SkillResponse]
 
 
+class SkillDiagnosticsResponse(BaseModel):
+    diagnostics: list[SkillLoadDiagnostic]
+
+
 class SkillUpdateRequest(BaseModel):
     """Request model for updating a skill."""
 
@@ -150,6 +163,86 @@ class CustomSkillHistoryResponse(BaseModel):
 
 class SkillRollbackRequest(BaseModel):
     history_index: int = Field(default=-1, description="History entry index to restore from, defaulting to the latest change.")
+
+
+# Custom-skill mutations (edit, delete, rollback) each span three steps —
+# read the content being replaced, write the new content, append the history
+# entry. Those steps must not interleave between two requests: a request that
+# reads its predecessor, loses the CPU, and writes later silently overwrites
+# the winner's revision while recording the stale predecessor in history,
+# making the overwritten revision unreachable by rollback. Running each
+# mutation's steps inside one worker-thread function does not make them a
+# critical section — two requests can both be inside their own workers — so
+# the cooperating mutation paths share a lock around the whole sequence.
+#
+# The lock is scoped to the owning user's storage: the
+# critical section includes write_custom_skill's projection rebuild, which
+# copies that user's whole skill tree (including a large linked package) and
+# waits on the user's projection lock. A process-wide lock would therefore
+# queue every other user's edit, rollback, and delete behind one user's slow
+# filesystem work, even though their skill trees, histories, and projection
+# roots are disjoint. Keying on the resolved root — not the user_id string,
+# and not one lock per storage instance — keeps a single lock per user when a
+# hot-reloaded config or a later request builds a fresh storage object.
+_custom_skill_mutation_locks: dict[str, threading.Lock] = {}
+_custom_skill_mutation_locks_guard = threading.Lock()
+
+
+def _custom_skill_mutation_lock(storage: SkillStorage) -> threading.Lock:
+    """Return the process-local part of the owning user's mutation lock."""
+    scope = _custom_skill_mutation_scope(storage)
+    with _custom_skill_mutation_locks_guard:
+        return _custom_skill_mutation_locks.setdefault(scope, threading.Lock())
+
+
+def _custom_skill_mutation_scope(storage: SkillStorage) -> str:
+    """The storage scope whose custom-skill mutations must serialize together.
+
+    User-scoped storage reports the canonical root its mutations touch, so two
+    users never share a lock while two storage objects for one user always do.
+    Legacy local storage uses its global custom root. Non-filesystem test
+    doubles have one process-local scope.
+    """
+    get_user_custom_root = getattr(storage, "get_user_custom_root", None)
+    if callable(get_user_custom_root):
+        return str(Path(get_user_custom_root()).resolve())
+    get_skills_root_path = getattr(storage, "get_skills_root_path", None)
+    if callable(get_skills_root_path):
+        return str((Path(get_skills_root_path()) / SkillCategory.CUSTOM.value).resolve())
+    return "global"
+
+
+@contextmanager
+def _custom_skill_mutation(storage: SkillStorage) -> Iterator[None]:
+    """Hold read → write → history across threads and peer Gateway processes.
+
+    Use a stable sidecar outside the skill tree, distinct from projection's
+    lock: write/delete acquire the projection lock while this one is held.
+    Acquiring that same file lock twice would deadlock on POSIX. Both locks
+    are acquired and released in the drained mutation worker, off the loop.
+    """
+    with _custom_skill_mutation_lock(storage):
+        scope = _custom_skill_mutation_scope(storage)
+        if scope == "global":
+            yield
+            return
+        root = Path(scope)
+        lock_path = root.parent / f".{root.name}.mutation.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a", encoding="utf-8") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file, fcntl.LOCK_EX)
+            else:  # pragma: no cover - Windows
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file, fcntl.LOCK_UN)
+                else:  # pragma: no cover - Windows
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 def _skill_to_response(skill: Skill) -> SkillResponse:
@@ -564,6 +657,21 @@ async def list_custom_skills(request: Request, config: AppConfig = Depends(get_c
         raise HTTPException(status_code=500, detail=f"Failed to list custom skills: {str(e)}")
 
 
+@router.get("/skills/diagnostics/custom", response_model=SkillDiagnosticsResponse, summary="List Owned Custom Skill YAML Errors")
+async def list_custom_skill_diagnostics(request: Request, response: Response, config: AppConfig = Depends(get_config)) -> SkillDiagnosticsResponse:
+    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    response.headers["Cache-Control"] = "no-store"
+
+    def scan() -> list[SkillLoadDiagnostic]:
+        return _get_user_skill_storage(config).load_custom_skill_diagnostics()
+
+    try:
+        return SkillDiagnosticsResponse(diagnostics=await asyncio.to_thread(scan))
+    except Exception as exc:
+        logger.error("Failed to load custom skill diagnostics (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Failed to load custom skill diagnostics.") from exc
+
+
 @router.get("/skills/custom/{skill_name}/export-manifest", response_model=SkillExportManifestResponse, response_model_exclude_unset=True, summary="Preview Custom Skill Export")
 async def preview_custom_skill_export(skill_name: str, request: Request, response: Response, config: AppConfig = Depends(get_config)) -> SkillExportManifestResponse | Response:
     await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
@@ -658,26 +766,35 @@ async def update_custom_skill(skill_name: str, body: CustomSkillUpdateRequest, r
         scan = await scan_skill_content(body.content, executable=False, location=f"{skill_name}/{SKILL_MD_FILE}", app_config=config, static_findings=static_findings)
         if scan.decision == "block":
             raise HTTPException(status_code=400, detail=f"Security scan blocked the edit: {scan.reason}")
-        prev_content = await asyncio.to_thread(storage.read_custom_skill, skill_name)
 
         async def _persist_edit() -> None:
-            # The write and its history entry must settle together, and the
-            # prompt cache must not stay stale behind them: a cancelled caller
-            # drains the whole mutation tail instead of cutting it mid-sequence.
-            await asyncio.to_thread(storage.write_custom_skill, skill_name, SKILL_MD_FILE, body.content)
-            await asyncio.to_thread(
-                storage.append_history,
-                skill_name,
-                {
-                    "action": "human_edit",
-                    "author": "human",
-                    "thread_id": None,
-                    "file_path": SKILL_MD_FILE,
-                    "prev_content": prev_content,
-                    "new_content": body.content,
-                    "scanner": {"decision": scan.decision, "reason": scan.reason, "static_findings": static_findings},
-                },
-            )
+            def _write_and_record() -> None:
+                # The write and its history entry must settle together, and the
+                # prompt cache must not stay stale behind them: a cancelled caller
+                # drains the whole mutation tail instead of cutting it mid-sequence.
+                # The read → write → append sequence runs under the owning
+                # user's mutation lock so a concurrent edit cannot land between
+                # the predecessor read and the write: prev_content must record
+                # what this mutation actually overwrites, or the overwritten
+                # revision silently drops out of the history chain and becomes
+                # unreachable by rollback.
+                with _custom_skill_mutation(storage):
+                    prev_content = storage.read_custom_skill(skill_name)
+                    storage.write_custom_skill(skill_name, SKILL_MD_FILE, body.content)
+                    storage.append_history(
+                        skill_name,
+                        {
+                            "action": "human_edit",
+                            "author": "human",
+                            "thread_id": None,
+                            "file_path": SKILL_MD_FILE,
+                            "prev_content": prev_content,
+                            "new_content": body.content,
+                            "scanner": {"decision": scan.decision, "reason": scan.reason, "static_findings": static_findings},
+                        },
+                    )
+
+            await asyncio.to_thread(_write_and_record)
             user_id = get_effective_user_id()
             await refresh_user_skills_system_prompt_cache_async(user_id)
             await _publish_skills_cache_reset(user_id)
@@ -707,20 +824,25 @@ async def delete_custom_skill(skill_name: str, request: Request, config: AppConf
         async def _persist_delete() -> None:
             # Same cancellation contract as the edit and rollback tails: the
             # deletion and its history record settle before a cancelled caller
-            # unwinds, and the prompt cache reflects the removal.
-            await asyncio.to_thread(
-                storage.delete_custom_skill,
-                skill_name,
-                history_meta={
-                    "action": "human_delete",
-                    "author": "human",
-                    "thread_id": None,
-                    "file_path": SKILL_MD_FILE,
-                    "prev_content": None,
-                    "new_content": None,
-                    "scanner": {"decision": "allow", "reason": "Deletion requested."},
-                },
-            )
+            # unwinds, and the prompt cache reflects the removal. The deletion
+            # joins the owning user's mutation lock so it cannot interleave with
+            # a concurrent edit or rollback's read → write → append sequence.
+            def _delete_and_record() -> None:
+                with _custom_skill_mutation(storage):
+                    storage.delete_custom_skill(
+                        skill_name,
+                        history_meta={
+                            "action": "human_delete",
+                            "author": "human",
+                            "thread_id": None,
+                            "file_path": SKILL_MD_FILE,
+                            "prev_content": None,
+                            "new_content": None,
+                            "scanner": {"decision": "allow", "reason": "Deletion requested."},
+                        },
+                    )
+
+            await asyncio.to_thread(_delete_and_record)
             user_id = get_effective_user_id()
             await refresh_user_skills_system_prompt_cache_async(user_id)
             await _publish_skills_cache_reset(user_id)
@@ -788,34 +910,56 @@ async def rollback_custom_skill(skill_name: str, body: SkillRollbackRequest, req
         await asyncio.to_thread(storage.validate_skill_markdown_content, skill_name, target_content)
         static_findings = await _scan_static_skill_markdown_or_raise(skill_name, target_content, app_config=config)
         scan = await scan_skill_content(target_content, executable=False, location=f"{skill_name}/{SKILL_MD_FILE}", app_config=config, static_findings=static_findings)
+        from deerflow.skills.mutations.guard import read_optional_text
 
         def _read_current_content() -> str | None:
-            # Worker thread: the post-scan read of the file being replaced is
-            # blocking filesystem IO (#5747), same rule as the history read.
-            skill_file = storage.get_custom_skill_file(skill_name)
-            return skill_file.read_text(encoding="utf-8") if skill_file.exists() else None
+            # Called off-loop, inside the mutation critical section for writes.
+            # Preserve managed-owner readiness and projection-lock admission.
+            return read_optional_text(storage, storage.get_custom_skill_file(skill_name))
 
-        current_content = await asyncio.to_thread(_read_current_content)
-        history_entry = {
-            "action": "rollback",
-            "author": "human",
-            "thread_id": None,
-            "file_path": SKILL_MD_FILE,
-            "prev_content": current_content,
-            "new_content": target_content,
-            "rollback_from_ts": record.get("ts"),
-            "scanner": {"decision": scan.decision, "reason": scan.reason, "static_findings": static_findings},
-        }
         if scan.decision == "block":
-            await asyncio.to_thread(storage.append_history, skill_name, history_entry)
+            # The blocked path overwrites nothing, so the entry is purely
+            # informational and an early read is safe here.
+            blocked_entry = {
+                "action": "rollback",
+                "author": "human",
+                "thread_id": None,
+                "file_path": SKILL_MD_FILE,
+                "prev_content": await asyncio.to_thread(_read_current_content),
+                "new_content": target_content,
+                "rollback_from_ts": record.get("ts"),
+                "scanner": {"decision": scan.decision, "reason": scan.reason, "static_findings": static_findings},
+            }
+            await asyncio.to_thread(storage.append_history, skill_name, blocked_entry)
             raise HTTPException(status_code=400, detail=f"Rollback blocked by security scanner: {scan.reason}")
 
         async def _persist_rollback() -> None:
-            # The restore write and its history entry must settle together, and
-            # the prompt cache must reflect the restored content, before a
-            # cancelled caller unwinds.
-            await asyncio.to_thread(storage.write_custom_skill, skill_name, SKILL_MD_FILE, target_content)
-            await asyncio.to_thread(storage.append_history, skill_name, history_entry)
+            def _restore_and_record() -> None:
+                # The restore write and its history entry must settle together, and
+                # the prompt cache must reflect the restored content, before a
+                # cancelled caller unwinds. The read → write → append sequence runs
+                # under the owning user's mutation lock (same contract as the edit
+                # path): the recorded prev_content must be what this rollback
+                # actually overwrites, which requires that no concurrent mutation
+                # can land between the predecessor read and the write.
+                with _custom_skill_mutation(storage):
+                    current_content = _read_current_content()
+                    storage.write_custom_skill(skill_name, SKILL_MD_FILE, target_content)
+                    storage.append_history(
+                        skill_name,
+                        {
+                            "action": "rollback",
+                            "author": "human",
+                            "thread_id": None,
+                            "file_path": SKILL_MD_FILE,
+                            "prev_content": current_content,
+                            "new_content": target_content,
+                            "rollback_from_ts": record.get("ts"),
+                            "scanner": {"decision": scan.decision, "reason": scan.reason, "static_findings": static_findings},
+                        },
+                    )
+
+            await asyncio.to_thread(_restore_and_record)
             user_id = get_effective_user_id()
             await refresh_user_skills_system_prompt_cache_async(user_id)
             await _publish_skills_cache_reset(user_id)
@@ -877,12 +1021,12 @@ def _write_extensions_skill_state(
     """Read-modify-write a skill's enabled state in the shared extensions_config.json.
 
     Blocking filesystem IO: always call this via ``asyncio.to_thread``. It takes
-    the public projection lock before the process-local and cross-process
-    extensions config locks. The first keeps the enabled-only view synchronized
-    across workers; the latter two prevent this router and the MCP router from
-    interleaving writes to the shared file. All locks are held by the worker, so
-    request cancellation cannot release them while the write or projection
-    rebuild is still running.
+    the same-name mutation fence before the public projection, process-local,
+    and cross-process extensions config locks. The projection lock keeps the
+    enabled-only view synchronized across workers; the latter two prevent this
+    router and the MCP router from interleaving writes to the shared file. All
+    locks are held by the worker, so request cancellation cannot release them
+    while the write or projection rebuild is still running.
     """
     from contextlib import nullcontext
 
@@ -896,7 +1040,9 @@ def _write_extensions_skill_state(
         config_path = Path.cwd().parent / "extensions_config.json"
         logger.info(f"No existing extensions config found. Creating new config at: {config_path}")
 
-    with projection_update:
+    from deerflow.skills.mutations.guard import managed_global_state_write
+
+    with managed_global_state_write(storage, skill_name), projection_update:
         with extensions_config_write_lock, extensions_config_file_lock(config_path):
             # The projection lock is cross-process, but the singleton cache is
             # not. Existing files are therefore re-read under the lock, raw, so

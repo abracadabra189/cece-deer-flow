@@ -211,6 +211,37 @@ GET /api/langgraph/threads/{thread_id}/state
 }
 ```
 
+#### Get Thread History
+
+```http
+POST /api/langgraph/threads/{thread_id}/history
+```
+
+Only the newest entry carries `messages`, the `goal` while it is active, and
+`goal_outcome` (the latest met goal, kept until the next goal change). Older
+entries carry only `title` and `thread_data`. `goal_outcome` is server-owned:
+state updates and run input that include it are rejected with 400.
+
+External state updates and run input that supply a non-null `goal` must include
+a string `objective` that is non-empty after whitespace normalization and at
+most 4,000 normalized characters. Invalid values return 400 before state writes
+or run admission. Optional goal timestamps and counters are not required or reset.
+When present, `continuation_count`, `max_continuations`, `no_progress_count` and
+`max_no_progress_continuations` must be non-negative integers; booleans, numeric
+strings, floats and null values are rejected with 400. Valid counters and limits
+are preserved, including an already-used continuation budget.
+Goal payloads must be state values, not reducer control wrappers: the reserved
+`__overwrite__` key and `type: "__overwrite__"` are rejected with 400 at both
+external boundaries. Ordinary `type`/`value` fields remain compatible.
+`goal: null` retains its existing semantics: it clears a state update's goal,
+but does not replace a goal through run input.
+
+Replaying messages from an earlier root checkpoint, including response regeneration, preserves
+the thread's current goal and continuation budget. A cleared or achieved goal
+is not restored from history. A valid goal explicitly supplied in run input
+still replaces it. Historical replay clears the old `goal_outcome`, because
+the previous answer's verdict does not certify the replacement answer.
+
 ### Runs
 
 #### Create Run
@@ -229,11 +260,29 @@ and key reuses the existing run instead of executing the input again. The key is
 shared across `/runs`, `/runs/stream`, and `/runs/wait` for a given user and
 thread, so the same key string cannot back two different calls even across those
 endpoints. Reuse is bound to the original `input`, `assistant_id` and
-`conversation_references`; a retry that changes them returns 409. Generate a new key for every intentional user
+`conversation_references`; a retry that changes them returns 409. When
+`command.resume` takes precedence over `input`, reuse instead requires the same
+resume value, assistant and conversation references. Resume values must be strict
+JSON with finite numbers, with or without an idempotency key; booleans, integers
+and floats remain distinct when comparing keyed retries. Generate a new key for every intentional user
 action; reuse a key only when retrying that same action after an uncertain HTTP
 result. Keys may be at most 255 characters. Stateless `/api/langgraph/runs/*`
 endpoints do not support this header because requests without an explicit thread
 create a new temporary conversation.
+
+**Rolling upgrades and keyed resume:** route all initial submissions and retries
+containing both `command.resume` and `Idempotency-Key` to upgraded Gateway workers
+only, across `/runs`, `/runs/stream` and `/runs/wait`, until every worker serving
+these endpoints is upgraded. Older workers ignore `runs.idempotency_request_json`
+and compare only `input`, so with `input: null` they can reuse an `approve` run
+for a conflicting `deny` request. If version-aware routing is unavailable, pause
+keyed resume traffic until the rollout completes, or replace all old workers
+before accepting it again. The additive migration preserves old-reader run-history
+compatibility, not mixed-version resume admission safety. Upgraded workers return
+409 for identity-less legacy resume rows, including identical decisions; inspect
+the original run and current thread state before submitting a new intentional
+action with a fresh key. Removing the header is not a retry workaround: it makes
+the request non-idempotent.
 
 Retrying a still-running run that this worker cannot stream returns 409 from
 `/runs/stream` (`Run ... is not active on this worker and cannot be streamed`)
@@ -314,6 +363,78 @@ their own defaults and override paths.
 - `model_name` (string): Override the default model
 - `thinking_enabled` (boolean): Enable extended thinking for supported models
 - `is_plan_mode` (boolean): Enable TodoList middleware for task tracking
+
+**Client Context:**
+
+A custom client can describe what it can display under top-level
+`context.client`, so the agent and its skills can choose an output shape that
+fits (for example a CSV download or a chart).
+
+```json
+{
+  "input": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "Analyze this dataset"
+      }
+    ]
+  },
+  "context": {
+    "client": {
+      "name": "custom-analytics-frontend",
+      "capabilities": {
+        "artifacts": true,
+        "csv_download": true,
+        "charts": true
+      },
+      "preferences": {
+        "csv": "present",
+        "chart": "present"
+      }
+    }
+  }
+}
+```
+
+The Gateway keeps only `name` (at most 80 characters), `capabilities` (boolean
+flags) and `preferences` (string, number or boolean values; strings at most 200
+characters, integers at most 2^53 − 1 in magnitude), reading only the first 32
+entries of each map. Keys must match `^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$`;
+whitespace is collapsed, and other fields, nested values and non-finite numbers
+are dropped. Dropped fields are logged at debug level without their values. The
+result reaches `runtime.context["client"]` only, never `configurable` or the
+checkpoint. The legacy `config.context.client` input is sanitized the same way;
+`config.configurable.client` is ignored. Both nested config locations omit
+`client` when saving a run record or returning its configuration through the
+runs API. Cleanup leaves the caller's request object unchanged. Reading an
+older record also omits these fields without rewriting the stored record.
+
+On every model call the lead agent receives the current value as one hidden,
+user-role `<client_context>` block placed after the system prompt, with the
+values framed by the same `--- BEGIN/END USER INPUT ---` markers as the user's
+own message. It is never system text and never written to the thread history.
+A run without a usable client value in either supported input location has
+no block; only the current request's value applies.
+
+- Capabilities and preferences are advisory hints, not enforcement. A client
+  that must never receive some output still has to enforce that outside the
+  model, in server-side policy or in the client itself.
+- `name` is informational only. Never use it for authorization or identity;
+  trust comes from the authenticated principal.
+- Send the same `client` object on each run from the same client. Placement
+  after the system messages keeps an unchanged client ahead of the growing
+  conversation, allowing the message prefix to remain stable across runs.
+  Changing or omitting it can invalidate reuse of the following conversation
+  prefix. Actual cache hits, cost and latency depend on the model provider;
+  offline message-order tests do not establish those outcomes.
+- Subagents and embedded `DeerFlowClient` runs do not receive it; the lead
+  agent decides the user-facing output shape. Runs the server starts
+  (schedules, IM channels, GitHub agents, MCP notifications, and extensions
+  unless the plugin passes a `client`) carry none, even on a thread a custom
+  client opened. A thread does not retain a "last-seen client" for future
+  tasks: a launcher must explicitly supply its own current hints if needed.
+  Existing channel-specific response formatting is unchanged.
 
 **Response:** Server-Sent Events (SSE) stream
 
@@ -836,7 +957,8 @@ request still resets the current worker and returns `"scope": "process"`.
 
 #### List Skills
 
-Get all available skills.
+Get all available skills, including public and custom skills. When authorization
+is enabled, only skills visible to the caller's role are returned.
 
 ```http
 GET /api/skills
@@ -848,25 +970,30 @@ GET /api/skills
   "skills": [
     {
       "name": "pdf-processing",
-      "display_name": "PDF Processing",
       "description": "Handle PDF documents efficiently",
-      "enabled": true,
       "license": "MIT",
-      "path": "public/pdf-processing"
+      "category": "public",
+      "enabled": true,
+      "editable": false
     },
     {
       "name": "frontend-design",
-      "display_name": "Frontend Design",
       "description": "Design and build frontend interfaces",
-      "enabled": false,
       "license": "MIT",
-      "path": "public/frontend-design"
+      "category": "public",
+      "enabled": false,
+      "editable": false
     }
   ]
 }
 ```
 
 #### Get Skill Details
+
+Return one skill's metadata. The response does not include `content`; read a
+custom skill's `SKILL.md` with [Get Custom Skill Content](#get-custom-skill-content).
+When authorization is enabled, a skill hidden from the caller's role returns
+`404`, indistinguishable from a missing skill.
 
 ```http
 GET /api/skills/{skill_name}
@@ -876,13 +1003,11 @@ GET /api/skills/{skill_name}
 ```json
 {
   "name": "pdf-processing",
-  "display_name": "PDF Processing",
   "description": "Handle PDF documents efficiently",
-  "enabled": true,
   "license": "MIT",
-  "path": "public/pdf-processing",
-  "allowed_tools": ["read_file", "write_file", "bash"],
-  "content": "# PDF Processing\n\nInstructions for the agent..."
+  "category": "public",
+  "enabled": true,
+  "editable": false
 }
 ```
 
@@ -916,28 +1041,175 @@ Requires an authenticated admin session.
 
 #### Install Skill
 
-Install a skill from a `.skill` file.
+Install a `.skill` archive that already exists in a thread's user-data directory.
+Requires an authenticated administrator.
 
 ```http
 POST /api/skills/install
-Content-Type: multipart/form-data
+Content-Type: application/json
 ```
 
 **Request Body:**
-- `file`: The `.skill` file to install
+```json
+{
+  "thread_id": "<thread id>",
+  "path": "mnt/user-data/outputs/my-skill.skill"
+}
+```
 
 **Response:**
 ```json
 {
   "success": true,
-  "message": "Skill 'my-skill' installed successfully",
-  "skill": {
-    "name": "my-skill",
-    "display_name": "My Skill",
-    "path": "custom/my-skill"
-  }
+  "skill_name": "my-skill",
+  "message": "Skill 'my-skill' installed successfully"
 }
 ```
+
+#### Upload and Install Skill
+
+Upload a local `.skill` archive and install it for the current user. Requires an
+authenticated administrator.
+
+```http
+POST /api/skills/install/upload
+Content-Type: multipart/form-data
+```
+
+**Request Body:**
+- `archive`: The `.skill` file to install. The filename must end with `.skill`.
+
+**Response:** the same shape as [Install Skill](#install-skill). An upload beyond
+the archive limit returns `413`. A missing `archive` field returns `422`; a
+non-file `archive` part is rejected during multipart parsing and returns `400`.
+
+#### List Custom Skills
+
+List only the caller's user-owned custom skills. Legacy shared skills are
+read-only and appear only in [List Skills](#list-skills). Available to normal
+users; no administrator role is required. When authorization is enabled, only
+skills visible to the caller's role are returned.
+
+```http
+GET /api/skills/custom
+```
+
+**Response:** the same shape as [List Skills](#list-skills).
+
+#### Get Custom Skill Content
+
+Return a custom skill's metadata plus its raw `SKILL.md` content. Requires an
+authenticated administrator.
+
+```http
+GET /api/skills/custom/{skill_name}
+```
+
+**Response:**
+```json
+{
+  "name": "my-skill",
+  "description": "My custom skill",
+  "license": null,
+  "category": "custom",
+  "enabled": true,
+  "editable": true,
+  "content": "---\nname: my-skill\ndescription: My custom skill\n---\n\n# My Skill\n\nInstructions for the agent..."
+}
+```
+
+#### Edit Custom Skill
+
+Replace a custom skill's `SKILL.md`. The content is validated and security
+scanned; a blocked scan returns `400` and nothing is written. Each accepted edit
+appends a history entry. Requires an authenticated administrator.
+
+```http
+PUT /api/skills/custom/{skill_name}
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "content": "---\nname: my-skill\ndescription: My custom skill\n---\n\n# My Skill\n\nUpdated instructions..."
+}
+```
+
+The submitted content replaces the complete `SKILL.md`, so it must include YAML
+frontmatter with a nonempty `description` and a `name` that matches
+`{skill_name}`. Content without frontmatter returns `400`.
+
+**Response:** the updated skill with `content`, the same shape as
+[Get Custom Skill Content](#get-custom-skill-content).
+
+#### Delete Custom Skill
+
+Delete a custom skill and record the deletion in its history. Requires an
+authenticated administrator.
+
+```http
+DELETE /api/skills/custom/{skill_name}
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+#### Get Custom Skill History
+
+Return the custom skill's recorded changes, oldest first. Requires an
+authenticated administrator.
+
+```http
+GET /api/skills/custom/{skill_name}/history
+```
+
+**Response:**
+```json
+{
+  "history": [
+    {
+      "ts": "2026-01-01T00:00:00+00:00",
+      "action": "human_edit",
+      "author": "human",
+      "thread_id": null,
+      "file_path": "SKILL.md",
+      "prev_content": "...",
+      "new_content": "...",
+      "scanner": {"decision": "allow", "reason": "..."}
+    }
+  ]
+}
+```
+
+#### Rollback Custom Skill
+
+Restore a custom skill's `SKILL.md` from a history entry. The restored content is
+validated and security scanned before it is written, and the rollback is itself
+recorded as a history entry. Requires an authenticated administrator.
+
+```http
+POST /api/skills/custom/{skill_name}/rollback
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "history_index": 0
+}
+```
+
+`history_index` indexes the list returned by
+[Get Custom Skill History](#get-custom-skill-history) and defaults to `-1` (the
+latest change). An out-of-range index returns `400`.
+
+**Response:** the updated skill with `content`, the same shape as
+[Get Custom Skill Content](#get-custom-skill-content).
 
 #### Export a Custom Skill
 
@@ -1016,6 +1288,11 @@ mounted directory must be writable only by trusted operators.
 
 Upload one or more files to a thread.
 
+Automatic Office/PDF-to-Markdown conversion is disabled by default. To enable
+host-side parsing in a trusted deployment, set
+`uploads.auto_convert_documents: true` in `config.yaml`. See
+[document conversion configuration](FILE_UPLOAD.md#支持的文档格式).
+
 ```http
 POST /api/threads/{thread_id}/uploads
 Content-Type: multipart/form-data
@@ -1024,7 +1301,7 @@ Content-Type: multipart/form-data
 **Request Body:**
 - `files`: One or more files to upload
 
-**Response:**
+**Response** (example with automatic conversion enabled and successful):
 ```json
 {
   "success": true,
@@ -1048,7 +1325,7 @@ Content-Type: multipart/form-data
 
 **Name collisions:** filenames are claimed unique against the thread's existing uploads and reserved atomically — a same-name upload never replaces the existing file; it lands as `document_1.pdf` (the response's `filename`/`original_filename` reflect the claimed name). Use the artifacts `PUT` endpoint for sanctioned in-place updates.
 
-**Supported Document Formats** (auto-converted to Markdown):
+**Supported Document Formats** (converted to Markdown only when automatic conversion is enabled):
 - PDF (`.pdf`)
 - PowerPoint (`.ppt`, `.pptx`)
 - Excel (`.xls`, `.xlsx`)
@@ -1215,7 +1492,7 @@ GET /api/projects/{project_id}/documents?limit=100&offset=0
 
 **Query Parameters:** `limit` (default 100, 1..1000), `offset` (default 0) — out-of-bounds values are `422`.
 
-**Response:** `{"documents": [{"id", "name", "size_bytes", "sha256", "source_thread_id", "source_kind", "source_name", "created_at", "updated_at", "content_missing"}], "total", "limit", "offset"}` in `updated_at DESC, id ASC` order. `content_missing` is read-time truth (never persisted): `true` when the document's immutable original is missing or size-mismatched (external interference); the derived `converted.md` companion is not the integrity anchor.
+**Response:** `{"documents": [{"id", "name", "size_bytes", "sha256", "source_thread_id", "source_kind", "source_name", "created_at", "updated_at", "summary", "content_missing"}], "total", "limit", "offset"}` in `updated_at DESC, id ASC` order. `content_missing` is read-time truth (never persisted): `true` when the document's immutable original is missing or size-mismatched (external interference); the derived `converted.md` companion is not the integrity anchor. `summary` is a best-effort LLM-generated one-line description (nullable; see `projects.summaries_enabled` in `config.example.yaml`) — null when generation is disabled, pending, failed, or the source is ineligible; it is LLM-processed untrusted content and is tag-neutralized at every model-visible exit.
 
 #### Upload Document
 
@@ -1378,14 +1655,20 @@ POST   /api/scheduled-tasks/preview-cron
 | `max_runs` | integer \| null | Safety cap: automatic runs over the task's lifetime (trial runs excluded); at least 1. |
 | `end_at` | date-time \| null | Safety cap: no automatic run after this time. Without a UTC offset it is wall-clock time in the task's timezone. |
 | `stop_condition` | string \| null | The user's "stop when …" rule, stored in its own field. Whitespace collapses to single spaces; at most 500 characters; blank means none. It is never part of `prompt`: each launch appends it as an instruction to call `stop_scheduled_task` (or, with `scheduler.tool_enabled` off, to report a met rule). |
+| `notification_group_connection_id` | string \| null | One additional connected Feishu group belonging to the task owner. Select a group binding returned by `GET /api/channels/connections`; it must record `chat_type=group` and a matching chat/workspace ID. Omitted in PATCH preserves the target; null clears it. Invalid choices return `invalid_notification_group` (422), lookup outages return `scheduler_unavailable` (503). |
 
 In a PATCH, sending `null` clears `goal_objective`, `max_runs`, `end_at` or
-`stop_condition`; for every other field `null` means unchanged (`assistant_id:
+`stop_condition` or `notification_group_connection_id`; for every other field `null` means unchanged (`assistant_id:
 null` restores `lead_agent`). PATCH may change `schedule_type` together with
 `schedule_spec`. Changing the goal, `prompt` or `stop_condition` starts a new
 count for the automatic pause after three unmet runs. A PATCH that changes the
 schedule of a finished task re-arms it (then its safety cap applies); a PATCH
 that only changes the cap leaves a finished task finished.
+
+Group-target edits alone never change the schedule or re-arm a finished task.
+Personal recipients are retained, and pending outbox rows keep their original
+target. `/api/features.scheduled_tasks.group_notifications` reports support;
+the conversation scheduling tool's inputs are unchanged in this version.
 
 Task responses (list, get, create, PATCH, pause, resume) return the stored task
 plus `automatic_runs_used` (integer) and `active_run_status` (`queued` |
@@ -1477,7 +1760,7 @@ Three errors keep their old shape: a `403` from route permissions is the plain
 string `"Permission denied: <permission>"`, FastAPI's own `422` for malformed
 JSON or wrong types (for example `"max_runs": "abc"`) keeps its list `detail`,
 and the shared `503` `"Thread metadata store not available"` (a Gateway without
-a thread store) stays a plain string. Codes the web UI translates: `invalid_request`, `invalid_schedule`, `invalid_schedule_type`, `invalid_timezone`, `interval_too_short`, `interval_too_long`, `once_in_past`, `once_too_soon`, `once_time_passed`, `invalid_context_mode`, `reuse_thread_requires_thread`, `thread_not_found`, `invalid_assistant`, `unknown_assistant`, `invalid_goal`, `goal_requires_fresh_thread`, `invalid_stop_condition`, `invalid_max_runs`, `end_at_in_past`, `end_at_before_first_run`, `frequent_requires_limit`, `max_runs_not_above_used`, `limits_exhausted`, `task_not_found`, `task_running`, `run_queued`, `task_changed`, `task_finished`, `task_quota_exceeded`, `scheduler_not_running`, `scheduler_unavailable` (503: this Gateway has no scheduled-task persistence), `trigger_failed`. Codes only the chat capability
+a thread store) stays a plain string. Codes the web UI translates: `invalid_request`, `invalid_schedule`, `invalid_schedule_type`, `invalid_timezone`, `interval_too_short`, `interval_too_long`, `once_in_past`, `once_too_soon`, `once_time_passed`, `invalid_context_mode`, `reuse_thread_requires_thread`, `thread_not_found`, `invalid_assistant`, `unknown_assistant`, `invalid_goal`, `goal_requires_fresh_thread`, `invalid_stop_condition`, `invalid_notification_group`, `invalid_max_runs`, `end_at_in_past`, `end_at_before_first_run`, `frequent_requires_limit`, `max_runs_not_above_used`, `limits_exhausted`, `task_not_found`, `task_running`, `run_queued`, `task_changed`, `task_finished`, `task_quota_exceeded`, `scheduler_not_running`, `scheduler_unavailable` (503: this Gateway has no scheduled-task persistence), `trigger_failed`. Codes only the chat capability
 returns: `timezone_required`, `authentication_required`, `permission_denied`, `scheduler_tools_disabled`, `authority_expired`, `conversation_not_found`, `interactive_run_required`, `unsupported_action`, `unsupported_fields`, `task_id_required`, `note_not_verbatim`, `note_limit_reached`, `trial_requires_direct_request`, `no_stop_authority`, `occurrence_not_active`. The machine-readable list is
 `contracts/scheduled_task_errors_contract.json`.
 
@@ -1513,7 +1796,7 @@ stripped from client-supplied messages and state updates.
 **IM notices ("scheduled task updates").** With `channel_connections.enabled`,
 each item of `GET /api/channels/providers` carries
 `proactive_notifications` (bool): whether scheduled-task updates are pushed to
-that app. Only providers with proactive push (WeCom today) get notices; the
+that app. Only providers with proactive push (WeCom, Feishu/Lark, WeChat and QQ private chat today) get notices; the
 others get none, and Settings says so. An occurrence sends at most one message,
 in the owner's `locale` preference (see Account Preferences), else
 `channel_connections.notification_locale`. Notices carry no IDs and no links;
@@ -1522,6 +1805,19 @@ see `backend/docs/CONFIGURATION.md` for the events and the merge rule.
 ```json
 { "provider": "wecom", "display_name": "WeCom", "connection_status": "connected", "proactive_notifications": true }
 ```
+
+**Runtime bot credentials.** `POST /api/channels/{provider}/runtime-config`
+(body `{"values": {...}}`, keyed by the provider's `credential_fields`) and
+`DELETE /api/channels/{provider}/runtime-config` are admin-only; they save or
+disconnect the deployment's bot for that provider and answer with its provider
+item. Password values come back masked (`********`); sending the mask back
+keeps the stored value. A save whose channel fails to start on the serving
+instance, or a disconnect whose channel fails to stop there, answers `400` and
+stores nothing (under `channels.leader_lease` a non-holder stores the save and
+the holder applies it on its next renewal tick). With a SQLite or
+PostgreSQL database the values are stored encrypted with
+`DEER_FLOW_CREDENTIALS_KEY` and shared by every Gateway instance; without a
+usable key a save answers `503`. See `backend/docs/IM_CHANNEL_CONNECTIONS.md`.
 
 ---
 
@@ -1660,7 +1956,13 @@ bounded by `stream_bridge.queue_maxsize` (default `256`) and, for Redis, by the
 rolling `stream_ttl_seconds`. A retained cursor resumes after that event with no
 additional control frame.
 
-When a syntactically valid cursor is older than the retained watermark, the
+The Memory bridge also remembers its exact last evicted event ID. Reconnecting
+from that known predecessor replays every retained successor without a `gap`,
+because none of the events after the cursor has been lost. This uses one ID per
+run and does not increase the retained event count. Redis keeps its conservative
+trimmed-cursor policy.
+
+For other syntactically valid cursors older than the retained watermark, the
 server sends exactly one `gap` event before any retained data and closes that
 subscription without an `end` event:
 
@@ -1885,3 +2187,25 @@ a JSON boolean. Writes containing only boolean pin/archive flags preserve
 `updated_at` and all other metadata. The owner-checked endpoint returns the normal
 thread metadata response; original thread and artifact URLs remain available.
 Archiving does not cancel runs, pause schedules, or change retention.
+
+### Proactive IM notification preferences
+
+`GET/PATCH /api/channels/notification-preferences` is authenticated and owner-scoped.
+Both require `X-Expected-User-Id` matching the authenticated viewer; a stale
+account returns 409. Session mutations retain normal CSRF protection. The local
+auth-disabled default identity is supported without creating an auth account.
+
+GET and PATCH return `{ "feishu": true, "wecom": true, "wechat": true, "qq": true }`
+with the owner's effective booleans. PATCH accepts only supplied provider fields,
+strict booleans or `null` (reset to enabled); other fields are rejected. Missing
+preferences preserve the existing connected-channel default. Browser notification
+preferences and chat connection state remain independent.
+
+Opt-out and cancellation of that owner's pending/sending outbox rows for the
+provider commit together; the internal terminal reason is `disabled_by_owner`.
+Retries consume no additional attempts, and opting back in cannot reopen the
+old rows. The worker rechecks preferences and claim ownership before starting a
+provider send. A provider call already started may still complete; it cannot be
+retracted. All Gateway workers must be upgraded to honor the shared preference.
+Migration `0041_im_notice_preferences` adds only a small owner/provider preference
+table; downgrade removes these choices, so subsequent upgrades use defaults.

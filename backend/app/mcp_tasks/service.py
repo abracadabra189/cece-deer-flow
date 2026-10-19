@@ -18,6 +18,7 @@ from deerflow.constants import (
     MCP_TASK_RESULT_ARTIFACT_MAX_BYTES,
 )
 from deerflow.mcp.tasks import (
+    McpTaskConnectionUnavailableError,
     McpTaskDriverRegistry,
     McpTaskProtocolError,
     TaskReference,
@@ -702,6 +703,7 @@ class McpTaskService:
         thread_incarnation: str | None,
         limit: int = 50,
         active_only: bool = False,
+        status: TaskStatus | None = None,
     ) -> list[dict[str, Any]]:
         return await self._repository.list_by_thread(
             thread_id,
@@ -709,6 +711,7 @@ class McpTaskService:
             thread_incarnation=thread_incarnation,
             limit=limit,
             active_only=active_only,
+            **({"status": TaskStatus(status)} if status is not None else {}),
         )
 
     async def cancel_task(
@@ -802,18 +805,20 @@ class McpTaskService:
             snapshot = self._normalize_snapshot(await driver.cancel(TaskReference.from_record(record)))
             if snapshot.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
                 raise McpTaskProtocolError("MCP task cancellation must return a terminal status")
-            await self._repository.apply_cancel_snapshot(
-                record["id"],
-                lease_owner=self._lease_owner,
-                lease_token=record["lease_token"],
-                status=snapshot.status.value,
-                result=snapshot.result,
-                result_preview=snapshot.result_preview,
-                result_truncated=snapshot.result_truncated,
-                result_artifact=snapshot.result_artifact,
-                error=snapshot.error,
-                input_required=snapshot.input_required,
-                completed_at=datetime.now(UTC),
+            await self._apply_cancel_snapshot(record, snapshot)
+        except McpTaskConnectionUnavailableError as exc:
+            logger.error(
+                "MCP task cancellation cannot resolve the task connection (task_id=%s, driver=%s): %s",
+                record.get("id"),
+                driver_name,
+                exc,
+            )
+            await self._apply_cancel_snapshot(
+                record,
+                TaskSnapshot(
+                    status=TaskStatus.FAILED,
+                    error=_bound_error(f"{exc}; the remote task could not be cancelled"),
+                ),
             )
         except Exception as exc:  # noqa: BLE001 - remote cancellation is retryable
             attempts = max(0, int(record.get("cancel_attempt_count") or 1) - 1)
@@ -831,6 +836,21 @@ class McpTaskService:
                 ),
                 action="release cancel retry",
             )
+
+    async def _apply_cancel_snapshot(self, record: dict[str, Any], snapshot: TaskSnapshot) -> None:
+        await self._repository.apply_cancel_snapshot(
+            record["id"],
+            lease_owner=self._lease_owner,
+            lease_token=record["lease_token"],
+            status=snapshot.status.value,
+            result=snapshot.result,
+            result_preview=snapshot.result_preview,
+            result_truncated=snapshot.result_truncated,
+            result_artifact=snapshot.result_artifact,
+            error=snapshot.error,
+            input_required=snapshot.input_required,
+            completed_at=datetime.now(UTC),
+        )
 
     async def _run_notifications(self, *, now: datetime) -> None:
         if self._launch_notification is None or self._get_run is None:
@@ -1352,9 +1372,9 @@ class McpTaskService:
 
         try:
             snapshot = self._normalize_snapshot(await driver.get_status(TaskReference.from_record(record)))
-        except McpTaskProtocolError as exc:
+        except (McpTaskConnectionUnavailableError, McpTaskProtocolError) as exc:
             logger.error(
-                "MCP task status contract failed permanently (task_id=%s, driver=%s): %s",
+                "MCP task status failed permanently (task_id=%s, driver=%s): %s",
                 record.get("id"),
                 driver_name,
                 exc,

@@ -416,7 +416,13 @@ This state is process-local and is never written back to `extensions_config.json
 or an environment variable. A restarted Gateway needs a valid configured
 refresh token, and separate Gateway workers do not coordinate token rotation.
 Personal MCP connections remain owner-scoped and do not use this deployment
-state, even if their runtime names match a deployment server.
+state, even if their runtime names match a deployment server. A personal
+server's runtime name is derived from its complete definition, so editing,
+disabling, or deleting it while a task is in flight leaves the persisted task
+handle unresolvable. That task fails permanently with the connection error
+instead of retrying forever; if the user had requested cancellation, it also
+ends as `failed` because the remote task can no longer be reached. Restoring
+the same definition does not revive an already terminal task.
 
 When `user_auth` is enabled on an HTTP/SSE server, background status and
 cancellation calls use the persisted task owner's configured credential,
@@ -576,6 +582,14 @@ Declare interceptors in `extensions_config.json` using the `mcpInterceptors` fie
 
 Each entry is a Python import path in `module:variable` format (resolved via `resolve_variable`). The variable must be a **no-arg builder function** that returns an async interceptor compatible with `MultiServerMCPClient`’s `tool_interceptors` interface, or `None` to skip.
 
+**Lifecycle.** Builders run once per enabled MCP server, not once per discovery.
+Tool discovery is server-scoped, so every server gets its own interceptor instance built
+from a single-server configuration view, and a stateful interceptor (a counter, a cache,
+a rate limiter) only ever observes that server's calls. Do not rely on one instance being
+shared across servers. The built-in OAuth, per-user and context-header interceptors are
+unaffected: they resolve everything per `request.server_name`. Servers that are not
+discovered never run their builder.
+
 Example interceptor that injects an authorization header from the request-scoped
 LangGraph secret context. For a plain header mapping prefer the declarative
 `headers_from_context` block above; write an interceptor when the header value
@@ -647,6 +661,39 @@ Current history APIs hide legacy `metadata.auth_token` and `config.metadata.auth
 material already retained by those systems. Restarting or upgrading DeerFlow does
 not rotate credentials or perform historical cleanup; operators must complete
 both actions explicitly.
+
+## Tool Discovery Cache
+
+MCP tool discovery is cached per server. The cache is keyed by server name and
+holds, for each server, the discovered tools together with a canonical snapshot
+of that server's configuration, the normalized global interceptor chain and the
+pooled stdio session binding they were discovered against.
+
+- **Reuse.** On every (re)initialization, a server's cached tools are reused only
+  when its configuration snapshot and global interceptor chain are unchanged
+  *and* it still owns the process's current binding. The chain is checked against
+  each entry's published wrappers, including after a failed initialization attempt
+  or an edit between reconciliation and initialization. An unchanged server keeps
+  the exact same tool objects and is not re-discovered, so it does not re-fetch
+  OAuth headers or respawn its stdio process. Only changed servers are re-discovered.
+- **Invalidation.** Editing a server's configuration (connection, description,
+  routing, tool prefixes, ...) drops that server's entry; deleting or disabling a
+  server drops it; an explicit cache reset or a shared reset marker clears every
+  server. Reordering servers only changes the flattened tool order.
+- **Failure handling.** A server whose discovery fails is left absent for that
+  pass and its previous entry is dropped, while healthy servers still publish. If
+  *every* enabled server fails, initialization is aborted rather than publishing
+  an empty tool set, and the next call retries. A server that legitimately
+  returns zero tools is cached as a successful empty result and is not
+  re-discovered.
+- **Remote tool changes.** The cache is configuration-driven: a remote MCP server
+  that changes its `tools/list` response without a configuration change is not
+  picked up automatically. Use `POST /api/mcp/cache/reset` (or disable/re-enable
+  or edit the server) to force re-discovery, which the shared reset marker
+  propagates to every worker mounting the same config directory.
+
+Because reuse is scoped to one server, changing only one server never re-discovers,
+re-authenticates, or restarts the others.
 
 ## How It Works
 
