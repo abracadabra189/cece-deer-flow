@@ -10,6 +10,7 @@
 #   DEER_FLOW_HOME=/data/mayl/cece1010/runtime/deer-flow-home
 #   DEER_FLOW_CONFIG_PATH=/data/mayl/cece1010/config.yaml
 #   DEER_FLOW_EXTENSIONS_CONFIG_PATH=/data/mayl/cece1010/extensions_config.json
+#   DEER_FLOW_SANDBOX_HOST_GATEWAY_IP=<Docker bridge gateway IP, e.g. 10.200.10.1>
 #   BETTER_AUTH_SECRET=<server-only-random-secret>
 #   DEER_FLOW_INTERNAL_AUTH_TOKEN=<server-only-random-token>
 
@@ -34,6 +35,11 @@ services:
     container_name: deer-flow-gateway
     command: sh -c "cd backend && PYTHONPATH=. uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --workers ${GATEWAY_WORKERS:-1} --timeout-graceful-shutdown 10"
     stop_grace_period: 90s
+    # Docker Engine 19.03 does not support the special `host-gateway` value.
+    # Map this stable hostname to the host bridge so the Gateway can reach
+    # per-thread AIO sandboxes created through the mounted Docker socket.
+    extra_hosts:
+      - "host.docker.internal:${DEER_FLOW_SANDBOX_HOST_GATEWAY_IP}"
     volumes:
       - ${DEER_FLOW_CONFIG_PATH}:/app/backend/config.yaml:ro
       - ${DEER_FLOW_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json
