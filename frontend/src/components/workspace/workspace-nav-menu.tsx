@@ -8,7 +8,6 @@ import {
   MailIcon,
   Settings2Icon,
   SettingsIcon,
-  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -26,11 +25,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useI18n } from "@/core/i18n/hooks";
 
 import { useSettingsDialog } from "./settings";
@@ -105,22 +99,31 @@ export function WorkspaceNavMenu() {
                     </DropdownMenuItem>
                   </a>
                   <DropdownMenuSeparator />
-                  <DisabledMenuItem
-                    icon={BugIcon}
-                    label={t.workspace.reportIssue}
-                    reason={t.sidebar.agentsDisabledTooltip}
-                  />
-                  <DisabledMenuItem
-                    icon={MailIcon}
-                    label={t.workspace.contactUs}
-                    reason={t.sidebar.agentsDisabledTooltip}
-                  />
+                  <a
+                    href="https://github.com/bytedance/deer-flow/issues"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <DropdownMenuItem>
+                      <BugIcon />
+                      {t.workspace.reportIssue}
+                    </DropdownMenuItem>
+                  </a>
+                  <a href="mailto:support@deerflow.tech">
+                    <DropdownMenuItem>
+                      <MailIcon />
+                      {t.workspace.contactUs}
+                    </DropdownMenuItem>
+                  </a>
                   <DropdownMenuSeparator />
-                  <DisabledMenuItem
-                    icon={InfoIcon}
-                    label={t.workspace.about}
-                    reason={t.sidebar.agentsDisabledTooltip}
-                  />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      openSettings("about");
+                    }}
+                  >
+                    <InfoIcon />
+                    {t.workspace.about}
+                  </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -132,29 +135,5 @@ export function WorkspaceNavMenu() {
         </SidebarMenuItem>
       </SidebarMenu>
     </>
-  );
-}
-
-function DisabledMenuItem({
-  icon: Icon,
-  label,
-  reason,
-}: {
-  icon: LucideIcon;
-  label: string;
-  reason: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="block cursor-not-allowed">
-          <DropdownMenuItem disabled>
-            <Icon />
-            {label}
-          </DropdownMenuItem>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="right">{reason}</TooltipContent>
-    </Tooltip>
   );
 }
