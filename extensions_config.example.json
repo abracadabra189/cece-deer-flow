@@ -5,7 +5,7 @@
     "enterprise": {
       "enabled": true,
       "type": "http",
-      "url": "http://172.20.28.224:8908/cece-mcp-servers/enterprise/stream",
+      "url": "http://172.20.28.224:18907/cece-mcp-servers/enterprise/stream",
       "headers": {
         "Authorization": "Bearer $MCP_AUTH_TOKEN"
       },
@@ -15,13 +15,13 @@
       "routing": {
         "mode": "prefer",
         "priority": 100,
-        "keywords": ["enterprise", "company", "business", "企业", "公司", "股东", "高管", "招投标"]
+        "keywords": ["enterprise", "company", "business", "企业", "公司", "上市公司", "企业画像", "企业报告", "发展前景", "经营", "业绩", "财务", "竞争力", "主营业务", "股东", "高管", "招投标", "投资"]
       }
     },
     "entity_resolve": {
       "enabled": true,
       "type": "http",
-      "url": "http://172.20.28.224:8910/cece-mcp-servers/NER/stream",
+      "url": "http://172.20.28.224:18906/cece-mcp-servers/NER/stream",
       "headers": {
         "Authorization": "Bearer $MCP_AUTH_TOKEN"
       },
@@ -30,14 +30,14 @@
       "description": "Entity resolution MCP server",
       "routing": {
         "mode": "prefer",
-        "priority": 100,
-        "keywords": ["entity", "主体", "实体", "公司名称", "人名", "行业", "区域"]
+        "priority": 95,
+        "keywords": ["entity", "主体", "实体", "企业名称", "公司名称", "上市公司", "证券代码", "简称", "人名", "企业", "行业", "区域"]
       }
     },
     "pevc": {
       "enabled": true,
       "type": "http",
-      "url": "http://172.20.28.224:8907/cece-mcp-servers/PEVC/stream",
+      "url": "http://172.20.28.224:18910/cece-mcp-servers/PEVC/stream",
       "headers": {
         "Authorization": "Bearer $MCP_AUTH_TOKEN"
       },
@@ -47,13 +47,13 @@
       "routing": {
         "mode": "prefer",
         "priority": 90,
-        "keywords": ["financing", "fund", "investment", "融资", "创投", "基金", "私募", "风投"]
+        "keywords": ["financing", "fund", "investment", "融资", "创投", "基金", "私募", "风投", "融资事件", "投资机构", "估值"]
       }
     },
     "person": {
       "enabled": true,
       "type": "http",
-      "url": "http://172.20.28.224:8909/cece-mcp-servers/person/stream",
+      "url": "http://172.20.28.224:18911/cece-mcp-servers/person/stream",
       "headers": {
         "Authorization": "Bearer $MCP_AUTH_TOKEN"
       },
@@ -62,14 +62,14 @@
       "description": "Person profile MCP server",
       "routing": {
         "mode": "prefer",
-        "priority": 95,
-        "keywords": ["person", "人物", "人物画像", "高管", "企业家", "简历"]
+        "priority": 90,
+        "keywords": ["person", "人物", "人物画像", "高管", "企业家", "简历", "任职", "履历"]
       }
     },
     "industry": {
       "enabled": true,
       "type": "http",
-      "url": "http://172.20.28.224:8912/cece-mcp-servers/industry/stream",
+      "url": "http://172.20.28.224:18908/cece-mcp-servers/industry/stream",
       "headers": {
         "Authorization": "Bearer $MCP_AUTH_TOKEN"
       },
@@ -78,8 +78,8 @@
       "description": "Industry data MCP server",
       "routing": {
         "mode": "prefer",
-        "priority": 95,
-        "keywords": ["industry", "产业", "行业", "赛道", "产业链", "产业园区"]
+        "priority": 90,
+        "keywords": ["industry", "产业", "行业", "赛道", "产业链", "产业园区", "市场规模", "竞争格局"]
       }
     },
     "github": {
@@ -119,7 +119,7 @@
       "description": "Alibaba Cloud Model Studio Enhanced Search MCP for real-time web information",
       "routing": {
         "mode": "prefer",
-        "priority": 80,
+        "priority": 50,
         "keywords": [
           "latest",
           "today",
