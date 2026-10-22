@@ -1929,25 +1929,6 @@ export const enUS: Translations = {
       enable: "Enable",
       updateFailed: "Failed to update the account.",
     },
-    users: {
-      title: "User management",
-      description:
-        "Suspend or restore sign-in for accounts on this deployment. A disabled account is rejected by every authentication surface; its active sessions end immediately.",
-      adminOnly:
-        "Only administrators can manage users. This feature is unavailable in demos.",
-      loading: "Loading users…",
-      failed: "Failed to load users.",
-      reload: "Reload",
-      empty: "No users yet.",
-      email: "Email",
-      role: "Role",
-      status: "Status",
-      active: "Active",
-      disabled: "Disabled",
-      disable: "Disable",
-      enable: "Enable",
-      updateFailed: "Failed to update the account.",
-    },
     sections: {
       models: "Models",
       users: "Users",

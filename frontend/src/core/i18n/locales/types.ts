@@ -1611,23 +1611,6 @@ export interface Translations {
       enable: string;
       updateFailed: string;
     };
-    users: {
-      title: string;
-      description: string;
-      adminOnly: string;
-      loading: string;
-      failed: string;
-      reload: string;
-      empty: string;
-      email: string;
-      role: string;
-      status: string;
-      active: string;
-      disabled: string;
-      disable: string;
-      enable: string;
-      updateFailed: string;
-    };
     sections: {
       models: string;
       users: string;
