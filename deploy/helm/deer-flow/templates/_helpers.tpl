@@ -71,7 +71,8 @@ imagePullSecrets:
 {{- end -}}
 
 {{/* Name of the Secret holding the app secrets (BETTER_AUTH_SECRET,
-     DEER_FLOW_INTERNAL_AUTH_TOKEN, AUTH_JWT_SECRET, PROVISIONER_API_KEY).
+     DEER_FLOW_INTERNAL_AUTH_TOKEN, AUTH_JWT_SECRET, PROVISIONER_API_KEY,
+     DEER_FLOW_CREDENTIALS_KEY).
      `existingAppSecret` points every consumer (gateway, frontend,
      provisioner) at a user-managed Secret instead and skips generating one;
      it must carry PROVISIONER_API_KEY while the provisioner is enabled and
@@ -90,6 +91,40 @@ imagePullSecrets:
 {{- gt (int .Values.gateway.replicas) 1 -}}
 {{- else -}}
 {{- eq (toString .Values.gateway.multiInstance | lower) "true" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* PodDisruptionBudget minAvailable as Kubernetes accepts it: a positive
+     integer or a percentage string such as "50%". Takes a dict with `value`
+     (the raw values entry; unset falls back to 1) and `key` (the values path,
+     named in the error). `int` on "50%" is 0 -- a budget that protects
+     nothing -- so a YAML number renders as an integer, a digit string from
+     --set-string becomes that integer, a percentage is preserved quoted, and
+     0, "0%", more than 100% or anything else fails the render. Anything that
+     is not a plain Go number is normalized with toString before the string
+     branches: Helm 3.18.0 loads YAML numbers as json.Number, whose kind is
+     "string" but which regexMatch and friends reject at argument validation,
+     so the unoverridden default would otherwise fail every multi-replica
+     render on that release. */}}
+{{- define "deer-flow.pdbMinAvailable" -}}
+{{- $raw := .value -}}
+{{- if kindIs "invalid" $raw -}}{{- $raw = 1 -}}{{- end -}}
+{{- $hint := printf "%s must be a positive integer or a percentage such as \"50%%\" (got %v); a budget of 0 protects nothing, so set %s to false instead" .key $raw (replace ".minAvailable" ".enabled" .key) -}}
+{{- if or (kindIs "float64" $raw) (kindIs "int64" $raw) (kindIs "int" $raw) -}}
+{{- if or (lt (int $raw) 1) (ne (float64 (int $raw)) (float64 $raw)) -}}{{- fail $hint -}}{{- end -}}
+{{- int $raw -}}
+{{- else -}}
+{{- $text := toString $raw -}}
+{{- if regexMatch "^[0-9]+$" $text -}}
+{{- if lt (atoi $text) 1 -}}{{- fail $hint -}}{{- end -}}
+{{- atoi $text -}}
+{{- else if regexMatch "^[0-9]+%$" $text -}}
+{{- $percent := atoi (trimSuffix "%" $text) -}}
+{{- if or (lt $percent 1) (gt $percent 100) -}}{{- fail $hint -}}{{- end -}}
+{{- $text | quote -}}
+{{- else -}}
+{{- fail $hint -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 
@@ -122,9 +157,44 @@ imagePullSecrets:
        3. chart-managed secret `<release>-redis`
      Only #3 is created by this chart; #1/#2 must exist already. */}}
 {{- define "deer-flow.redisUrlSecret" -}}
-{{- if .Values.redis.external.existingSecret -}}{{- .Values.redis.external.existingSecret -}}
-{{- else if .Values.redis.existingSecret -}}{{- .Values.redis.existingSecret -}}
-{{- else -}}{{- include "deer-flow.redisFullname" . -}}{{- end -}}
+{{- include "deer-flow.redisUserSecret" . | default (include "deer-flow.redisFullname" .) -}}
+{{- end -}}
+
+{{/* Name of the operator-managed redis Secret, or empty when the chart owns the
+     credentials. Only the chart-managed Secret is created by this chart, and
+     only there is the AUTH password known at render time — a user-managed
+     Secret may or may not carry `redis-password`. */}}
+{{- define "deer-flow.redisUserSecret" -}}
+{{- or .Values.redis.external.existingSecret .Values.redis.existingSecret -}}
+{{- end -}}
+
+{{/* Args for the bundled redis container. With a user-managed Secret the
+     password is only knowable at runtime, so the container reads
+     `redis-password` from that Secret and enables AUTH only when the value is
+     nonempty. This keeps a `redis-url`-only Secret in no-auth mode instead of
+     failing to start, and keeps a stale `redis.auth.password` from winning over
+     the user-managed Secret (values.yaml documents it as ignored there). */}}
+{{- define "deer-flow.redisServerArgs" -}}
+{{- if include "deer-flow.redisUserSecret" . -}}
+if [ -n "$REDIS_PASSWORD" ]; then exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"; fi; exec redis-server --appendonly yes
+{{- else if .Values.redis.auth.password -}}
+exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
+{{- else -}}
+exec redis-server --appendonly yes
+{{- end -}}
+{{- end -}}
+
+{{/* Readiness/liveness command for the bundled redis container. Mirrors
+     redisServerArgs so the probes authenticate exactly when the server has a
+     password — otherwise a password-protected server reports itself unhealthy. */}}
+{{- define "deer-flow.redisPingCommand" -}}
+{{- if include "deer-flow.redisUserSecret" . -}}
+if [ -n "$REDIS_PASSWORD" ]; then redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping; else redis-cli ping; fi
+{{- else if .Values.redis.auth.password -}}
+redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping
+{{- else -}}
+redis-cli ping
+{{- end -}}
 {{- end -}}
 
 {{/* Whether any redis stream-bridge backend is configured (bundled StatefulSet,

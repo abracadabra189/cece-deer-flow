@@ -147,7 +147,8 @@ async def _write_messages(checkpointer: InMemorySaver, *, thread_id: str, messag
 
 
 @pytest.mark.asyncio
-async def test_goal_worker_returns_hidden_continuation_when_goal_is_unmet(monkeypatch):
+@pytest.mark.parametrize("run_stop_reason", [None, "subagent_limit_capped", "unknown_reason"])
+async def test_goal_worker_returns_hidden_continuation_when_goal_is_unmet(monkeypatch, run_stop_reason):
     checkpointer = InMemorySaver()
     thread_id = "goal-thread"
     await _seed_goal_thread(checkpointer, thread_id=thread_id, goal_text="Finish all tests")
@@ -177,6 +178,7 @@ async def test_goal_worker_returns_hidden_continuation_when_goal_is_unmet(monkey
         run_id="run-1",
         model_name="test-model",
         app_config=None,
+        run_stop_reason=run_stop_reason,
         task_store=task_store,
         extensions=extensions,
     )
@@ -275,7 +277,8 @@ async def test_goal_worker_evaluates_materialized_messages_in_delta_mode(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_goal_worker_stands_down_for_non_continuable_blocker(monkeypatch):
+@pytest.mark.parametrize("run_stop_reason", [None, "loop_capped"])
+async def test_goal_worker_stands_down_for_non_continuable_blocker(monkeypatch, run_stop_reason):
     checkpointer = InMemorySaver()
     thread_id = "blocked-goal-thread"
     await _seed_goal_thread(checkpointer, thread_id=thread_id, goal_text="Finish all tests")
@@ -299,6 +302,7 @@ async def test_goal_worker_stands_down_for_non_continuable_blocker(monkeypatch):
         run_id="run-3",
         model_name="test-model",
         app_config=None,
+        run_stop_reason=run_stop_reason,
     )
 
     assert continuation is None
@@ -310,9 +314,10 @@ async def test_goal_worker_stands_down_for_non_continuable_blocker(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_goal_worker_stands_down_after_the_run_hit_its_token_budget(monkeypatch):
+@pytest.mark.parametrize("run_stop_reason", ["token_capped", "loop_capped"])
+async def test_goal_worker_stands_down_after_run_hard_stop(monkeypatch, run_stop_reason):
     checkpointer = InMemorySaver()
-    thread_id = "token-capped-goal-thread"
+    thread_id = "hard-stop-goal-thread"
     await _seed_goal_thread(checkpointer, thread_id=thread_id, goal_text="Finish all tests")
     bridge = _CollectingBridge()
 
@@ -334,7 +339,7 @@ async def test_goal_worker_stands_down_after_the_run_hit_its_token_budget(monkey
         run_id="run-capped",
         model_name="test-model",
         app_config=None,
-        run_stop_reason="token_capped",
+        run_stop_reason=run_stop_reason,
     )
 
     assert continuation is None
@@ -342,7 +347,7 @@ async def test_goal_worker_stands_down_after_the_run_hit_its_token_budget(monkey
     assert latest_goal is not None
     assert latest_goal["continuation_count"] == 0
     assert latest_goal["last_evaluation"]["blocker"] == "goal_not_met_yet"
-    assert latest_goal["last_evaluation"]["stand_down_reason"] == "token_capped"
+    assert latest_goal["last_evaluation"]["stand_down_reason"] == run_stop_reason
 
 
 @pytest.mark.asyncio
@@ -457,7 +462,8 @@ async def test_goal_worker_resumes_after_the_user_answers_clarification(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_goal_worker_defers_satisfied_goal_completion_even_after_token_cap(monkeypatch):
+@pytest.mark.parametrize("run_stop_reason", ["token_capped", "loop_capped"])
+async def test_goal_worker_defers_satisfied_goal_completion_even_after_hard_stop(monkeypatch, run_stop_reason):
     checkpointer = InMemorySaver()
     thread_id = "token-capped-done-goal-thread"
     await _seed_goal_thread(checkpointer, thread_id=thread_id, goal_text="Finish all tests")
@@ -481,10 +487,10 @@ async def test_goal_worker_defers_satisfied_goal_completion_even_after_token_cap
         run_id="run-capped-done",
         model_name="test-model",
         app_config=None,
-        run_stop_reason="token_capped",
+        run_stop_reason=run_stop_reason,
     )
 
-    # A token cap does not veto completion, but delivery must still succeed.
+    # A hard stop does not veto completion, but delivery must still succeed.
     assert isinstance(continuation, worker._GoalCompletionCandidate)
     assert await read_thread_goal(checkpointer, thread_id) == continuation.goal
 
@@ -1389,3 +1395,37 @@ async def test_run_agent_strips_branch_checkpoint_for_goal_continuation(monkeypa
     assert "checkpoint_id" not in second_config
     assert "checkpoint_map" not in second_config
     assert second_config["thread_id"] == "thread-branch-continuation"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["full", "delta"])
+async def test_rollback_restores_the_met_goal_record_a_cancelled_run_dropped(mode):
+    """A rolled-back run whose input replaced the goal must not lose the earlier record."""
+    from langgraph.graph import END, START, StateGraph
+
+    from deerflow.agents.thread_state import get_thread_state_schema
+    from deerflow.runtime.goal import build_goal_outcome
+
+    checkpointer = InMemorySaver()
+    builder = StateGraph(get_thread_state_schema(mode))
+    builder.add_node("agent", lambda state: {"messages": [AIMessage(content="Working on it.")]})
+    builder.add_edge(START, "agent")
+    builder.add_edge("agent", END)
+    graph = builder.compile(checkpointer=checkpointer)
+    accessor = CheckpointStateAccessor.bind(graph, checkpointer, mode=mode)
+    thread_id = "rollback-outcome-thread"
+    config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
+    record = build_goal_outcome(build_goal_state("Ship it"), GoalEvaluation(satisfied=True, blocker="none", reason="Shipped."), reply_message_id=None)
+
+    await graph.ainvoke({"messages": [HumanMessage(content="Ship it")]}, config)
+    await write_thread_goal(checkpointer, thread_id, None, outcome=record)
+    rollback_point = await worker._capture_rollback_point(accessor, checkpointer, config)
+    await graph.ainvoke({"messages": [HumanMessage(content="Next")], "goal": build_goal_state("Next goal"), "goal_outcome": None}, config)
+    assert (await accessor.aget(config)).values["goal_outcome"] is None
+
+    restored = await worker._rollback_to_pre_run_checkpoint(accessor=accessor, checkpointer=checkpointer, thread_id=thread_id, run_id="run-1", rollback_point=rollback_point, snapshot_capture_failed=False)
+
+    values = (await accessor.aget(config)).values
+    assert restored is True
+    assert values["goal_outcome"] == record
+    assert values.get("goal") is None

@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
+from typing import Any
 
 from deerflow_extension_api import (
     EXTENSION_PLUGIN_AUTHZ_RESOLVER_ASYNC_KEY,
@@ -18,7 +19,7 @@ from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.browser_capability import ensure_browser_runtime_available
 from app.gateway.config import get_gateway_config
 from app.gateway.csrf_middleware import CORS_EXPOSED_HEADERS, CSRFMiddleware, get_configured_cors_origins
-from app.gateway.deps import langgraph_runtime
+from app.gateway.deps import langgraph_runtime, multi_process_deployment
 from app.gateway.health import READINESS_CHECKPOINTER_CONFIG_ATTR, READINESS_PROVISIONER_URL_ATTR, readiness_payload
 from app.gateway.routers import (
     agents,
@@ -33,6 +34,7 @@ from app.gateway.routers import (
     features,
     feedback,
     github_webhooks,
+    im_notification_preferences,
     input_polish,
     integrations,
     knowledge,
@@ -47,6 +49,7 @@ from app.gateway.routers import (
     projects,
     runs,
     scheduled_tasks,
+    skill_mutations,
     skills,
     subagent_batches,
     subagents,
@@ -437,7 +440,29 @@ async def _shutdown_subagent_batch_service(app: FastAPI) -> None:
         set_subagent_batch_submitter(None)
 
 
-def _scheduled_task_notification_repos(startup_config: AppConfig):
+async def _load_credentials_cipher(startup_config: AppConfig):
+    """Load the at-rest credentials cipher when an enabled feature stores credentials, else ``None``.
+
+    Without ``DEER_FLOW_CREDENTIALS_KEY`` the first load creates
+    ``{base_dir}/.credentials_key``, so it runs in a worker thread. The startup
+    gate has already refused a malformed environment key; a key file that
+    cannot be read or created leaves stored credentials unavailable (the
+    behaviour before the key existed) instead of failing the Gateway.
+    """
+    from app.gateway.deps import credentials_key_consumers
+
+    if not credentials_key_consumers(startup_config):
+        return None
+    from deerflow.config import credentials_key
+
+    try:
+        return await asyncio.to_thread(credentials_key.get_credentials_cipher)
+    except Exception:
+        logger.exception("Failed to load the credentials encryption key; stored channel connection credentials stay unavailable")
+        return None
+
+
+def _scheduled_task_notification_repos(startup_config: AppConfig, credentials_cipher=None):
     """Return ``(connection_repo, notification_repo)`` for the scheduled-run outbox (issue #4254).
 
     Both are None unless channel connections are enabled, because the completion
@@ -454,7 +479,7 @@ def _scheduled_task_notification_repos(startup_config: AppConfig):
     session_factory = get_session_factory()
     if session_factory is None:
         return None, None
-    return ChannelConnectionRepository(session_factory), NotificationDeliveryRepository(session_factory)
+    return ChannelConnectionRepository(session_factory, cipher=credentials_cipher), NotificationDeliveryRepository(session_factory)
 
 
 async def _start_scheduled_task_notification_delivery(app: FastAPI, startup_config: AppConfig, notification_repo, connection_repo) -> None:
@@ -481,6 +506,7 @@ async def _start_scheduled_task_notification_delivery(app: FastAPI, startup_conf
         from app.scheduler.notification_delivery import NotificationDeliveryWorker
         from deerflow.persistence.engine import get_session_factory
         from deerflow.persistence.run import RunRepository
+        from deerflow.persistence.user.im_notifications import ImNotificationPreferencesRepository
 
         run_repo = RunRepository(get_session_factory())
 
@@ -490,6 +516,46 @@ async def _start_scheduled_task_notification_delivery(app: FastAPI, startup_conf
             row = await run_repo.get(run_id, user_id=user_id)
             return row.get("last_ai_message") if row else None
 
+        async def resolve_human_input_pending(delivery: dict[str, Any]) -> bool | None:
+            payload = delivery.get("payload") or {}
+            thread_id = payload.get("thread_id")
+            request_id = payload.get("request_id")
+            owner_user_id = delivery.get("owner_user_id")
+            if not isinstance(thread_id, str) or not thread_id:
+                return False
+            thread_store = getattr(app.state, "thread_store", None)
+            if thread_store is not None and owner_user_id:
+                thread_meta = await thread_store.get(thread_id, user_id=owner_user_id)
+                if thread_meta is None:
+                    return False
+            checkpointer = getattr(app.state, "checkpointer", None)
+            if checkpointer is None:
+                return True
+            from types import SimpleNamespace
+
+            from app.gateway.context_usage import _load_checkpoint_messages
+            from app.gateway.services import build_thread_checkpoint_state_accessor
+            from deerflow.agents.human_input import extract_unanswered_human_input_request
+            from deerflow.runtime.user_context import reset_current_user, set_current_user
+
+            owner_token = set_current_user(SimpleNamespace(id=owner_user_id)) if isinstance(owner_user_id, str) and owner_user_id else None
+            try:
+                accessor, checkpoint_config = await build_thread_checkpoint_state_accessor(
+                    SimpleNamespace(app=app, headers={}, state=SimpleNamespace(), cookies={}),
+                    thread_id=thread_id,
+                )
+                messages = await _load_checkpoint_messages(accessor, checkpoint_config)
+            finally:
+                if owner_token is not None:
+                    reset_current_user(owner_token)
+            current_request = extract_unanswered_human_input_request(messages)
+            if current_request is None:
+                return False
+            if isinstance(request_id, str) and request_id and current_request.get("request_id") != request_id:
+                return False
+            return True
+
+        prefs_repo = ImNotificationPreferencesRepository(get_session_factory())
         worker = NotificationDeliveryWorker(
             delivery_repo=notification_repo,
             resolve_channel=channel_service.get_channel,
@@ -499,6 +565,12 @@ async def _start_scheduled_task_notification_delivery(app: FastAPI, startup_conf
             # Both repositories come from the same session factory, so the
             # connection repository is present whenever the outbox one is.
             resolve_connections=connection_repo.list_connections,
+            # Under channels.leader_lease, rows for a provider whose transport
+            # another instance holds are left to that instance.
+            excluded_providers=getattr(channel_service, "notification_excluded_providers", None),
+            resolve_notification_preferences=prefs_repo.get,
+            resolve_notification_event_preferences=prefs_repo.get_event_preferences,
+            resolve_human_input_pending=resolve_human_input_pending,
             poll_interval_seconds=startup_config.scheduler.poll_interval_seconds,
             # Language of notices whose owner has no UI language preference.
             default_locale=startup_config.channel_connections.notification_locale,
@@ -644,9 +716,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning("Upload staging file cleanup skipped", exc_info=True)
 
     # Initialize LangGraph runtime components (StreamBridge, RunManager, checkpointer, store)
+    from app.gateway.mcp_oauth_tokens import mcp_oauth_token_persistence
     from app.gateway.personal_mcp_access import personal_mcp_authority
 
-    async with personal_mcp_authority(), _runtime_with_mcp_pool_shutdown(app, startup_config):
+    async with personal_mcp_authority(), mcp_oauth_token_persistence(startup_config), _runtime_with_mcp_pool_shutdown(app, startup_config):
         logger.info("LangGraph runtime initialised")
 
         # Check admin bootstrap state and migrate orphan threads after admin exists.
@@ -663,12 +736,35 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # already-started file worker drains before the runtime is torn down.
         app.state.startup_trash_sweep_task = asyncio.create_task(_run_startup_trash_sweep(app, startup_config))
 
+        # Best-effort per-document summary generation.
+        # Workers start only when projects.summaries_enabled is true; the
+        # write routes' enqueue is a no-op otherwise. Needs the session
+        # factory and paths, both ready after langgraph_runtime.
+        try:
+            from deerflow.config.paths import get_paths
+            from deerflow.persistence.engine import get_session_factory
+            from deerflow.projects.summaries import init_summary_generator
+
+            _summary_sf = get_session_factory()
+            if _summary_sf is not None:
+                summary_generator = init_summary_generator(session_factory=_summary_sf, paths=get_paths(), app_config=startup_config)
+                await summary_generator.start()
+                app.state.summary_generator = summary_generator
+        except Exception:
+            logger.exception("Failed to start summary generation workers")
+
+        # At-rest credentials cipher (DEER_FLOW_CREDENTIALS_KEY) shared by every
+        # ChannelConnectionRepository this process builds; None when no enabled
+        # feature stores credentials.
+        credentials_cipher = await _load_credentials_cipher(startup_config)
+        app.state.credentials_cipher = credentials_cipher
+
         # Enqueue side of the scheduled-run notification outbox (issue #4254).
         # It only needs the durable table, so it is wired with the scheduler;
         # the delivery worker starts after the channel service, further down.
         notification_connection_repo = scheduled_notification_repo = None
         try:
-            notification_connection_repo, scheduled_notification_repo = _scheduled_task_notification_repos(startup_config)
+            notification_connection_repo, scheduled_notification_repo = _scheduled_task_notification_repos(startup_config, credentials_cipher)
         except Exception:
             logger.exception("Failed to prepare the scheduled-task notification outbox")
 
@@ -719,6 +815,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             channel_service = await start_channel_service(
                 startup_config,
                 get_stream_bridge=lambda: getattr(app.state, "stream_bridge", None),
+                credentials_cipher=credentials_cipher,
+                # channels.leader_lease: auto follows the same multi-process
+                # signal the startup gate used; the lease owner is this
+                # instance's run worker id, so lease and run logs line up.
+                multi_process=multi_process_deployment(startup_config),
+                lease_owner_id=getattr(getattr(app.state, "run_manager", None), "worker_id", None),
             )
             logger.info("Channel service started: %s", channel_service.get_status())
         except Exception:
@@ -814,6 +916,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         yield
 
         await _shutdown_startup_trash_sweep(app)
+        try:
+            from deerflow.projects.summaries import get_summary_generator, reset_summary_generator
+
+            _generator = get_summary_generator()
+            if _generator is not None:
+                await _generator.stop()
+            reset_summary_generator()
+        except Exception:
+            logger.exception("Failed to stop summary generation workers")
 
         try:
             await auth.close_oidc_service()
@@ -1221,6 +1332,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Skills API is mounted at /api/skills
     app.include_router(skills.router)
+    app.include_router(skill_mutations.router)
 
     # First-party integrations API is mounted at /api/integrations
     app.include_router(integrations.router)
@@ -1280,6 +1392,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Auth API is mounted at /api/v1/auth
     app.include_router(auth.router)
     app.include_router(user_preferences.router)
+    app.include_router(im_notification_preferences.router)
 
     # Feedback API is mounted at /api/threads/{thread_id}/runs/{run_id}/feedback
     app.include_router(feedback.router)

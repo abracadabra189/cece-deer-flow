@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import logging
+import math
 import re
 import threading
 import uuid
@@ -67,11 +69,14 @@ from deerflow.runtime import (
     ConflictError,
     DisconnectMode,
     RunContext,
+    RunIdempotencyKeyMismatch,
+    RunIdempotencyUnsupported,
     RunManager,
     RunRecord,
     RunStatus,
     StreamBridge,
     StreamGap,
+    StreamProducerLeaseState,
     ThreadOperationKind,
     UnsupportedStrategyError,
     build_state_mutation_graph,
@@ -84,6 +89,7 @@ from deerflow.runtime.checkpoint_mode import (
     inject_checkpoint_mode,
 )
 from deerflow.runtime.checkpoint_state import graph_state_schema
+from deerflow.runtime.client_context import sanitize_client_context
 from deerflow.runtime.context_keys import PROJECT_CONTEXT_KEY
 from deerflow.runtime.events.message_identity import MESSAGE_SEQ_KEY
 from deerflow.runtime.goal import goal_thread_lock
@@ -91,6 +97,7 @@ from deerflow.runtime.journal import build_checkpoint_history_seed_events
 from deerflow.runtime.keyed_lock import KeyedLockTable
 from deerflow.runtime.run_origin import DEERFLOW_ORIGIN_KEY, make_origin
 from deerflow.runtime.runs.naming import resolve_root_run_name
+from deerflow.runtime.runs.schemas import EVIDENCE_ORIGINS
 from deerflow.runtime.secret_context import (
     LegacyRunMetadataSecretError,
     redact_config_secrets,
@@ -105,10 +112,21 @@ from deerflow.subagents.status_contract import SUBAGENT_ACCEPTANCE_VERDICT_KEY, 
 from deerflow.trace_context import DEERFLOW_TRACE_METADATA_KEY, ensure_trace_context, ensure_trace_id
 from deerflow.utils.assembly_io import run_assembly
 from deerflow.utils.file_io import await_drained
+from deerflow.utils.goal_objective import normalize_goal_objective
 from deerflow.utils.messages import ORIGINAL_USER_CONTENT_KEY, UNTRUSTED_INPUT_KEY
 from deerflow.utils.thread_id import validate_thread_id
 
 logger = logging.getLogger(__name__)
+
+_MISSING_BRIDGE_METHOD = object()
+
+
+def _declared_bridge_method(bridge: Any, name: str) -> Any | None:
+    """Return a real bridge method without triggering dynamic mock attributes."""
+    if inspect.getattr_static(bridge, name, _MISSING_BRIDGE_METHOD) is _MISSING_BRIDGE_METHOD:
+        return None
+    method = getattr(bridge, name, None)
+    return method if callable(method) else None
 
 
 class BusyThreadConflict(HTTPException):
@@ -142,6 +160,8 @@ _TERMINAL_RUN_STATUSES = {
     RunStatus.timeout,
     RunStatus.interrupted,
 }
+_TERMINAL_STREAM_RECOVERED = "recovered"
+_TERMINAL_STREAM_PRODUCER_EXPIRED = "producer_expired"
 
 _THREAD_METADATA_SETUP_TIMEOUT_SECONDS = 5.0
 
@@ -277,15 +297,59 @@ async def _ensure_thread_metadata(
     return existing
 
 
+async def _stream_producer_lease_state(
+    bridge: StreamBridge,
+    run_id: str,
+) -> StreamProducerLeaseState | None:
+    producer_lease_state = getattr(bridge, "producer_lease_state", None)
+    if producer_lease_state is None:
+        return StreamProducerLeaseState.untracked
+    try:
+        state = await producer_lease_state(run_id)
+        return StreamProducerLeaseState(state)
+    except (TypeError, ValueError):
+        return StreamProducerLeaseState.untracked
+    except Exception:
+        logger.debug(
+            "Failed to inspect stream producer lease for run %s",
+            sanitize_log_param(run_id),
+            exc_info=True,
+        )
+        return None
+
+
+async def _cleanup_expired_stream_producer(
+    bridge: StreamBridge,
+    run_id: str,
+) -> bool:
+    cleanup = _declared_bridge_method(
+        bridge,
+        "cleanup_expired_producer",
+    )
+    if cleanup is None:
+        return True
+    try:
+        return bool(await cleanup(run_id))
+    except Exception:
+        logger.warning(
+            "Failed to clean expired stream producer marker for run %s",
+            sanitize_log_param(run_id),
+            exc_info=True,
+        )
+        return False
+
+
 async def _terminal_record_stream_missing(bridge: StreamBridge, record: RunRecord) -> bool:
     """True when a terminal run has no retained stream on bridges that can tell."""
     if not _run_is_terminal(record):
+        return False
+    if not getattr(record, "terminal_status_persisted", True):
         return False
     stream_exists = getattr(bridge, "stream_exists", None)
     if stream_exists is None:
         return False
     try:
-        return not bool(await stream_exists(record.run_id))
+        missing = not bool(await stream_exists(record.run_id))
     except Exception:
         logger.debug(
             "Failed to probe stream existence for terminal run %s",
@@ -293,24 +357,81 @@ async def _terminal_record_stream_missing(bridge: StreamBridge, record: RunRecor
             exc_info=True,
         )
         return False
+    if not missing:
+        return False
+    if getattr(bridge, "producer_lease_recovery_enabled", False) is not True:
+        return True
+    state = await _stream_producer_lease_state(bridge, record.run_id)
+    if state == StreamProducerLeaseState.untracked:
+        return True
+    if state != StreamProducerLeaseState.expired:
+        return False
+    try:
+        # The producer may have appended its tail and released the lease after
+        # the first EXISTS. Recheck after observing expiry before synthesizing.
+        still_missing = not bool(await stream_exists(record.run_id))
+    except Exception:
+        logger.debug(
+            "Failed to recheck stream existence for terminal run %s",
+            sanitize_log_param(record.run_id),
+            exc_info=True,
+        )
+        return False
+    if not still_missing:
+        return False
+    return await _cleanup_expired_stream_producer(
+        bridge,
+        record.run_id,
+    )
 
 
 async def _orphan_recovery_observed_after_heartbeat(
     record: RunRecord,
     run_mgr: RunManager,
-) -> bool:
-    """Return whether durable orphan recovery is the consumer's liveness edge.
+    bridge: StreamBridge,
+) -> str | None:
+    """Return why durable state proves that the stream producer is gone.
 
     A normal terminal status is not sufficient: the producer persists status
     before publishing its final error/data frames and END. Orphan recovery is
     different because the producer is known to be gone and the durable
-    ``stop_reason`` is written atomically with the terminal status. Only that
-    explicit signal may synthesize END after a heartbeat.
+    ``stop_reason`` is written atomically with the terminal status by run or
+    scheduled-task reconciliation.
+
+    Redis producers additionally hold a short cross-process lease from before
+    durable admission until END publication. A durable terminal row
+    plus an explicitly expired producer lease closes the crash window where the
+    row committed but the process died before publishing END. Untracked streams
+    retain the historical conservative behavior.
     """
-    if not record.store_only:
-        return False
     refreshed = await run_mgr.get(record.run_id, user_id=record.user_id)
-    return refreshed is not None and _run_is_terminal(refreshed) and refreshed.stop_reason == ORPHAN_RECOVERY_STOP_REASON
+    if refreshed is None or not _run_is_terminal(refreshed):
+        return None
+    if refreshed.stop_reason in (
+        ORPHAN_RECOVERY_STOP_REASON,
+        "scheduled_task_orphan_recovered",
+    ):
+        if getattr(bridge, "producer_lease_recovery_enabled", False) is True:
+            state = await _stream_producer_lease_state(
+                bridge,
+                record.run_id,
+            )
+            if state in (
+                None,
+                StreamProducerLeaseState.active,
+            ):
+                return None
+            if state == StreamProducerLeaseState.expired:
+                return _TERMINAL_STREAM_PRODUCER_EXPIRED
+        return _TERMINAL_STREAM_RECOVERED
+    if not getattr(refreshed, "terminal_status_persisted", True):
+        return None
+    if getattr(bridge, "producer_lease_recovery_enabled", False) is not True:
+        return None
+    state = await _stream_producer_lease_state(bridge, record.run_id)
+    if state == StreamProducerLeaseState.expired:
+        return _TERMINAL_STREAM_PRODUCER_EXPIRED
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -389,11 +510,18 @@ def _strip_external_message_metadata(message: Any) -> Any:
     additional_kwargs.pop(ORIGINAL_USER_CONTENT_KEY, None)
     for key in _SERVER_OWNED_MESSAGE_METADATA_KEYS:
         additional_kwargs.pop(key, None)
+    from deerflow.knowledge.sources import strip_source_artifact
+
+    artifact = getattr(message, "artifact", None)
+    clean_artifact = strip_source_artifact(artifact)
     if _is_human_message_like(message):
         additional_kwargs = _mark_untrusted_framework_markers(additional_kwargs, message.name)
-    if additional_kwargs == message.additional_kwargs:
+    if additional_kwargs == message.additional_kwargs and clean_artifact is artifact:
         return message
-    return message.model_copy(update={"additional_kwargs": additional_kwargs})
+    update = {"additional_kwargs": additional_kwargs}
+    if clean_artifact is not artifact:
+        update["artifact"] = clean_artifact
+    return message.model_copy(update=update)
 
 
 def _strip_external_metadata_from_message_like(item: Any) -> Any:
@@ -409,6 +537,12 @@ def _strip_external_metadata_from_message_like(item: Any) -> Any:
         return _strip_external_message_metadata(item)
     if not isinstance(item, dict):
         return item
+    from deerflow.knowledge.sources import strip_source_artifact
+
+    artifact = item.get("artifact")
+    clean_artifact = strip_source_artifact(artifact)
+    if clean_artifact is not artifact:
+        item = {**item, "artifact": clean_artifact}
     # A missing (or non-dict) ``additional_kwargs`` is the most natural request
     # shape, and it still needs the mark: the messages reducer coerces the dict
     # with ``convert_to_messages``, which supplies ``additional_kwargs={}``, so an
@@ -482,11 +616,33 @@ def _normalize_input_messages(
     return converted
 
 
+#: State channels only the server writes. ``goal_outcome`` is the "goal met"
+#: record that clearing a satisfied goal writes; a caller copy would forge one.
+SERVER_OWNED_STATE_CHANNELS = frozenset({"sandbox", "thread_data", "viewed_images", "goal_outcome"})
+
+
+def _normalize_external_goal(value: Any, *, location: str) -> dict[str, Any] | None:
+    """Require usable goal text without rebuilding caller-supplied goal state."""
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or not isinstance(value.get("objective"), str):
+        raise HTTPException(status_code=400, detail=f"{location} must be an object with a string objective")
+    if "__overwrite__" in value or value.get("type") == "__overwrite__":
+        raise HTTPException(status_code=400, detail=f"{location} cannot contain an Overwrite marker")
+    try:
+        objective = normalize_goal_objective(value["objective"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"{location}: {exc}") from None
+    for field in ("continuation_count", "max_continuations", "no_progress_count", "max_no_progress_continuations"):
+        if field in value and (type(value[field]) is not int or value[field] < 0):
+            raise HTTPException(status_code=400, detail=f"{location}.{field} must be a non-negative integer")
+    return {**value, "objective": objective}
+
+
 def strip_server_owned_state_metadata(values: Mapping[str, Any]) -> dict[str, Any]:
     """Validate and sanitize caller-supplied state values before checkpointing.
 
-    The server-owned ``sandbox``, ``thread_data``, and ``viewed_images`` channels
-    are rejected. The ``messages`` channel
+    The ``SERVER_OWNED_STATE_CHANNELS`` are rejected. The ``messages`` channel
     is canonicalized to a list of ``BaseMessage``
     objects, rejects external system/developer roles with HTTP 400, and strips
     server-owned metadata. Other channels keep their existing shapes while
@@ -498,8 +654,7 @@ def strip_server_owned_state_metadata(values: Mapping[str, Any]) -> dict[str, An
     transform trails, or privileged message roles. Every channel is walked
     because middleware-contributed channels can also carry message-like values.
     """
-    server_owned_channels = {"sandbox", "thread_data", "viewed_images"}
-    rejected = server_owned_channels.intersection(values)
+    rejected = SERVER_OWNED_STATE_CHANNELS.intersection(values)
     if rejected:
         raise HTTPException(
             status_code=400,
@@ -508,7 +663,9 @@ def strip_server_owned_state_metadata(values: Mapping[str, Any]) -> dict[str, An
 
     stripped: dict[str, Any] = {}
     for channel, value in values.items():
-        if channel == "messages" and value is not None:
+        if channel == "goal":
+            stripped[channel] = _strip_external_metadata_from_message_like(_normalize_external_goal(value, location="values.goal"))
+        elif channel == "messages" and value is not None:
             stripped[channel] = _normalize_input_messages(value, location="values.messages")
         elif channel == "delegations" and isinstance(value, list):
             stripped[channel] = [_strip_external_delegation_verdict(item) for item in value]
@@ -535,10 +692,10 @@ def normalize_input(raw_input: dict[str, Any] | None, *, trusted_internal: bool 
     of bubbling up as a 500.  The gateway is a system boundary, so per-entry
     validation errors are the right shape for clients to retry against.
 
-    The ``sandbox``, ``thread_data``, and ``viewed_images`` channels are also
-    server-owned. External callers cannot select a provider resource by id or
-    supply host image paths; trusted internal run admission may carry restored
-    values.
+    The ``SERVER_OWNED_STATE_CHANNELS`` are also rejected. External callers
+    cannot select a provider resource by id, supply host image paths, or forge a
+    met goal; trusted internal run admission may carry restored values. A caller
+    ``goal`` replaces the goal, so it also clears the previous ``goal_outcome``.
 
     ``original_user_content``, dynamic-context reminder markers, the transient
     view-image context marker, the execution-only knowledge-scope marker, tool
@@ -563,8 +720,7 @@ def normalize_input(raw_input: dict[str, Any] | None, *, trusted_internal: bool 
     if raw_input is None:
         return {}
     if not trusted_internal:
-        server_owned_channels = {"sandbox", "thread_data", "viewed_images"}
-        rejected = server_owned_channels.intersection(raw_input)
+        rejected = SERVER_OWNED_STATE_CHANNELS.intersection(raw_input)
         if rejected:
             raise HTTPException(
                 status_code=400,
@@ -581,6 +737,9 @@ def normalize_input(raw_input: dict[str, Any] | None, *, trusted_internal: bool 
             cleaned = [_strip_external_delegation_verdict(entry) for entry in delegations]
             if cleaned != delegations:
                 result = {**result, "delegations": cleaned}
+        # merge_goal ignores None, so only a goal value replaces the goal.
+        if result.get("goal") is not None:
+            result = {**result, "goal": _normalize_external_goal(result["goal"], location="input.goal"), "goal_outcome": None}
     return result
 
 
@@ -601,6 +760,75 @@ def _canonical_run_record_input(
     if isinstance(messages, list):
         canonical["messages"] = [message.model_dump(mode="json") if isinstance(message, BaseMessage) else message for message in messages]
     return canonical
+
+
+RUN_IDEMPOTENCY_REQUEST_VERSION = 1
+
+
+def _strict_json_identity(value: Any, active: set[int] | None = None) -> Any:
+    """Return a type-preserving, order-stable identity for a JSON value."""
+    value_type = type(value)
+    if value is None:
+        return ["null"]
+    if value_type is bool:
+        return ["bool", value]
+    if value_type is int:
+        return ["int", str(value)]
+    if value_type is float:
+        if not math.isfinite(value):
+            raise ValueError("non-finite number")
+        return ["float", value.hex()]
+    if value_type is str:
+        return ["string", value]
+    if value_type not in {list, dict}:
+        raise TypeError(f"unsupported {value_type.__name__}")
+
+    active = active if active is not None else set()
+    identity = id(value)
+    if identity in active:
+        raise ValueError("cyclic value")
+    active.add(identity)
+    try:
+        if value_type is list:
+            return ["array", [_strict_json_identity(item, active) for item in value]]
+        if not all(type(key) is str for key in value):
+            raise TypeError("object keys must be strings")
+        return [
+            "object",
+            [[key, _strict_json_identity(value[key], active)] for key in sorted(value)],
+        ]
+    finally:
+        active.remove(identity)
+
+
+def _run_idempotency_request(body: RunCreateRequest) -> dict[str, Any]:
+    """Build the versioned request identity persisted for keyed admissions."""
+    command = getattr(body, "command", None)
+    if not command or command.get("resume") is None:
+        return {"version": RUN_IDEMPOTENCY_REQUEST_VERSION, "kind": "input"}
+    try:
+        identity = _strict_json_identity(command["resume"])
+        encoded = json.dumps(identity, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
+    except (RecursionError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="command.resume must be a finite, acyclic strict JSON value") from exc
+    return {
+        "version": RUN_IDEMPOTENCY_REQUEST_VERSION,
+        "kind": "resume",
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+
+
+def _legacy_stored_idempotency_request(kwargs: dict[str, Any]) -> dict[str, Any] | None:
+    """Read only the exact private identity shape emitted by the old writer."""
+    identity = kwargs.get("idempotency_request")
+    if not isinstance(identity, dict) or set(identity) != {"version", "kind", "sha256"}:
+        return None
+    if identity.get("version") != RUN_IDEMPOTENCY_REQUEST_VERSION or identity.get("kind") != "resume":
+        return None
+    digest = identity.get("sha256")
+    if not isinstance(digest, str) or len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        return None
+    return identity
 
 
 _DEFAULT_ASSISTANT_ID = "lead_agent"
@@ -691,6 +919,9 @@ _SERVER_OWNED_RUNTIME_CONTEXT_KEYS: frozenset[str] = (
 # they are internal-only as well — see :data:`_INTERNAL_ONLY_CONTEXT_KEYS`.
 _CONTEXT_RUNTIME_ONLY_KEYS: frozenset[str] = frozenset({"github_token", "disable_clarification", "channel_name"})
 
+# Public run-only controls are accepted through body.context, not body.config.
+_MODEL_SELECTION_CONTEXT_KEYS = frozenset({"subagent_model_name", "model_selection_requested"})
+
 # Every run-context key an external client may never supply, in either section.
 # The two sets differ only in *where* a legitimate internal caller's value lands
 # (both sections vs. ``context`` alone); their trust requirement is identical.
@@ -722,6 +953,18 @@ def strip_internal_context_keys(config: dict[str, Any]) -> None:
                 value.pop(key, None)
 
 
+def _sanitize_request_client_context(raw: Any) -> dict[str, Any] | None:
+    """Sanitize a caller's ``context.client``, logging when fields are dropped.
+
+    The log line carries no values: ``client.name`` and preference values are
+    caller-controlled text.
+    """
+    client = sanitize_client_context(raw)
+    if client != raw:
+        logger.debug("Dropped or normalized context.client fields from the run request (kept_any=%s)", client is not None)
+    return client
+
+
 def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, Any] | None, *, internal: bool = False) -> None:
     """Merge whitelisted keys from ``body.context`` into both ``config['configurable']``
     and ``config['context']`` so they are visible to legacy configurable readers and
@@ -744,9 +987,30 @@ def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, An
     secrets / runtime flags read by tools and middlewares from ``runtime.context``;
     keeping them out of ``configurable`` avoids persisting a short-lived token in the
     checkpoint store.
+
+    Client capability context is runtime-only: it is sanitized and copied into
+    ``config['context']['client']`` but never into ``configurable``.
     """
+    existing_configurable = config.get("configurable")
+    if isinstance(existing_configurable, dict):
+        # ``build_run_config`` copies ``body.config['configurable']`` verbatim,
+        # and ``configurable`` is persisted in checkpoints.
+        existing_configurable.pop("client", None)
+    existing_runtime_context = config.get("context")
+    for section in (existing_configurable, existing_runtime_context):
+        if isinstance(section, dict):
+            for key in _MODEL_SELECTION_CONTEXT_KEYS:
+                section.pop(key, None)
+    if isinstance(existing_runtime_context, dict) and "client" in existing_runtime_context:
+        existing_client_context = _sanitize_request_client_context(existing_runtime_context.get("client"))
+        if existing_client_context is None:
+            existing_runtime_context.pop("client", None)
+        else:
+            existing_runtime_context["client"] = existing_client_context
+
     if not context:
         return
+
     configurable = config.setdefault("configurable", {})
     runtime_context = config.setdefault("context", {})
     keys = _CONTEXT_CONFIGURABLE_KEYS | _CONTEXT_INTERNAL_CALLER_KEYS if internal else _CONTEXT_CONFIGURABLE_KEYS
@@ -756,6 +1020,18 @@ def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, An
                 configurable.setdefault(key, context[key])
             if isinstance(runtime_context, dict):
                 runtime_context.setdefault(key, context[key])
+    # Explicit choices belong to this run, never to checkpoint defaults. Model
+    # use is authorized against the authenticated identity during assembly and
+    # again at child dispatch; these fields grant no additional permissions.
+    for key in _MODEL_SELECTION_CONTEXT_KEYS:
+        if key in context:
+            value = context[key]
+            if not isinstance(value, str) or not value.strip() or len(value) > 200:
+                raise HTTPException(status_code=400, detail="A configured model name is required.")
+            if isinstance(runtime_context, dict):
+                runtime_context[key] = value
+    if "model_selection_requested" in context and (context.get("model_name") != context["model_selection_requested"] or not isinstance(runtime_context, dict) or runtime_context.get("model_name") != context["model_selection_requested"]):
+        raise HTTPException(status_code=400, detail="model_selection_requested must match model_name in context.")
     # Context-only keys (secrets / runtime flags) land in ``config['context']``
     # only — never ``configurable`` (which is persisted in checkpoints) — and only
     # for internal callers, the sole legitimate producers.
@@ -765,6 +1041,11 @@ def merge_run_context_overrides(config: dict[str, Any], context: Mapping[str, An
                 runtime_context.setdefault(key, context[key])
     if "user_id" in context and isinstance(runtime_context, dict):
         runtime_context.setdefault("user_id", context["user_id"])
+
+    if "client" in context:
+        client_context = _sanitize_request_client_context(context["client"])
+        if client_context is not None and isinstance(runtime_context, dict):
+            runtime_context.setdefault("client", client_context)
 
 
 async def resolve_trusted_internal_owner_for_attribution(request: Request, owner_user_id: str | None) -> Any | None:
@@ -1225,7 +1506,7 @@ class _RawCheckpointSnapshot:
     metadata, config ancestry, created_at) comes straight from the tuple.
     """
 
-    __slots__ = ("checkpoint_exists", "config", "values", "metadata", "parent_config", "created_at", "tasks", "tasks_known", "next")
+    __slots__ = ("checkpoint_exists", "config", "values", "metadata", "parent_config", "created_at", "tasks", "tasks_known", "next", "channel_versions")
 
     def __init__(self, config: dict[str, Any], tup: Any | None) -> None:
         self.checkpoint_exists = tup is not None
@@ -1238,6 +1519,8 @@ class _RawCheckpointSnapshot:
         self.tasks: tuple = ()
         self.tasks_known = False
         self.next: tuple = ()
+        versions = checkpoint.get("channel_versions")
+        self.channel_versions = dict(versions) if isinstance(versions, dict) else None
 
 
 class _RawCheckpointReadAccessor:
@@ -1749,6 +2032,7 @@ async def start_run(
     *,
     idempotency_key: str | None = None,
     require_existing_thread: bool = False,
+    evidence_origin: str | None = None,
     scheduled_task_runtime: Mapping[str, Any] | None = None,
 ) -> RunRecord:
     """Create a RunRecord and launch the background agent task.
@@ -1764,6 +2048,9 @@ async def start_run(
     require_existing_thread : bool
         Reject a missing thread instead of auto-creating metadata. Internal
         notification runs use this so a deleted chat cannot be resurrected.
+    evidence_origin : str | None
+        Trusted Python entry-point provenance, never copied from request data.
+        Internal launches without an explicit origin remain unknown.
     """
     # Cancel-capability gate. interrupt/rollback strategies terminate an already
     # active run — runs:cancel capability, not runs:create — so a create-only
@@ -1788,11 +2075,16 @@ async def start_run(
         validate_run_metadata_secrets(config_metadata)
     except LegacyRunMetadataSecretError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    request_identity = _run_idempotency_request(body)
+    idempotency_request = request_identity if idempotency_key and request_identity["kind"] == "resume" else None
 
     stream_modes = normalize_stream_modes(body.stream_mode)
     bridge = get_stream_bridge(request)
     run_mgr = get_run_manager(request)
     run_ctx = get_run_context(request)
+    admission_run_id: str | None = None
+    producer_lease_started = False
+    producer_lease_handed_off = False
 
     disconnect = DisconnectMode.cancel if body.on_disconnect == "cancel" else DisconnectMode.continue_
 
@@ -1861,6 +2153,9 @@ async def start_run(
         # so import-lock waiters cannot starve unrelated default-executor work.
         # Keep this before admission so import failures cannot create a run.
         agent_factory = await run_assembly(resolve_agent_factory, body.assistant_id)
+        admitted_origin = evidence_origin or ("unknown" if is_internal_caller else "interactive")
+        if admitted_origin not in EVIDENCE_ORIGINS:
+            raise ValueError("Unsupported host evidence origin")
         command = getattr(body, "command", None)
         if command and command.get("resume") is not None:
             graph_input = Command(resume=command["resume"])
@@ -1956,6 +2251,7 @@ async def start_run(
             agent_config=agent_config,
             recovery_scope=recovery_scope,
             recovery=is_scope_recovery,
+            extensions=getattr(request.app.state, "extensions", None),
         )
         if admitted_knowledge_scope is not None:
             await _validate_scope_thread_binding(
@@ -2219,43 +2515,72 @@ async def start_run(
                 # cannot both succeed across Gateway workers.
                 if require_existing_thread and not await thread_access_allowed():
                     raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
-                record = await run_mgr.create_or_reject(
-                    thread_id,
-                    body.assistant_id,
-                    on_disconnect=disconnect,
-                    metadata=run_metadata,
-                    # Persist a secret-redacted copy of the config: the run record is
-                    # written to runs.kwargs_json and echoed by the run API, so a
-                    # request-scoped secret (#3861) must not ride along. The live
-                    # config built above keeps the secrets for the actual run.
-                    kwargs={
-                        "input": run_record_input,
-                        **({"knowledge_default_request_hash": knowledge_default_request_hash} if accepts_knowledge_default else {}),
-                        "config": redact_config_secrets(body.config),
-                        **({"conversation_references": conversation_references} if conversation_references else {}),
-                    },
-                    multitask_strategy=body.multitask_strategy,
-                    model_name=model_name,
-                    user_id=owner_user_id,
-                    idempotency_key=idempotency_key,
+                admission_run_id = str(uuid.uuid4())
+                start_producer_lease = _declared_bridge_method(
+                    bridge,
+                    "start_producer_lease",
                 )
+                if start_producer_lease is not None:
+                    producer_lease_started = await start_producer_lease(admission_run_id)
+                if getattr(bridge, "supports_cross_process", False) is True and not producer_lease_started:
+                    raise RuntimeError("Cross-process stream producer tracking is unavailable")
+                try:
+                    record = await run_mgr.create_or_reject(
+                        thread_id,
+                        body.assistant_id,
+                        on_disconnect=disconnect,
+                        metadata=run_metadata,
+                        # Persist a redacted copy of the config: the run record is
+                        # written to runs.kwargs_json and echoed by the run API, so a
+                        # request-scoped secret (#3861) or client hint must not ride along.
+                        # The live config built above keeps them for the actual run.
+                        kwargs={
+                            "input": run_record_input,
+                            **({"knowledge_default_request_hash": knowledge_default_request_hash} if accepts_knowledge_default else {}),
+                            "config": redact_config_secrets(body.config),
+                            **({"conversation_references": conversation_references} if conversation_references else {}),
+                        },
+                        idempotency_request=idempotency_request,
+                        multitask_strategy=body.multitask_strategy,
+                        model_name=model_name,
+                        user_id=owner_user_id,
+                        idempotency_key=idempotency_key,
+                        evidence_origin=admitted_origin,
+                        # Canonical agent keys, not routing aliases or display names.
+                        # Bootstrap and unresolved legacy identities stay read-only.
+                        evidence_agent_id=(None if scope_runtime_config.get("is_bootstrap") else (_DEFAULT_ASSISTANT_ID if scope_assistant_id == _DEFAULT_ASSISTANT_ID else getattr(agent_config, "name", None))),
+                        run_id=admission_run_id,
+                    )
+                except RunIdempotencyUnsupported as exc:
+                    raise HTTPException(status_code=503, detail=str(exc)) from exc
+                except RunIdempotencyKeyMismatch as exc:
+                    # A trusted internal key is scoped by owner, not thread: the
+                    # same message requested on another thread (IM ``/new``) is
+                    # a different request for the run already admitted.
+                    raise HTTPException(status_code=409, detail="Idempotency-Key already used with a different request") from exc
 
                 if record.idempotency_reused:
                     stored = record.kwargs or {}
                     stored_input = stored.get("input")
-                    # New runs persist the admitted, canonical message snapshot
-                    # so a scope display cannot be rewritten through the run
-                    # record. Accept the raw request as well for records written
-                    # by older Gateway versions, while comparing canonical
-                    # retries to the same representation as the stored record.
-                    matches_default_request = knowledge_default_request_hash is not None and stored.get("knowledge_default_request_hash") == knowledge_default_request_hash
-                    # Pre-feature unscoped records may already contain normalized
-                    # messages, but have no digest. Compare them before injecting
-                    # today's default; explicit scopes and recovery do not use
-                    # this compatibility path.
-                    matches_legacy_default_request = accepts_knowledge_default and "knowledge_default_request_hash" not in stored and stored_input == request_input
-                    matches_input = matches_default_request or matches_legacy_default_request or stored_input == body.input or stored_input == run_record_input
-                    if not matches_input or record.assistant_id != body.assistant_id or stored.get("conversation_references", []) != conversation_references:
+                    stored_idempotency_request = record.idempotency_request or _legacy_stored_idempotency_request(stored)
+                    if request_identity["kind"] == "resume":
+                        matches_idempotency_request = stored_idempotency_request == idempotency_request
+                        matches_input = True
+                    else:
+                        matches_idempotency_request = stored_idempotency_request is None
+                        # New runs persist the admitted, canonical message snapshot
+                        # so a scope display cannot be rewritten through the run
+                        # record. Accept the raw request as well for records written
+                        # by older Gateway versions, while comparing canonical
+                        # retries to the same representation as the stored record.
+                        matches_default_request = knowledge_default_request_hash is not None and stored.get("knowledge_default_request_hash") == knowledge_default_request_hash
+                        # Pre-feature unscoped records may already contain normalized
+                        # messages, but have no digest. Compare them before injecting
+                        # today's default; explicit scopes and recovery do not use
+                        # this compatibility path.
+                        matches_legacy_default_request = accepts_knowledge_default and "knowledge_default_request_hash" not in stored and stored_input == request_input
+                        matches_input = matches_default_request or matches_legacy_default_request or stored_input == body.input or stored_input == run_record_input
+                    if not matches_idempotency_request or not matches_input or record.assistant_id != body.assistant_id or stored.get("conversation_references", []) != conversation_references:
                         raise HTTPException(
                             status_code=409,
                             detail="Idempotency-Key already used with a different request",
@@ -2264,12 +2589,21 @@ async def start_run(
 
                 worker = run_after_metadata(record)
                 try:
-                    # No await is allowed between durable admission and task
-                    # attachment. Metadata setup runs inside the attached
-                    # worker so a pending cancellation can bypass stalled
-                    # thread-store IO and still reach run_agent's startup
-                    # barrier / stream finalization.
+                    # The stream lease was established before durable admission.
+                    # Keep the admission-to-task-attachment window await-free so
+                    # cancellation cannot strand a pending row.
                     record.task = asyncio.create_task(worker)
+                    if producer_lease_started:
+                        transfer_producer_lease = _declared_bridge_method(
+                            bridge,
+                            "transfer_producer_lease",
+                        )
+                        if transfer_producer_lease is not None:
+                            transfer_producer_lease(
+                                record.run_id,
+                                record.task,
+                            )
+                        producer_lease_handed_off = True
                 except Exception as exc:
                     worker.close()
                     await run_mgr.fail_start_if_pending(
@@ -2288,8 +2622,19 @@ async def start_run(
 
         return record
     finally:
-        if owner_context_token is not None:
-            reset_current_user(owner_context_token)
+        try:
+            if producer_lease_started and not producer_lease_handed_off and admission_run_id is not None:
+                try:
+                    await await_drained(bridge.abort_producer_lease(admission_run_id))
+                except Exception:
+                    logger.warning(
+                        "Failed to release unused stream producer lease for run %s",
+                        sanitize_log_param(admission_run_id),
+                        exc_info=True,
+                    )
+        finally:
+            if owner_context_token is not None:
+                reset_current_user(owner_context_token)
 
 
 async def launch_scheduled_thread_run(
@@ -2381,6 +2726,7 @@ async def launch_scheduled_thread_run(
             thread_id,
             request,
             idempotency_key=idempotency_key,
+            evidence_origin="scheduled",
             scheduled_task_runtime=scheduled_task_runtime,
         )
     return {"run_id": record.run_id, "thread_id": record.thread_id}
@@ -2528,6 +2874,7 @@ async def sse_consumer(
     gap_emitted = False
     terminal_emitted = False
     disconnect_observed = False
+    expired_heartbeat_seen = False
     try:
         async for entry in bridge.subscribe(record.run_id, last_event_id=last_event_id):
             if await request.is_disconnected():
@@ -2550,13 +2897,27 @@ async def sse_consumer(
                 return
 
             if entry is HEARTBEAT_SENTINEL:
-                if await _orphan_recovery_observed_after_heartbeat(record, run_mgr):
+                completion_reason = await _orphan_recovery_observed_after_heartbeat(
+                    record,
+                    run_mgr,
+                    bridge,
+                )
+                if completion_reason == _TERMINAL_STREAM_RECOVERED or (completion_reason == _TERMINAL_STREAM_PRODUCER_EXPIRED and expired_heartbeat_seen):
+                    if completion_reason == _TERMINAL_STREAM_PRODUCER_EXPIRED and not await _cleanup_expired_stream_producer(
+                        bridge,
+                        record.run_id,
+                    ):
+                        expired_heartbeat_seen = False
+                        yield ": heartbeat\n\n"
+                        continue
                     terminal_emitted = True
                     yield format_sse("end", None)
                     return
+                expired_heartbeat_seen = completion_reason == _TERMINAL_STREAM_PRODUCER_EXPIRED
                 yield ": heartbeat\n\n"
                 continue
 
+            expired_heartbeat_seen = False
             if entry is END_SENTINEL:
                 terminal_emitted = True
                 yield format_sse("end", None, event_id=entry.id or None)
@@ -2636,6 +2997,7 @@ async def wait_for_run_completion(
         return True
 
     resume_from_event_id: str | None = None
+    expired_heartbeat_seen = False
     try:
         while True:
             gap_seen = False
@@ -2650,12 +3012,32 @@ async def wait_for_run_completion(
                     # The wait API only needs terminal completion, not a complete
                     # event replay. Resume at the retained tail rather than
                     # treating a bridge gap as a client disconnect.
+                    if entry.latest_available_event_id is None:
+                        current = await run_mgr.get(record.run_id, user_id=record.user_id) if record.store_only else record
+                        if current is not None and await _terminal_record_stream_missing(bridge, current):
+                            completed = True
+                            return True
                     resume_from_event_id = entry.latest_available_event_id
                     gap_seen = True
                     break
-                if entry is HEARTBEAT_SENTINEL and await _orphan_recovery_observed_after_heartbeat(record, run_mgr):
-                    completed = True
-                    return True
+                if entry is HEARTBEAT_SENTINEL:
+                    completion_reason = await _orphan_recovery_observed_after_heartbeat(
+                        record,
+                        run_mgr,
+                        bridge,
+                    )
+                    if completion_reason == _TERMINAL_STREAM_RECOVERED or (completion_reason == _TERMINAL_STREAM_PRODUCER_EXPIRED and expired_heartbeat_seen):
+                        if completion_reason == _TERMINAL_STREAM_PRODUCER_EXPIRED and not await _cleanup_expired_stream_producer(
+                            bridge,
+                            record.run_id,
+                        ):
+                            expired_heartbeat_seen = False
+                            continue
+                        completed = True
+                        return True
+                    expired_heartbeat_seen = completion_reason == _TERMINAL_STREAM_PRODUCER_EXPIRED
+                else:
+                    expired_heartbeat_seen = False
                 if await request.is_disconnected():
                     disconnect_observed = True
                     return False

@@ -86,7 +86,7 @@ through run-event or specialized APIs:
 
 Current middleware tags are `guardrail`, `loop_detection`,
 `safety_termination`, `skill_activation`, `skill_secrets`, `tool_promotion`,
-and `tool_progress`. The pattern is intentionally open so new middleware tags
+`tool_progress`, and `summarize`. The pattern is intentionally open so new middleware tags
 are additive. Because the full event type is limited to 32 characters and
 `middleware:` uses 11, a tag must contain 1-21 characters.
 
@@ -126,13 +126,21 @@ fail-open and do not change guard behavior. These events are emitted only when
 the active catalog. `changes.source` distinguishes automatic `routing_hint`
 promotion from an explicit `tool_search`; the remaining fields contain sorted
 new tool names, their count, `is_subagent`, and the optional subagent
-`agent_id`. Explicit-search events observe the final `Command` after the active
-skill policy has removed denied schemas. Automatic promotion records the graph
-state transition, but promotion never bypasses the independent skill or
-authorization execution policies. Repeated model passes or searches that add
+`agent_id`. Explicit-search events observe the final `Command` returned by the tool middleware chain.
+Automatic promotion records the graph state transition; promotion is scoped to
+the agent's admitted deferred catalog and never bypasses the independent
+assembly or execution authorization. Repeated model passes or searches that add
 no names emit no event. Queries, routing keywords, catalog hashes, tool schemas
 and descriptions, arguments, and results are not copied into this middleware
 event. Other event types retain their existing payload contracts.
+
+`middleware:summarize` records each successful summary result from
+`SummarizationMiddleware` with `action` `summary_result`, including results
+reused from the no-op cache. The `changes` object carries the no-op and
+cache-skip flags, summary and previous-summary lengths, the number of
+summarized messages, and the middleware's cumulative counters; see
+[summarization.md](summarization.md). Summary text and message content are
+never copied into this event.
 
 Ordinary task-tool subagents forward loop-detection, tool-promotion, and
 tool-progress appends to the parent run loop through dedicated recorder context

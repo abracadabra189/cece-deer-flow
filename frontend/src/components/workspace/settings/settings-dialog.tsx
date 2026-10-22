@@ -21,11 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
@@ -107,14 +102,6 @@ export type SettingsSection =
   | "notification"
   | "about";
 
-const DISABLED_SECTIONS = new Set<SettingsSection>([
-  "notification",
-  "channels",
-  "memory",
-  "subagents",
-  "about",
-]);
-
 type SettingsDialogProps = React.ComponentProps<typeof Dialog> & {
   defaultSection?: SettingsSection;
 };
@@ -126,6 +113,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const isAdmin = user?.system_role === "admin";
   const [activeSection, setActiveSection] =
     useState<SettingsSection>(defaultSection);
+
   useEffect(() => {
     // When opening the dialog, ensure the active section follows the caller's intent.
     // This allows triggers like "About" to open the dialog directly on that page.
@@ -173,6 +161,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
       },
       { id: "about", label: t.settings.sections.about, icon: InfoIcon },
     ];
+    // User management is meaningless (and confusing) for non-admins, so the
+    // entry point itself is hidden; the page still guards independently in
+    // case a stale dialog store ever activates the section.
     if (isAdmin) {
       items.splice(1, 0, {
         id: "users",
@@ -193,12 +184,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
     t.settings.sections.notification,
     t.settings.sections.about,
   ]);
-  const activeId = sections.some(
-    (section) =>
-      section.id === activeSection && !DISABLED_SECTIONS.has(section.id),
-  )
+  // A `?settings=<section>` deep link (or a stale dialog store) can activate
+  // a section this user's nav does not offer — e.g. user management for a
+  // non-admin — so fall back to the first available section instead of
+  // rendering a panel with no highlighted entry. The base list above is
+  // non-empty, so the fallback itself always resolves.
+  const activeId = sections.some((section) => section.id === activeSection)
     ? activeSection
-    : sections.find((section) => !DISABLED_SECTIONS.has(section.id))!.id;
+    : sections[0]!.id;
   return (
     <Dialog
       {...dialogProps}
@@ -219,43 +212,21 @@ export function SettingsDialog(props: SettingsDialogProps) {
             <ul className="space-y-1 pr-1">
               {sections.map(({ id, label, icon: Icon }) => {
                 const active = activeId === id;
-                const enabled = !DISABLED_SECTIONS.has(id);
-                const button = (
-                  <button
-                    type="button"
-                    disabled={!enabled}
-                    onClick={() => {
-                      if (enabled) setActiveSection(id);
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                      active
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : enabled
-                          ? "text-muted-foreground hover:bg-muted hover:text-foreground"
-                          : "text-muted-foreground/50 cursor-not-allowed opacity-60",
-                    )}
-                  >
-                    <Icon className="size-4" />
-                    <span>{label}</span>
-                  </button>
-                );
                 return (
                   <li key={id}>
-                    {enabled ? (
-                      button
-                    ) : (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="block cursor-not-allowed">
-                            {button}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          {t.sidebar.agentsDisabledTooltip}
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection(id)}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                        active
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="size-4" />
+                      <span>{label}</span>
+                    </button>
                   </li>
                 );
               })}
