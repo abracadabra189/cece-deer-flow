@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, rs } from "@rstest/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import {
   SettingsDialog,
@@ -80,4 +80,27 @@ test("a static-website admin deep link keeps the Users entry but loads nothing",
   expect(screen.getByRole("button", { name: "Users" })).toBeTruthy();
   await screen.findByText(enUS.settings.users.adminOnly);
   expect(loadAdminUsers).not.toHaveBeenCalled();
+});
+
+test("keeps unavailable settings sections visible but prevents selecting them", () => {
+  mountDialog("appearance");
+
+  for (const label of [
+    enUS.settings.sections.notification,
+    enUS.settings.sections.channels,
+    enUS.settings.sections.memory,
+    enUS.settings.sections.subagents,
+    enUS.settings.sections.about,
+  ]) {
+    const button = screen.getByRole("button", { name: label });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(button);
+  }
+
+  expect(
+    screen
+      .getByRole("button", { name: enUS.settings.sections.appearance })
+      .hasAttribute("disabled"),
+  ).toBe(false);
 });

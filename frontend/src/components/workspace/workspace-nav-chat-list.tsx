@@ -15,7 +15,31 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { Tooltip } from "@/components/workspace/tooltip";
 import { useI18n } from "@/core/i18n/hooks";
+
+function UnavailableWorkspaceNavItem({
+  icon: Icon,
+  label,
+  tooltip,
+}: {
+  icon: typeof BotIcon;
+  label: string;
+  tooltip: string;
+}) {
+  return (
+    <SidebarMenuItem>
+      <Tooltip content={tooltip}>
+        <span className="block cursor-not-allowed">
+          <SidebarMenuButton aria-disabled="true" disabled>
+            <Icon />
+            <span>{label}</span>
+          </SidebarMenuButton>
+        </span>
+      </Tooltip>
+    </SidebarMenuItem>
+  );
+}
 
 export function WorkspaceNavChatList() {
   const { t } = useI18n();
@@ -31,45 +55,21 @@ export function WorkspaceNavChatList() {
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/agents")}
-            asChild
-          >
-            <Link className="text-muted-foreground" href="/workspace/agents">
-              <BotIcon />
-              <span>{t.sidebar.agents}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/scheduled-tasks")}
-            asChild
-          >
-            <Link
-              className="text-muted-foreground"
-              href="/workspace/scheduled-tasks"
-            >
-              <CalendarClock />
-              <span>{t.sidebar.scheduledTasks}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            isActive={pathname.startsWith("/workspace/capabilities")}
-            asChild
-          >
-            <Link
-              className="text-muted-foreground"
-              href="/workspace/capabilities"
-            >
-              <BlocksIcon />
-              <span>{t.capabilities.title}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        <UnavailableWorkspaceNavItem
+          icon={BotIcon}
+          label={t.sidebar.agents}
+          tooltip={t.sidebar.agentsDisabledTooltip}
+        />
+        <UnavailableWorkspaceNavItem
+          icon={CalendarClock}
+          label={t.sidebar.scheduledTasks}
+          tooltip={t.sidebar.agentsDisabledTooltip}
+        />
+        <UnavailableWorkspaceNavItem
+          icon={BlocksIcon}
+          label={t.capabilities.title}
+          tooltip={t.sidebar.agentsDisabledTooltip}
+        />
       </SidebarMenu>
     </SidebarGroup>
   );

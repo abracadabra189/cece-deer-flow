@@ -24,6 +24,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { Tooltip } from "@/components/workspace/tooltip";
 import { useI18n } from "@/core/i18n/hooks";
 
 import { useSettingsDialog } from "./settings";
@@ -46,6 +47,27 @@ function NavMenuButtonContent({
     <div className="flex size-full items-center justify-center">
       <SettingsIcon className="text-muted-foreground size-4" />
     </div>
+  );
+}
+
+function UnavailableMenuItem({
+  icon: Icon,
+  label,
+  tooltip,
+}: {
+  icon: typeof BugIcon;
+  label: string;
+  tooltip: string;
+}) {
+  return (
+    <Tooltip content={tooltip}>
+      <span className="block cursor-not-allowed">
+        <DropdownMenuItem disabled>
+          <Icon />
+          {label}
+        </DropdownMenuItem>
+      </span>
+    </Tooltip>
   );
 }
 
@@ -99,31 +121,22 @@ export function WorkspaceNavMenu() {
                     </DropdownMenuItem>
                   </a>
                   <DropdownMenuSeparator />
-                  <a
-                    href="https://github.com/bytedance/deer-flow/issues"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <DropdownMenuItem>
-                      <BugIcon />
-                      {t.workspace.reportIssue}
-                    </DropdownMenuItem>
-                  </a>
-                  <a href="mailto:support@deerflow.tech">
-                    <DropdownMenuItem>
-                      <MailIcon />
-                      {t.workspace.contactUs}
-                    </DropdownMenuItem>
-                  </a>
+                  <UnavailableMenuItem
+                    icon={BugIcon}
+                    label={t.workspace.reportIssue}
+                    tooltip={t.sidebar.agentsDisabledTooltip}
+                  />
+                  <UnavailableMenuItem
+                    icon={MailIcon}
+                    label={t.workspace.contactUs}
+                    tooltip={t.sidebar.agentsDisabledTooltip}
+                  />
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => {
-                      openSettings("about");
-                    }}
-                  >
-                    <InfoIcon />
-                    {t.workspace.about}
-                  </DropdownMenuItem>
+                  <UnavailableMenuItem
+                    icon={InfoIcon}
+                    label={t.workspace.about}
+                    tooltip={t.sidebar.agentsDisabledTooltip}
+                  />
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>

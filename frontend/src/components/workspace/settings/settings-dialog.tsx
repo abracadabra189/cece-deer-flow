@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip } from "@/components/workspace/tooltip";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { useI18n } from "@/core/i18n/hooks";
 import { cn } from "@/lib/utils";
@@ -127,6 +128,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       id: SettingsSection;
       label: string;
       icon: typeof BotIcon;
+      enabled?: boolean;
     }[] = [
       { id: "models", label: t.settings.sections.models, icon: BotIcon },
       {
@@ -143,23 +145,32 @@ export function SettingsDialog(props: SettingsDialogProps) {
         id: "notification",
         label: t.settings.sections.notification,
         icon: BellIcon,
+        enabled: false,
       },
       {
         id: "channels",
         label: t.settings.sections.channels,
         icon: CableIcon,
+        enabled: false,
       },
       {
         id: "memory",
         label: t.settings.sections.memory,
         icon: BrainIcon,
+        enabled: false,
       },
       {
         id: "subagents",
         label: t.settings.sections.subagents,
         icon: UsersRoundIcon,
+        enabled: false,
       },
-      { id: "about", label: t.settings.sections.about, icon: InfoIcon },
+      {
+        id: "about",
+        label: t.settings.sections.about,
+        icon: InfoIcon,
+        enabled: false,
+      },
     ];
     // User management is meaningless (and confusing) for non-admins, so the
     // entry point itself is hidden; the page still guards independently in
@@ -189,9 +200,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
   // non-admin — so fall back to the first available section instead of
   // rendering a panel with no highlighted entry. The base list above is
   // non-empty, so the fallback itself always resolves.
-  const activeId = sections.some((section) => section.id === activeSection)
+  const activeId = sections.some(
+    (section) => section.id === activeSection && section.enabled !== false,
+  )
     ? activeSection
-    : sections[0]!.id;
+    : sections.find((section) => section.enabled !== false)!.id;
   return (
     <Dialog
       {...dialogProps}
@@ -210,23 +223,39 @@ export function SettingsDialog(props: SettingsDialogProps) {
         <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <nav className="bg-sidebar min-h-0 overflow-y-auto rounded-lg border p-2">
             <ul className="space-y-1 pr-1">
-              {sections.map(({ id, label, icon: Icon }) => {
+              {sections.map(({ id, label, icon: Icon, enabled = true }) => {
                 const active = activeId === id;
                 return (
                   <li key={id}>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSection(id)}
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                        active
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="size-4" />
-                      <span>{label}</span>
-                    </button>
+                    {enabled ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection(id)}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                          active
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        <Icon className="size-4" />
+                        <span>{label}</span>
+                      </button>
+                    ) : (
+                      <Tooltip content={t.sidebar.agentsDisabledTooltip}>
+                        <span className="block cursor-not-allowed">
+                          <button
+                            type="button"
+                            disabled
+                            aria-disabled="true"
+                            className="text-muted-foreground flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium opacity-50"
+                          >
+                            <Icon className="size-4" />
+                            <span>{label}</span>
+                          </button>
+                        </span>
+                      </Tooltip>
+                    )}
                   </li>
                 );
               })}
