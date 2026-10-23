@@ -43,6 +43,20 @@ _COMMAND_RE = re.compile(
     re.MULTILINE,
 )
 _TRACEBACK_RE = re.compile(r"(?:Traceback \(most recent call last\)|^\s*File [\"'].+[\"'], line \d+)", re.MULTILINE)
+# CECE-specific requests whose configured skills normally create an artifact or
+# perform an in-sandbox analysis. Keep this deliberately narrow: a generic
+# company lookup or a question about HTML must not cold-start a heavy AIO image.
+_CECE_ARTIFACT_REQUEST_RE = re.compile(
+    r"(?:"
+    r"交互式\s*(?:HTML|网页)"
+    r"|(?:HTML|网页).{0,12}(?:仪表盘|报告|图表)"
+    r"|(?:生成|制作|创建|输出|导出).{0,24}(?:图表|仪表盘|交互式\s*HTML|Excel|Word|PDF)"
+    r"|(?:分析|处理).{0,16}(?:上传(?:的)?(?:Excel|表格|文件)|Excel|表格)"
+    r"|企业深度(?:分析|报告)|企业尽调|投资尽调|发展前景|竞争力分析|竞品对比"
+    r")",
+    re.IGNORECASE,
+)
+_EXPLANATORY_QUESTION_RE = re.compile(r"^\s*(?:什么是|何为|解释(?:一下)?|介绍(?:一下)?)")
 
 # Identity keyed and bounded by live speculative handles. A lock, rather than an
 # asyncio semaphore, also covers the isolated subagent loop. No provider IO runs
@@ -71,7 +85,7 @@ def _message_text(message: HumanMessage) -> str:
 
 
 def should_prewarm_sandbox(state: dict[str, Any]) -> bool:
-    """Predict only explicit code/command/path signals in the latest user turn."""
+    """Predict explicit execution signals and narrow CECE artifact/research requests."""
     messages = state.get("messages")
     if not isinstance(messages, list):
         return False
@@ -79,7 +93,10 @@ def should_prewarm_sandbox(state: dict[str, Any]) -> bool:
     if message is None:
         return False
     text = _URL_RE.sub("", _message_text(message))
-    return bool(_CODE_FENCE_RE.search(text) or _PATH_RE.search(text) or _COMMAND_RE.search(text) or _TRACEBACK_RE.search(text))
+    explicit_execution_signal = bool(_CODE_FENCE_RE.search(text) or _PATH_RE.search(text) or _COMMAND_RE.search(text) or _TRACEBACK_RE.search(text))
+    if explicit_execution_signal:
+        return True
+    return bool(_CECE_ARTIFACT_REQUEST_RE.search(text)) and not bool(_EXPLANATORY_QUESTION_RE.search(text))
 
 
 @dataclass

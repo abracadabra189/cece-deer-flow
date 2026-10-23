@@ -89,6 +89,24 @@ def test_non_execution_text_does_not_speculate(text):
     assert not prewarm.should_prewarm_sandbox({"messages": [HumanMessage(content=text)]})
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "请为兆易创新制作交互式 HTML 仪表盘。",
+        "请分析上传的 Excel 并生成图表。",
+        "请给中百集团做企业深度报告。",
+        "评价一下兆易创新未来两年的发展前景。",
+    ],
+)
+def test_cece_artifact_and_deep_enterprise_requests_speculate(text):
+    assert prewarm.should_prewarm_sandbox({"messages": [HumanMessage(content=text)]})
+
+
+@pytest.mark.parametrize("text", ["介绍一下兆易创新", "企业是什么", "什么是交互式 HTML？"])
+def test_general_conversation_does_not_speculate_for_business_keywords(text):
+    assert not prewarm.should_prewarm_sandbox({"messages": [HumanMessage(content=text)]})
+
+
 @pytest.mark.anyio
 async def test_denied_prewarm_never_acquires(setup, monkeypatch, caplog):
     provider, _ = setup
