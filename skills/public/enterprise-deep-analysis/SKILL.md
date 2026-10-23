@@ -3,6 +3,27 @@ name: enterprise-deep-analysis
 description: Use when the user requests a Chinese company's enterprise portrait, company profile, development outlook, corporate report, competitiveness analysis, investment due diligence, peer comparison, strategic assessment, or an analytical conclusion beyond a single factual lookup. Do not use for one-off requests such as legal representative, registered capital, or one shareholder.
 ---
 
+## HTML 目录导航兼容性（必须遵守）
+
+CECE 的 HTML 制品预览器会注入 `<base>`，以支持相对路径的图片、CSS 和脚本资源。`<a href="#章节ID">` 不能用于目录导航：它会被解析为受保护的制品 API 地址，并在 iframe 中触发 `not_authenticated`。
+
+生成仪表板时采用以下固定结构：
+
+- 每个可导航区块使用稳定的 `id`，例如 `<section id="company-profile">`。
+- 目录使用按钮，例如 `<button type="button" data-scroll-target="company-profile">企业画像</button>`；不得使用片段锚点链接。
+- HTML 内嵌统一脚本，为 `[data-scroll-target]` 绑定点击事件，并调用 `document.getElementById(button.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" })`。
+- 图表点击、筛选、Tab 切换仅使用已内嵌的数据；不得从预览 HTML 请求 `/api/`、线程制品接口或其他依赖 CECE 登录 Cookie 的地址。
+
+## CECE 报告仪表板设计规范
+
+本 Skill 生成的 HTML 是供业务人员阅读的企业研究制品，不是通用营销落地页。采用**数据密集、克制、可审阅**的视觉风格：白色或浅灰底、深色正文、CECE 品牌色仅用于重点、状态和少量强调；避免大面积渐变、装饰性动画、夸张的巨型标题和无业务含义的插画。
+
+- 使用“报告标题与研究边界 → 执行摘要 → KPI 卡片 → 图表/表格 → 结论与数据缺口”的层级；KPI 卡片只展示有来源的关键指标，没有可靠数据时显示“数据暂缺”，不得填充猜测值。
+- 图表优先 Plotly 原生交互；每张图紧邻说明其数据口径、单位、来源与截至日期。表格应支持横向滚动，长文本折行，避免因固定宽度遮挡数据。
+- 单个 HTML 应自包含：将样式、脚本、图表数据和必要图标内嵌；默认不依赖外部 CDN、远程字体、图片链接或运行时接口请求，以保证下载后和 CECE 预览器内都能正常工作。
+- 目录、Tab、筛选和图表交互必须在当前 HTML 内完成；继续使用本 Skill 顶部规定的 `data-scroll-target` 按钮导航，不使用 `href="#..."` 作为目录导航。
+- 不使用 `index.html` 作为固定文件名；仍按本 Skill 的唯一制品命名规则写入 `/mnt/user-data/outputs`，防止不同会话相互覆盖。
+
 # CECE 企业深度分析
 
 ## 定位
