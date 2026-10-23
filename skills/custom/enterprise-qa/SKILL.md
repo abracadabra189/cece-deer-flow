@@ -1,6 +1,6 @@
 ---
 name: enterprise-qa
-description: Use this skill for Chinese enterprise data questions involving company profiles, shareholders, executives, financing, investments, tenders, industry funds, financing companies, regional or industry filters, and competitive financing analysis. Always use the configured enterprise, entity_resolve, and pevc MCP tools instead of guessing facts.
+description: Use when the user requests factual Chinese enterprise, person, industry, region, fund, financing, investment, tender, shareholder, or management lookups, including condition-based lists. Do not use for a full enterprise portrait, development outlook, corporate report, due diligence, strategic assessment, or multi-dimensional competitiveness analysis.
 ---
 
 # 企业问数
