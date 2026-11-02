@@ -15,7 +15,7 @@ rs.mock("@/core/i18n/hooks", () => ({ useI18n: () => ({ t: enUS }) }));
 
 afterEach(cleanup);
 
-test("keeps unavailable workspace destinations visible but prevents navigation", () => {
+test("keeps CECE-disabled workspace destinations visible but prevents navigation", () => {
   render(
     <SidebarProvider>
       <WorkspaceNavChatList />
@@ -25,6 +25,7 @@ test("keeps unavailable workspace destinations visible but prevents navigation",
   for (const label of [
     enUS.sidebar.agents,
     enUS.sidebar.scheduledTasks,
+    enUS.usage.title,
     enUS.capabilities.title,
   ]) {
     const button = screen.getByRole("button", { name: label });

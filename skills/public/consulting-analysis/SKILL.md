@@ -334,6 +334,30 @@ Receive the completed **Analysis Framework** and **Data Package** from upstream,
 | **Chart Files** | Local file paths for generated chart images. If not provided, will be generated in Step 2.3 using available visualization skills | Optional |
 | **External Search Findings** | URLs and summaries for inline citations | Optional |
 
+## CECE HTML Artifact Budget
+
+These CECE rules override every later generic instruction in this skill about
+chart generation, visualization skills, or report artifacts.
+
+- Produce Markdown and comparison tables by default. Generate an interactive
+  HTML report only when the user explicitly requests HTML, a dashboard, a web
+  page, or an interactive artifact.
+- For an explicitly requested HTML artifact, create a **single self-contained
+  HTML file** in `/mnt/user-data/outputs` with its CSS, JavaScript, and SVG
+  embedded. Do not create `index.html`, `data.js`, `app.js`, or chart-image
+  bundles.
+- The initial artifact uses **one `write_file` call** and must not use `bash`,
+  `cat`, `tee`, heredocs, or Python to construct or rewrite the HTML.
+- Run **one structural validation command** only: verify that the file exists,
+  is non-empty, and contains `</html>`. Do not perform visual iteration,
+  browser checks, chart tuning, or layout review.
+- If that structural check fails, make one small targeted repair. If it still
+  fails, preserve the existing artifact, state the limitation, and deliver the
+  verified analysis without further tool calls.
+- Artifact generation uses only already collected data. Do not download new
+  public-web material, fetch PDFs, call `curl`/`wget`, retry URLs, or broaden
+  data collection while creating or validating the artifact.
+
 ## Phase 2 Workflow
 
 ### Step 2.1: Receive and Validate Inputs
@@ -358,7 +382,11 @@ Map the final report structure from the Analysis Framework:
 
 ### Step 2.3: Generate Chapter Charts (Pre-Report Visualization)
 
-Before writing the report, generate all planned charts from the Analysis Framework's **Visualization & Content Plan**. This step ensures every sub-chapter has its "Visual Anchor" ready before narrative writing begins.
+When running in CECE, do not execute this generic chart-generation workflow.
+Apply the **CECE HTML Artifact Budget** above instead: Markdown tables are the
+default visual evidence, and HTML is an explicit, bounded artifact request.
+
+Outside CECE only: before writing the report, generate all planned charts from the Analysis Framework's **Visualization & Content Plan**. This step ensures every sub-chapter has its "Visual Anchor" ready before narrative writing begins.
 
 #### When to Execute This Step
 
@@ -590,7 +618,8 @@ After data collection, user provides: Analysis Framework + Data Summary with bra
 ### Phase 2 Quality Checklist (Final Report)
 
 - [ ] **NO HALLUCINATION**: All numbers and charts are verified against the input Data Summary
-- [ ] All planned charts generated before report writing (Step 2.3 completed first)
+- [ ] Outside CECE: all planned charts generated before report writing (Step 2.3 completed first)
+- [ ] In CECE: HTML was generated only on explicit request and followed the CECE HTML Artifact Budget
 - [ ] All sections present in correct order (Abstract → Introduction → Body → Conclusion → References)
 - [ ] Every sub-chapter follows "Visual Anchor → Data Contrast → Integrated Analysis"
 - [ ] Every sub-chapter ends with a min. 200-word analytical paragraph
