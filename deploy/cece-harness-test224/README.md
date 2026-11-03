@@ -9,7 +9,7 @@ cp deploy/cece-harness-test224/config.example.yaml config.yaml
 cp deploy/cece-harness-test224/extensions_config.example.json extensions_config.json
 ```
 
-Populate `.env` with the values referenced by the templates, including `DASHSCOPE_API_KEY`, `DATABASE_URL`, and `HYDC_API_KEY`. `HYDC_API_KEY` is injected into sandbox containers only for the HYDC Skill; do not put it in a prompt, a command-line argument, or a tracked file. The CECE MCP authorization variables remain documented in the extensions template but are not needed while those MCP servers are disabled.
+Populate `.env` with the values referenced by the templates, including `DASHSCOPE_API_KEY`, `DATABASE_URL`, and the enabled CECE MCP authorization variables. Each `Authorization` variable contains the complete header value, including any `Bearer ` prefix.
 
 After changing `.env`, recreate the Gateway so its container receives the new environment:
 
