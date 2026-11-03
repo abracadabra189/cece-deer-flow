@@ -116,11 +116,17 @@ export function WorkspaceNavChatList() {
           label={t.sidebar.scheduledTasks}
           tooltip={t.sidebar.agentsDisabledTooltip}
         />
-        <UnavailableWorkspaceNavItem
-          icon={ChartColumn}
-          label={t.usage.title}
-          tooltip={t.sidebar.agentsDisabledTooltip}
-        />
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={pathname.startsWith("/workspace/usage")}
+            asChild
+          >
+            <Link className="text-muted-foreground" href="/workspace/usage">
+              <ChartColumn />
+              <span>{t.usage.title}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <UnavailableWorkspaceNavItem
           icon={BlocksIcon}
           label={t.capabilities.title}
