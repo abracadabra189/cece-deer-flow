@@ -1,0 +1,194 @@
+config_version: 40
+
+# CECE test224 deploy baseline. Copy to the deployment root as config.yaml.
+# Secrets are supplied exclusively by .env.
+lead_prompt_overlay:
+  prepend: |
+    <cece-enterprise-data-policy>
+    对企业、公司、上市公司、集团、产业、园区、人物、融资、竞争格局、企业画像、企业报告、发展前景等问题，使用 HYDC 行业洞察 Skill 获取事实依据。当前环境不使用 CECE 企业数据 MCP、qwen-enhanced-search 或其他公网检索工具补充业务事实。
+
+    处理企业或产业问题时，先确认分析对象与所需口径，再读取 /mnt/skills/public/hydc-industry-insight/SKILL.md，并通过该 Skill 指定的 hydc.mjs 查询。不得猜测 HYDC 命令、参数、数据口径或 URL。
+
+    若 HYDC 无结果、权限不足或接口不可用，要如实说明，不得将其表述为企业不存在或没有相关数据。
+
+    企业与产业问题的回答须区分“事实、分析、判断”。除非用户明确只需要一句简介，回答应先给出核心结论，再列出关键事实依据及其数据口径/时间范围；随后围绕业务与产品、行业位置与竞争、经营与资本或风险等相关维度进行推导，并明确数据缺口、时效限制和可能改变结论的风险因素。不得只罗列工具返回结果，也不得把未验证的推测表述为事实。
+
+    工具调用遵循“最小充分证据”原则：先按 Skill 要求对未使用过的业务域执行一次 help，再执行范围明确的 query；已确认过的命令与参数不重复 help。普通问答最多 2 次 HYDC 调用，常规研究最多 4 次，用户明确要求的深度研究最多 8 次；每次查询均限制对象、时间范围与返回条数，不得批量枚举、全量抓取或为了显得全面而调用无关接口。HYDC 数据已足以支撑结论时立即收敛。
+
+    企业与产业问题默认采用“无图表分析模式”。内部处理顺序必须是：主体确认、事实数据核验、数据归纳、分析推导、综合判断。除非用户明确要求图表、可视化、HTML 或报告制品，否则不得生成柱状图、折线图、饼图、SVG、Mermaid、PNG 或 HTML；不得为生成图表启动沙箱。可量化数据优先使用 Markdown 表格，建议列为“维度、关键事实/数据、时间范围、数据来源或说明”；没有足够结构化数据时使用事实清单，不得补造数据或图表。
+
+    用户明确要求 HTML、可交互报告、仪表盘或网页制品时，采用严格的“单文件生成一次、结构检查一次、最多一次小修复”流程：仅在 /mnt/user-data/outputs 生成一个 CSS、JavaScript、SVG 均内嵌的独立 HTML 文件；不得通过 bash、cat、tee、heredoc、Python 拼接或重写页面，不创建 data.js、app.js 等附属文件。初次生成后只允许检查文件存在、非空及包含 </html>；仅当该结构检查失败时允许一次小范围修复。不得因视觉风格、SVG 位置、标签、配色或布局反复重写整页；修复后仍异常时保留已有制品、说明限制并直接交付已核验的分析结论。制品生成和检查阶段不得继续联网、下载公告/PDF、抓取网页、补充检索或扩大数据范围。
+
+    上述方法论约束取数与推理顺序，不要求机械展示固定标题。应根据用户问题的复杂度自然组织回答：短问答直接用连贯文字回答；需要展开时，可酌情使用贴合内容的小标题或表格，但不要逐字照搬“核心结论”“事实数据与依据”“关键数据表”“分析推导”“综合判断、风险与建议”等模板标签，也不要为了凑全模板而重复内容。复杂问题仍应让用户能够清楚区分结论、事实依据、分析过程与风险提示。
+
+    对“发展前景、企业画像、竞争格局、投资价值、经营评价、产业趋势、园区评价”等复杂企业或产业问题，不能只给概括性判断。应在数据可支持的前提下，至少选择四个相互关联的维度深入分析：商业模式与业务结构、产品技术与壁垒、市场空间与客户需求、行业位置与竞争对手、经营表现与增长质量、融资资本与治理团队、产业链区域政策环境、风险因素与潜在催化剂。每个分析维度都应形成“HYDC 已核验事实或数据 → 对企业/产业的实际影响 → 有边界的判断”的推导链；优先做时间趋势、同业/区域比较、因果关系和正反两面验证，而不是把多个事实逐条罗列。
+
+    深度分析必须回答“为什么”和“接下来怎么看”：说明增长或承压的具体驱动、竞争优势是否可持续、主要风险通过何种路径影响结果、哪些指标或事件可能验证或推翻当前判断。若关键维度缺少 CECE 数据，应明确该缺口及其对结论可信度的影响，不得以常识性套话代替证据。
+
+    非企业类通用问答、纯写作、翻译、编程等任务不受此规则限制。用户明确要求仅联网搜索、仅使用指定来源时，遵从用户要求。
+    <cece-sandbox-execution-policy>
+    沙箱不承担通用公网检索职责。企业、产业、新闻、公告、行情及其他业务事实统一通过 HYDC 行业洞察 Skill 获取。
+    仅允许按 Skill 指定方式运行 `node /mnt/skills/public/hydc-industry-insight/scripts/hydc.mjs` 访问 HYDC；不得传入 --api-key、--api-key-env、--endpoint 或自行构造 HTTP 请求。除该唯一例外外，不得在沙箱中使用 bash、curl、wget、urllib、requests、Node fetch 或浏览器访问公网；不得自行下载公告 PDF、抓取网页、猜测或改写 URL、跨域名轮询、重试多个网址或爬取搜索/新闻列表页。
+    文件定位仅限 /mnt/user-data；禁止执行 find /、du / 或扫描系统目录。已有数据足以支撑结论时，立即收敛并回答。
+    </cece-sandbox-execution-policy>
+    </cece-enterprise-data-policy>
+
+models:
+  - &cece_model_defaults
+    name: deepseek-v4.1-flash1021
+    display_name: DeepSeek V4.1 Flash
+    use: langchain_openai:ChatOpenAI
+    model: deepseek-v4.1-flash-1017
+    max_tokens: 32768
+    context_window: 1000000
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    reasoning:
+      thinking: optional
+      dialect: openai_extra_body
+      history: preserve
+    when_thinking_enabled:
+      extra_body:
+        enable_thinking: true
+    when_thinking_disabled:
+      extra_body:
+        enable_thinking: false
+    api_key: $DASHSCOPE_API_KEY
+
+  - <<: *cece_model_defaults
+    name: qwen3.8-flash
+    display_name: Qwen3.8 Flash
+    model: qwen3.8-flash
+    max_tokens: 16384
+    reasoning: null
+    when_thinking_enabled: null
+    when_thinking_disabled: null
+
+  - <<: *cece_model_defaults
+    name: qwen3.8-max
+    display_name: Qwen3.8 Max
+    model: qwen3.8-max
+    max_tokens: 32768
+    reasoning: null
+    when_thinking_enabled: null
+    when_thinking_disabled: null
+
+  - <<: *cece_model_defaults
+    name: qwen-plus-latest
+    display_name: Qwen Plus Latest
+    model: qwen-plus-latest
+    max_tokens: 16384
+    reasoning: null
+    when_thinking_enabled: null
+    when_thinking_disabled: null
+
+  - <<: *cece_model_defaults
+    name: kimi-k3
+    display_name: Kimi K3
+    model: kimi-k3
+    max_tokens: 32768
+    when_thinking_enabled: null
+    when_thinking_disabled: null
+    reasoning:
+      thinking: required
+      dialect: openai_extra_body
+      history: preserve
+
+  - <<: *cece_model_defaults
+    name: zhipu-glm-5.3-flash
+    display_name: GLM-5.3-Flash
+    model: ZHIPU/GLM-5.3-Flash
+    max_tokens: 16384
+    reasoning: null
+    when_thinking_enabled: null
+    when_thinking_disabled: null
+
+  - <<: *cece_model_defaults
+    name: zhipu-glm-5.3
+    display_name: GLM-5.3
+    model: ZHIPU/GLM-5.3
+    max_tokens: 32768
+    reasoning: null
+    when_thinking_enabled: null
+    when_thinking_disabled: null
+
+token_budget:
+  enabled: true
+  max_tokens: 1500000
+  warn_threshold: 0.40
+  hard_stop_threshold: 1.0
+
+tool_progress:
+  enabled: true
+  stagnation_threshold: 3
+  warn_escalation_count: 2
+  inject_assessment: true
+  jaccard_similarity_threshold: 0.8
+  min_word_count_for_similarity: 10
+
+tool_search:
+  enabled: true
+  auto_promote_top_k: 3
+
+tool_output:
+  enabled: true
+  externalize_min_chars: 12000
+  tool_overrides:
+    enterprise_get_company_graphy: 18000
+  elide_superseded_writes: true
+  superseded_write_min_chars: 4000
+  keep_recent_writes: 1
+
+summarization:
+  enabled: true
+  model_name: qwen3.8-flash
+  trigger:
+    - type: tokens
+      value: 120000
+  keep:
+    type: tokens
+    value: 32000
+  trim_tokens_to_summarize: 12000
+
+input_polish:
+  enabled: true
+  model_name: qwen3.8-flash
+  max_chars: 4000
+
+skills:
+  deferred_discovery: true
+
+database:
+  backend: postgres
+  postgres_url: $DATABASE_URL
+  postgres_schema: deerflow
+  pool_size: 5
+  command_timeout: 30
+
+sandbox:
+  use: deerflow.community.aio_sandbox:AioSandboxProvider
+  image: cece-harness-sandbox:base-v1
+  prewarm: true
+  prewarm_max_concurrent: 1
+  container_prefix: cece-harness-sandbox
+  replicas: 8
+  idle_timeout: 900
+  bash_command_timeout: 60
+  environment:
+    DISABLE_BROWSER: "true"
+    DISABLE_JUPYTER: "true"
+    DISABLE_CODE_SERVER: "true"
+    DISABLE_VNC: "true"
+    HYDC_API_KEY: $HYDC_API_KEY
+  network:
+    mode: open
+
+tools:
+  - name: read_file
+    group: file:read
+    use: deerflow.sandbox.tools:read_file_tool
+  - name: write_file
+    group: file:write
+    use: deerflow.sandbox.tools:write_file_tool
+  - name: bash
+    group: bash
+    use: deerflow.sandbox.tools:bash_tool
