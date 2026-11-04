@@ -57,6 +57,12 @@ Lets a caller pass per-request, short-lived end-user credentials (e.g. an ERP to
 - Keep traversal, YAML parsing, and archive construction bounded and cancellable. Reject unsupported filesystem operations rather than following links; report limits instead of truncating results. Preserve YAML preflight before object construction.
 - Export includes raw saved files and is not a secret audit. Return relative paths and generic errors without leaking source content. See the [export API contract](../../../../docs/API.md#export-a-custom-skill) for response fields and limits.
 
+### Auto skill synthesis (`skills/auto/`)
+
+`auto_skill.enabled` learns a reusable skill from each **completed** run, so the next similar query matches it instead of re-deriving the path. Complements `skill_evolution` (the agent writing a skill mid-run): auto-skill spends no agent turn and sees the whole trajectory.
+
+The producer (`auto_skill_middleware.py`) runs in `after_agent`, after the answer streamed: it extracts a bounded trajectory in memory and enqueues to `queue.py`'s debounced daemon-Timer worker, so it adds no run latency, and swallows every exception (learning is purely additive). **Lead chain only** — a subagent trajectory is a fragment of the lead's. `synthesizer.py` renders `{name_prefix}-{scenario-slug}-v{n}` and writes through the *same* gates as `skill_manage`: `validate_skill_name`, `validate_skill_markdown_content`, `enforce_static_scan` over staged bytes, then `scan_skill_content` (reads `skill_evolution.*`), settling write + history + cache refresh + `publish_skills_cache_reset` as one `await_drained` unit. A repeat scenario creates `v{n+1}` and never overwrites; retention prunes only candidates whose frontmatter still carries `metadata.author: auto-skill`, so an operator's same-named skill survives. Full contract: [AUTO_SKILL.md](../../../../docs/AUTO_SKILL.md). Tests: `tests/test_auto_skill_*.py`; the end-to-end suite drives the real chain with only the model stubbed and asserts the result is discoverable and enabled — a skill written but not matchable would pass every other check and still fail the feature.
+
 ### Evolution host checks and recovery
 
 `mutations/service.py` shares one shielded check per proposal. A cancelled waiter

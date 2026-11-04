@@ -35,6 +35,12 @@ backend/config.yaml
 mcp_config.json
 extensions_config.json
 
+# Runtime sidecars written beside the resolved extensions config: cross-process
+# file locks and SharedResetMarker generation files (mcp-cache-reset,
+# skills-cache-reset). Created by skill/MCP mutations, never committed.
+.extensions_config.json.lock
+.extensions_config.json.*.json
+
 # Local spreadsheet tooling and generated workbook outputs
 tmp_spreadsheet_node*/
 outputs/

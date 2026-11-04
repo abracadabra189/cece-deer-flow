@@ -676,6 +676,19 @@ def build_middlewares(
                 )
             )
 
+    # Add AutoSkillMiddleware after MemoryMiddleware: both are after_agent
+    # producers that only enqueue, so neither delays run finalization. Lead-only
+    # by construction — a subagent trajectory is a fragment of the lead's.
+    if resolved_app_config.auto_skill.enabled:
+        from deerflow.agents.middlewares.auto_skill_middleware import AutoSkillMiddleware
+
+        middlewares.append(
+            AutoSkillMiddleware(
+                config=resolved_app_config.auto_skill,
+                agent_name=agent_name,
+            )
+        )
+
     # Add ViewImageMiddleware only if the current model supports vision.
     # Use the resolved runtime model_name from make_lead_agent to avoid stale config values.
     model_config = resolved_app_config.get_model_config(model_name) if model_name else None
