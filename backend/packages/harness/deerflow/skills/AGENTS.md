@@ -57,14 +57,6 @@ Lets a caller pass per-request, short-lived end-user credentials (e.g. an ERP to
 - Keep traversal, YAML parsing, and archive construction bounded and cancellable. Reject unsupported filesystem operations rather than following links; report limits instead of truncating results. Preserve YAML preflight before object construction.
 - Export includes raw saved files and is not a secret audit. Return relative paths and generic errors without leaking source content. See the [export API contract](../../../../docs/API.md#export-a-custom-skill) for response fields and limits.
 
-### Auto skill synthesis (`skills/auto/`)
-
-`auto_skill.enabled` learns a reusable skill from each **completed** run, so the next similar query matches it rather than re-deriving the path. Complements `skill_evolution` (agent-written mid-run): auto-skill spends no turn and sees the whole trajectory.
-
-The producer (`auto_skill_middleware.py`) runs in `after_agent`: it extracts a bounded trajectory and enqueues to `queue.py`'s debounced worker, adding no latency, and swallows every exception (learning is purely additive). **Lead chain only** — a subagent trajectory is a fragment of the lead's.
-
-`store.py` publishes **globally** to `{base_dir}/integrations/skills/auto-skill/{name}/`: the only unconditionally-scanned, runtime-writable, default-enabled root for every user (LEGACY `skills/custom/` is shadow-mounted away; `skills/public/` is `:ro` in the image). They surface as read-only managed integration skills; a same-named custom skill shadows one. The visible name is **stable** (`{name_prefix}-{slug}`, version only in `metadata.version`), so one package per scenario is discoverable and the name never churns; a hit skill gets a `create`/`update`/`no_change` decision, and an update retires the outgoing package to `{base_dir}/auto-skill-backup/{name}/v{n}/`. Writes pass the *same* four gates as `skill_manage`, then retire prompt caches with **no** `user_id`. Details: [AUTO_SKILL.md](../../../../docs/AUTO_SKILL.md). Tests: `tests/test_auto_skill_*.py`; the end-to-end suite stubs only the model and asserts one user's skill is visible **and enabled** to another.
-
 ### Evolution host checks and recovery
 
 `mutations/service.py` shares one shielded check per proposal. A cancelled waiter
