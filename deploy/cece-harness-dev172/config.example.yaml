@@ -1,13 +1,13 @@
 config_version: 40
 
-# CECE test224 deploy baseline. Copy to the deployment root as config.yaml.
+# CECE dev172 deploy baseline. Copy to the deployment root as config.yaml.
 # Secrets are supplied exclusively by .env.
 lead_prompt_overlay:
   prepend: |
     <cece-enterprise-data-policy>
     对企业、公司、上市公司、集团、产业、园区、人物、融资、竞争格局、企业画像、企业报告、发展前景等问题，使用 HYDC 行业洞察 Skill 获取事实依据。当前环境不使用 CECE 企业数据 MCP、qwen-enhanced-search 或其他公网检索工具补充业务事实。
 
-    处理企业或产业问题时，先确认分析对象与所需口径，再读取 /mnt/skills/public/hydc-industry-insight/SKILL.md，并通过该 Skill 指定的 hydc.mjs 查询。不得猜测 HYDC 命令、参数、数据口径或 URL。
+    处理企业或产业问题时，先确认分析对象与所需口径，再读取 /mnt/skills/public/cece-hydc-data/SKILL.md，并通过该 Skill 指定的 hydc.mjs 查询。不得猜测 HYDC 命令、参数、数据口径或 URL。
 
     若 HYDC 无结果、权限不足或接口不可用，要如实说明，不得将其表述为企业不存在或没有相关数据。
 
@@ -28,7 +28,7 @@ lead_prompt_overlay:
     非企业类通用问答、纯写作、翻译、编程等任务不受此规则限制。用户明确要求仅联网搜索、仅使用指定来源时，遵从用户要求。
     <cece-sandbox-execution-policy>
     沙箱不承担通用公网检索职责。企业、产业、新闻、公告、行情及其他业务事实统一通过 HYDC 行业洞察 Skill 获取。
-    仅允许按 Skill 指定方式运行 `node /mnt/skills/public/hydc-industry-insight/scripts/hydc.mjs` 访问 HYDC；不得传入 --api-key、--api-key-env、--endpoint 或自行构造 HTTP 请求。除该唯一例外外，不得在沙箱中使用 bash、curl、wget、urllib、requests、Node fetch 或浏览器访问公网；不得自行下载公告 PDF、抓取网页、猜测或改写 URL、跨域名轮询、重试多个网址或爬取搜索/新闻列表页。
+    仅允许按 Skill 指定方式运行 `node /mnt/skills/public/cece-hydc-data/scripts/hydc.mjs` 访问 HYDC；不得传入凭据、端点或超时覆盖参数，也不得自行构造 HTTP 请求。除该唯一例外外，不得在沙箱中使用 bash、curl、wget、urllib、requests、Node fetch 或浏览器访问公网；不得自行下载公告 PDF、抓取网页、猜测或改写 URL、跨域名轮询、重试多个网址或爬取搜索/新闻列表页。
     文件定位仅限 /mnt/user-data；禁止执行 find /、du / 或扫描系统目录。已有数据足以支撑结论时，立即收敛并回答。
     </cece-sandbox-execution-policy>
     </cece-enterprise-data-policy>

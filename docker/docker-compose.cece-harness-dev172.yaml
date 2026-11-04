@@ -1,0 +1,140 @@
+# CECE Harness dev172 deployment.
+#
+# Runtime secrets and host paths live in the deployment-root .env; committed
+# config templates live at deploy/cece-harness-dev172/.
+#
+# Required .env values:
+#   BIND_HOST, PORT, POSTGRES_HOST_PORT
+#   CECE_GATEWAY_IMAGE, CECE_FRONTEND_IMAGE
+#   DEER_FLOW_HOME, DEER_FLOW_CONFIG_PATH, DEER_FLOW_EXTENSIONS_CONFIG_PATH
+#   DEER_FLOW_SANDBOX_HOST_GATEWAY_IP
+#   BETTER_AUTH_SECRET, DEER_FLOW_INTERNAL_AUTH_TOKEN
+#   POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATA_DIR
+
+services:
+  postgres:
+    image: ${CECE_POSTGRES_IMAGE:-cece-harness-postgres:16-alpine}
+    container_name: cece-harness-dev172-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ${POSTGRES_DATA_DIR}:/var/lib/postgresql/data
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${POSTGRES_HOST_PORT:-15432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - cece-harness-dev172-net
+    restart: unless-stopped
+
+  redis:
+    image: ${CECE_REDIS_IMAGE:-cece-harness-redis:7-alpine}
+    container_name: cece-harness-dev172-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - cece-harness-dev172-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - cece-harness-dev172-net
+    restart: unless-stopped
+
+  gateway:
+    image: ${CECE_GATEWAY_IMAGE:?set CECE_GATEWAY_IMAGE in .env}
+    container_name: cece-harness-dev172-gateway
+    command: sh -c "cd backend && PYTHONPATH=. exec uv run --no-sync uvicorn app.gateway.app:app --host 0.0.0.0 --port 8001 --workers ${GATEWAY_WORKERS:-1} --timeout-graceful-shutdown 10"
+    stop_grace_period: 90s
+    extra_hosts:
+      - "host.docker.internal:${DEER_FLOW_SANDBOX_HOST_GATEWAY_IP}"
+    volumes:
+      - ${DEER_FLOW_CONFIG_PATH}:/app/backend/config.yaml:ro
+      - ${DEER_FLOW_EXTENSIONS_CONFIG_PATH}:/app/backend/extensions_config.json
+      - ../skills:/app/skills:ro
+      - ${DEER_FLOW_HOME}:/app/backend/.deer-flow
+    working_dir: /app
+    environment:
+      CI: "true"
+      DEER_FLOW_PROJECT_ROOT: /app
+      DEER_FLOW_HOME: /app/backend/.deer-flow
+      DEER_FLOW_CONFIG_PATH: /app/backend/config.yaml
+      DEER_FLOW_EXTENSIONS_CONFIG_PATH: /app/backend/extensions_config.json
+      DEER_FLOW_STREAM_BRIDGE_REDIS_URL: redis://redis:6379/0
+      DEER_FLOW_CHANNELS_LANGGRAPH_URL: http://gateway:8001/api
+      DEER_FLOW_CHANNELS_GATEWAY_URL: http://gateway:8001
+      DEER_FLOW_INTERNAL_AUTH_TOKEN: ${DEER_FLOW_INTERNAL_AUTH_TOKEN}
+      DEER_FLOW_HOST_BASE_DIR: ${DEER_FLOW_HOME}
+      DEER_FLOW_SANDBOX_HOST: host.docker.internal
+      NO_PROXY: ${NO_PROXY:-}${NO_PROXY:+,}localhost,127.0.0.1,::1,gateway,frontend,nginx,postgres,redis,host.docker.internal
+      no_proxy: ${no_proxy:-}${no_proxy:+,}localhost,127.0.0.1,::1,gateway,frontend,nginx,postgres,redis,host.docker.internal
+    env_file:
+      - path: ../.env
+        required: false
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; response = urllib.request.urlopen('http://127.0.0.1:8001/health/ready', timeout=5); raise SystemExit(0 if response.status == 200 else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - cece-harness-dev172-net
+    restart: unless-stopped
+
+  frontend:
+    image: ${CECE_FRONTEND_IMAGE:?set CECE_FRONTEND_IMAGE in .env}
+    container_name: cece-harness-dev172-frontend
+    environment:
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      DEER_FLOW_INTERNAL_GATEWAY_BASE_URL: http://gateway:8001
+    env_file:
+      - path: ../frontend/.env
+        required: false
+    networks:
+      - cece-harness-dev172-net
+    restart: unless-stopped
+
+  nginx:
+    image: ${CECE_NGINX_IMAGE:-cece-harness-nginx:alpine}
+    container_name: cece-harness-dev172-nginx
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${PORT:-2026}:2026"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        cp /etc/nginx/nginx.conf.template /etc/nginx/nginx.conf
+        test -e /proc/net/if_inet6 || sed -i '/^[[:space:]]*listen[[:space:]]\+\[::\]:2026[[:space:]]/d' /etc/nginx/nginx.conf
+        exec nginx -g 'daemon off;'
+    depends_on:
+      frontend:
+        condition: service_started
+      gateway:
+        condition: service_healthy
+    networks:
+      - cece-harness-dev172-net
+    restart: unless-stopped
+
+volumes:
+  cece-harness-dev172-redis-data:
+    name: cece-harness-dev172-redis-data
+
+networks:
+  cece-harness-dev172-net:
+    name: cece-harness-dev172-net
+    driver: bridge
