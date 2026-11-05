@@ -15,17 +15,19 @@ rs.mock("@/core/i18n/hooks", () => ({ useI18n: () => ({ t: enUS }) }));
 
 afterEach(cleanup);
 
-test("keeps CECE-disabled workspace destinations visible but prevents navigation", () => {
+test("renders Token usage as an enabled workspace navigation link", () => {
   render(
     <SidebarProvider>
       <WorkspaceNavChatList />
     </SidebarProvider>,
   );
 
+  const usageLink = screen.getByRole("link", { name: enUS.usage.title });
+  expect(usageLink.getAttribute("href")).toBe("/workspace/usage");
+
   for (const label of [
     enUS.sidebar.agents,
     enUS.sidebar.scheduledTasks,
-    enUS.usage.title,
     enUS.capabilities.title,
   ]) {
     const button = screen.getByRole("button", { name: label });
