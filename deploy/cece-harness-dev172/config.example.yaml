@@ -157,6 +157,28 @@ input_polish:
 skills:
   deferred_discovery: true
 
+# Learn reusable global skills from completed tool-assisted runs. This is
+# intentionally enabled for the dev172 deployment; generated skills are shared
+# across users, so keep the trajectory budgets bounded.
+auto_skill:
+  enabled: true
+  model_name: qwen3.8-flash
+  name_prefix: "auto"
+  min_tool_calls: 2
+  max_trajectory_chars: 24000
+  max_tool_result_chars: 2000
+  debounce_seconds: 20
+  max_versions: 5
+  queue_max_size: 64
+  shutdown_flush_timeout_seconds: 30
+
+# Auto Skill uses this existing moderation path before publishing a generated
+# package. Keep agent-managed skill editing disabled while allowing moderation.
+skill_evolution:
+  enabled: false
+  moderation_model_name: qwen3.8-flash
+  security_fail_closed: true
+
 database:
   backend: postgres
   postgres_url: $DATABASE_URL
