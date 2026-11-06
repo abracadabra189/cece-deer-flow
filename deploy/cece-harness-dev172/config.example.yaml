@@ -1,11 +1,5 @@
 config_version: 40
 
-# 30+ 中间件使每个逻辑步消耗多个 LangGraph super-step。HYDC 研究常需
-# help → query → 补充查询 的多步路径，默认 100 步容易在产出最终答案前耗尽；
-# 被步数上限截断的 run 没有可学习的最终答案，auto-skill 也就无法沉淀。
-# 成本仍由下方 token_budget 兜底，因此这里放到 1000（等于 max_recursion_limit）。
-recursion_limit: 1000
-
 # CECE dev172 deploy baseline. Copy to the deployment root as config.yaml.
 # Secrets are supplied exclusively by .env.
 lead_prompt_overlay:
