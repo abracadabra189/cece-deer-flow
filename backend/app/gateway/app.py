@@ -323,6 +323,36 @@ async def _shutdown_memory_backend(*, retrieval_warm_finished: bool) -> None:
                 logger.exception("Failed to close memory backend on shutdown")
 
 
+async def _flush_auto_skill_queue() -> None:
+    """Drain queued auto-skill syntheses before the worker exits.
+
+    Best effort and bounded by ``auto_skill.shutdown_flush_timeout_seconds``:
+    a pending trajectory is a learning optimization, never a correctness
+    requirement, so a timeout or failure logs and lets teardown continue. Runs
+    are already drained by ``langgraph_runtime``'s exit, so no new trajectories
+    arrive during the flush.
+    """
+    try:
+        app_cfg: AppConfig = await asyncio.to_thread(get_app_config)
+        config = app_cfg.auto_skill
+        if not config.enabled:
+            return
+
+        from deerflow.skills.auto.queue import get_auto_skill_queue
+
+        queue = get_auto_skill_queue()
+        if queue.pending_count == 0:
+            return
+        timeout = config.shutdown_flush_timeout_seconds
+        drained = await await_drained(asyncio.to_thread(queue.flush, timeout=timeout))
+        if drained:
+            logger.info("Auto-skill shutdown flush synthesized %d trajectory(ies)", drained)
+        else:
+            logger.warning("Auto-skill shutdown flush did not finish within %.1fs; queued trajectories may be lost", timeout)
+    except Exception:
+        logger.warning("Failed to flush the auto-skill queue on shutdown (non-fatal)", exc_info=True)
+
+
 async def _run_startup_trash_sweep(app: FastAPI, startup_config) -> None:
     """One trash retention sweep at gateway startup (Phase-2 spec §8.3).
 
@@ -1029,6 +1059,11 @@ async def _gateway_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
         except Exception:
             logger.exception("Failed to close browser sessions")
+
+        # Drain pending auto-skill syntheses before the memory backend closes:
+        # synthesis reads config and writes skills, so it must finish while both
+        # are still live. Bounded and best effort.
+        await _flush_auto_skill_queue()
 
         # Drain the memory backend's pending-update buffer before the worker
         # exits (best-effort, bounded). IM channels and the scheduler are

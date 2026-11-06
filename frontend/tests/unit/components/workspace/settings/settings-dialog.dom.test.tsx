@@ -82,13 +82,12 @@ test("a static-website admin deep link keeps the Users entry but loads nothing",
   expect(loadAdminUsers).not.toHaveBeenCalled();
 });
 
-test("keeps unavailable settings sections visible but prevents selecting them", () => {
+test("keeps unavailable settings sections disabled while memory remains selectable", () => {
   mountDialog("appearance");
 
   for (const label of [
     enUS.settings.sections.notification,
     enUS.settings.sections.channels,
-    enUS.settings.sections.memory,
     enUS.settings.sections.subagents,
     enUS.settings.sections.about,
   ]) {
@@ -101,6 +100,11 @@ test("keeps unavailable settings sections visible but prevents selecting them", 
   expect(
     screen
       .getByRole("button", { name: enUS.settings.sections.appearance })
+      .hasAttribute("disabled"),
+  ).toBe(false);
+  expect(
+    screen
+      .getByRole("button", { name: enUS.settings.sections.memory })
       .hasAttribute("disabled"),
   ).toBe(false);
 });

@@ -157,7 +157,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
         id: "memory",
         label: t.settings.sections.memory,
         icon: BrainIcon,
-        enabled: false,
       },
       {
         id: "subagents",

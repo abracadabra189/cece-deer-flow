@@ -1,4 +1,5 @@
 from .app_config import get_app_config
+from .auto_skill_config import AutoSkillConfig
 from .extensions_config import ExtensionsConfig, get_extensions_config
 from .knowledge_base_config import KnowledgeBaseConfig
 from .loop_detection_config import LoopDetectionConfig
@@ -17,6 +18,7 @@ from .tracing_config import (
 
 __all__ = [
     "get_app_config",
+    "AutoSkillConfig",
     "SkillEvolutionConfig",
     "Paths",
     "get_paths",

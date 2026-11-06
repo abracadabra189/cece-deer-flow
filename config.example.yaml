@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 64
+config_version: 65
 
 # Optional operator-owned literal prompt extensions (see CONFIGURATION.md):
 # lead_prompt_overlay:
@@ -2611,6 +2611,47 @@ skill_evolution:
   enabled: false # Set to true to allow agent-managed writes under skills/custom
   moderation_model_name: null # Model for LLM-based security scanning (null = use default model)
   security_fail_closed: true # Moderation model unavailable: true blocks all writes; false allows non-executable content with a warning (executable is always blocked)
+
+# ============================================================================
+# Auto Skill Configuration (post-run skill synthesis)
+# ============================================================================
+# After a run completes, distil its trajectory (query, matched skills, tool calls
+# with results, final answer) into a reusable skill covering the data-fetching
+# logic, the reasoning logic and the answer format.
+#
+# Generated skills are GLOBAL: they are published under
+# {DEER_FLOW_HOME}/integrations/skills/auto-skill/{name}/SKILL.md, so a skill
+# learned from one user's run is matchable by every other user, enabled by
+# default, and read-only in the UI (the same tier as the managed Lark pack). A
+# user who wants a private variant creates a same-named custom skill, which
+# shadows the global one.
+#
+# Each scenario has ONE visible skill under a stable name
+# ({name_prefix}-{scenario-slug}, no version suffix). When a run hits an existing
+# skill, the model decides create / update / no_change; an update moves the
+# outgoing version to {DEER_FLOW_HOME}/auto-skill-backup/{name}/v{n}/ so users
+# only ever see the latest version while every superseded one stays restorable.
+#
+# Complements skill_evolution rather than replacing it: skill_evolution lets the
+# agent decide to write a skill mid-run, while auto_skill learns from a finished
+# run without spending a turn. Both write through the same validation + SkillScan
+# + LLM moderation pipeline, and auto_skill reuses
+# skill_evolution.moderation_model_name / security_fail_closed for its scan.
+#
+# Synthesis runs on a debounced background worker, so it never delays a response,
+# and it is best effort: a skipped, rejected or failed synthesis is logged and
+# dropped, never surfaced to the user.
+auto_skill:
+  enabled: false # Set to true to learn a skill from each completed run
+  model_name: null # Synthesis model (null = default chat model)
+  name_prefix: "auto" # Visible names are {name_prefix}-{scenario-slug}; hyphen-case, <= 32 chars
+  min_tool_calls: 1 # Skip runs with fewer successful tool calls: no data path worth capturing
+  max_trajectory_chars: 24000 # Total budget for the trajectory handed to the synthesis model
+  max_tool_result_chars: 2000 # Per-tool-result budget applied before the total
+  debounce_seconds: 20 # Quiet period before draining, so rapid turns batch together
+  max_versions: 5 # Backup versions kept per scenario; older backups are pruned
+  queue_max_size: 64 # Bounded queue; a full queue drops the new trajectory instead of backpressuring the run
+  shutdown_flush_timeout_seconds: 30 # Bound on draining the queue during graceful Gateway shutdown
 
 # ============================================================================
 # Checkpointer Configuration (DEPRECATED — use `database` instead)
