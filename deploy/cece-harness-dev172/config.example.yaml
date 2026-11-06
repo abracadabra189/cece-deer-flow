@@ -1,5 +1,11 @@
 config_version: 40
 
+# 30+ 中间件使每个逻辑步消耗多个 LangGraph super-step。HYDC 研究常需
+# help → query → 补充查询 的多步路径，默认 100 步容易在产出最终答案前耗尽；
+# 被步数上限截断的 run 没有可学习的最终答案，auto-skill 也就无法沉淀。
+# 成本仍由下方 token_budget 兜底，因此这里放到 1000（等于 max_recursion_limit）。
+recursion_limit: 1000
+
 # CECE dev172 deploy baseline. Copy to the deployment root as config.yaml.
 # Secrets are supplied exclusively by .env.
 lead_prompt_overlay:
@@ -156,6 +162,47 @@ input_polish:
 
 skills:
   deferred_discovery: true
+
+# ============================================================================
+# Auto Skill —— 运行结束后自动沉淀技能
+# ============================================================================
+# 每轮问答完成后，把本次的取数路径（调了哪些工具、传了什么参数）、推理逻辑与
+# 回答格式提炼成一个 SKILL.md，供后续同类问题直接复用。
+#
+# 生成物落在全局目录，所有用户可见、默认启用、在 UI 中只读（integrations 类别）：
+#   {DEER_FLOW_HOME}/integrations/skills/auto-skill/{name}/SKILL.md
+# 每个场景只有一个可见版本（名称稳定为 {name_prefix}-{场景slug}，不含版本号）；
+# 更新时旧版移入备份库，可按版本回滚：
+#   {DEER_FLOW_HOME}/auto-skill-backup/{name}/v{n}/SKILL.md
+#
+# 运行机制：after_agent 钩子只做内存提取并投递到防抖队列，模型合成、安全扫描与
+# 写盘全部在后台线程完成，对用户响应零延迟。学习失败只记日志，绝不影响已交付的回答。
+# 生成的正文要经过四道门：技能名校验、frontmatter 解析、确定性 SkillScan、LLM 内容审核。
+#
+# 与 skills.deferred_discovery 的关系（重要）：
+# 本基线开启了 deferred_discovery，系统提示词只列技能名（<skill_index>）。自动生成的
+# 技能名是英文 slug（如 auto-enterprise-shareholder-structure），对中文问题的字面匹配
+# 较弱。若希望自动技能更容易被命中，把 skills.deferred_discovery 改为 false，
+# 让完整描述（含中文触发词）进入提示词。详见 README 的
+# “Interaction with skills.deferred_discovery”一节。
+auto_skill:
+  enabled: true
+  # 合成用便宜快速模型，避免占用默认大模型的配额与延迟预算
+  model_name: qwen3.8-flash
+  name_prefix: "auto"                 # 可见名 {prefix}-{场景slug}；hyphen-case，≤32 字符
+  min_tool_calls: 3                   # 成功工具调用数低于此值不学
+  max_trajectory_chars: 24000         # 交给合成模型的轨迹总预算（超限优先丢最老的工具步骤）
+  max_tool_result_chars: 2000         # 单条工具返回预算
+  debounce_seconds: 20                # 防抖窗口：窗口内多轮合并为一批
+  max_versions: 5                     # 每场景备份保留数，超出清理最旧
+  queue_max_size: 64                  # 待处理上限；满了拒绝新任务，不淘汰已入队
+  shutdown_flush_timeout_seconds: 30  # 优雅关停时的排空上限
+
+# auto_skill 的 LLM 内容审核读取以下两项（enabled 保持 false：不允许 Agent 自行写技能）
+skill_evolution:
+  enabled: false
+  moderation_model_name: qwen3.8-flash   # null 则回落到默认对话模型
+  security_fail_closed: true             # 审核模型不可用时拒绝写入，而非放行
 
 database:
   backend: postgres

@@ -29,6 +29,7 @@ from deerflow.config.app_config import AppConfig
 from deerflow.config.paths import get_paths
 from deerflow.skills.auto import store as store_module
 from deerflow.skills.auto import synthesizer as synthesizer_module
+from deerflow.skills.auto.abstraction import ENTITY_PLACEHOLDER
 from deerflow.skills.auto.queue import AutoSkillQueue
 from deerflow.skills.auto.store import backup_dir, list_backup_versions, read_current, restore_backup
 from deerflow.skills.auto.synthesizer import AUTO_SKILL_AUTHOR
@@ -194,7 +195,7 @@ class TestUpdateAndBackup:
         assert first.version == 1
 
         # Second run hits the learned skill and the model decides to improve it.
-        e2e["decisions"] = [{**_PAYLOAD, "decision": "update", "reason": "补充失败兜底", "data_fetching": "1. 新步骤"}]
+        e2e["decisions"] = [{**_PAYLOAD, "decision": "update", "reason": "补充失败兜底", "update_reasons": ["fallback"], "data_fetching": "1. 新步骤"}]
         _run_chain(
             e2e,
             config=config,
@@ -217,7 +218,7 @@ class TestUpdateAndBackup:
         config = _app_config()
         queue = AutoSkillQueue(app_config_resolver=lambda: config)
         _run_chain(e2e, config=config, queue=queue)
-        e2e["decisions"] = [{**_PAYLOAD, "decision": "update", "reason": "r"}]
+        e2e["decisions"] = [{**_PAYLOAD, "decision": "update", "reason": "r", "update_reasons": ["new_flow"]}]
         _run_chain(e2e, config=config, queue=AutoSkillQueue(app_config_resolver=lambda: config), state=_run_state(matched_skill=_EXPECTED_NAME))
 
         assert "-v" not in _EXPECTED_NAME
@@ -229,6 +230,33 @@ class TestUpdateAndBackup:
         before = read_current(_EXPECTED_NAME)
 
         e2e["decisions"] = [{"decision": "no_change", "reason": "已覆盖"}]
+        _run_chain(
+            e2e,
+            config=config,
+            queue=AutoSkillQueue(app_config_resolver=lambda: config),
+            state=_run_state(matched_skill=_EXPECTED_NAME),
+        )
+
+        after = read_current(_EXPECTED_NAME)
+        assert after.version == before.version == 1
+        assert after.content == before.content
+        assert list_backup_versions(_EXPECTED_NAME) == []
+
+    def test_an_examples_only_update_does_not_rewrite_the_skill(self, e2e):
+        """Requirement 2 end to end: 只有示例/数据值变化时不产生新版本。"""
+        config = _app_config()
+        _run_chain(e2e, config=config, queue=AutoSkillQueue(app_config_resolver=lambda: config))
+        before = read_current(_EXPECTED_NAME)
+
+        e2e["decisions"] = [
+            {
+                **_PAYLOAD,
+                "decision": "update",
+                "reason": "只有示例需要变化",
+                "update_reasons": ["examples_only"],
+                "data_fetching": "1. 新步骤",
+            }
+        ]
         _run_chain(
             e2e,
             config=config,
@@ -262,7 +290,7 @@ class TestUpdateAndBackup:
         queue = AutoSkillQueue(app_config_resolver=lambda: config)
         _run_chain(e2e, config=config, queue=queue)
         for expected_version in (2, 3, 4):
-            e2e["decisions"] = [{**_PAYLOAD, "decision": "update", "reason": f"r{expected_version}"}]
+            e2e["decisions"] = [{**_PAYLOAD, "decision": "update", "reason": f"r{expected_version}", "update_reasons": ["new_flow"]}]
             _run_chain(e2e, config=config, queue=AutoSkillQueue(app_config_resolver=lambda: config), state=_run_state(matched_skill=_EXPECTED_NAME))
 
         assert read_current(_EXPECTED_NAME).version == 4
@@ -271,7 +299,7 @@ class TestUpdateAndBackup:
     def test_a_backup_can_be_restored(self, e2e):
         config = _app_config()
         _run_chain(e2e, config=config, queue=AutoSkillQueue(app_config_resolver=lambda: config))
-        e2e["decisions"] = [{**_PAYLOAD, "decision": "update", "reason": "坏更新", "data_fetching": "错误步骤"}]
+        e2e["decisions"] = [{**_PAYLOAD, "decision": "update", "reason": "坏更新", "update_reasons": ["correction"], "data_fetching": "错误步骤"}]
         _run_chain(e2e, config=config, queue=AutoSkillQueue(app_config_resolver=lambda: config), state=_run_state(matched_skill=_EXPECTED_NAME))
         assert "错误步骤" in read_current(_EXPECTED_NAME).content
 
@@ -327,6 +355,50 @@ class TestGeneratedDocument:
 
         assert read_current(_EXPECTED_NAME) is None
         assert _EXPECTED_NAME not in _visible_names(_OTHER)
+
+
+class TestAbstraction:
+    """A published skill describes a class of questions, not this run's subject."""
+
+    def test_a_concrete_entity_never_reaches_the_method_sections(self, e2e):
+        config = _app_config()
+        e2e["decisions"] = [
+            {
+                **_PAYLOAD,
+                "entities": ["A股份有限公司"],
+                "description": "查询 A股份有限公司 的融资历史。触发词：融资、轮次。",
+                "examples": "问：A股份有限公司的融资历史\n入参：`company_name=A股份有限公司`",
+            }
+        ]
+
+        _run_chain(e2e, config=config, queue=AutoSkillQueue(app_config_resolver=lambda: config))
+
+        content = read_current(_EXPECTED_NAME).content
+        head, examples = content.split("## 示例")
+        # The stubbed model keeps returning the same leaking payload on the repair
+        # attempt, so the platform redacts deterministically before publishing.
+        assert "A股份有限公司" not in head
+        assert ENTITY_PLACEHOLDER in head
+        assert "A股份有限公司" in examples
+
+    def test_the_redacted_document_still_passes_the_real_scanner(self, e2e):
+        from deerflow.skills.skillscan import scan_skill_dir
+
+        config = _app_config()
+        e2e["decisions"] = [{**_PAYLOAD, "entities": ["A股份有限公司"], "description": "查询 A股份有限公司 的融资历史。", "examples": "A股份有限公司 示例"}]
+
+        _run_chain(e2e, config=config, queue=AutoSkillQueue(app_config_resolver=lambda: config))
+
+        result = scan_skill_dir(store_module.skill_dir(_EXPECTED_NAME))
+        assert result["blocked"] is False
+
+    def test_the_published_skill_stays_visible_to_other_users(self, e2e):
+        config = _app_config()
+        e2e["decisions"] = [{**_PAYLOAD, "entities": ["A股份有限公司"], "description": "查询 A股份有限公司 的融资历史。", "examples": "A股份有限公司 示例"}]
+
+        _run_chain(e2e, config=config, queue=AutoSkillQueue(app_config_resolver=lambda: config))
+
+        assert _EXPECTED_NAME in _visible_names(_OTHER)
 
 
 class TestGating:
