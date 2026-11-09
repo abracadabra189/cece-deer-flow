@@ -14,11 +14,26 @@ returns an explicit ``decision``:
 
 - ``no_change`` — the skill already covers this run; nothing is written, so
   repeatedly running a solved scenario does not churn versions or spend tokens;
-- ``update`` — the run revealed something the skill lacks (a tool it did not
-  mention, a better parameter, a failure fallback, a sharper answer format); the
+- ``update`` — the run went *beyond* the skill's definition (a tool it did not
+  mention, a different data-fetch/reasoning flow, an improved answer format, an
+  extra answer dimension, a corrected definition, a new failure fallback); the
   improved package replaces the visible one and the outgoing version moves to the
   backup store;
 - ``create`` — no existing skill covers the scenario.
+
+A declared ``update`` is verified before anything is written
+(:mod:`deerflow.skills.auto.decision`): it must name at least one substantive
+reason, and ``new_tool`` must match the platform's own tool-diff against the
+matched skill's text. A run whose only difference is this run's subject, values
+or wording degrades to ``no_change`` — an examples-only change is not an
+improvement.
+
+**Abstract, don't transcribe.** The published body describes a *class* of
+questions: the reasoning flow, the data-fetch path and the answer format carry no
+concrete entity. The run's subject may appear only in the examples section.
+:mod:`deerflow.skills.auto.abstraction` enforces that deterministically — one
+repair attempt, then redaction — because the package is shared with every user and
+a body hard-coding one company would stop matching the next one.
 
 Because the visible name is stable, "users only see the latest version" holds by
 construction: there is exactly one discoverable package per scenario, and every
@@ -48,6 +63,8 @@ from deerflow.agents.lead_agent.prompt import SkillCacheResetPublishError, publi
 from deerflow.config.app_config import AppConfig
 from deerflow.config.auto_skill_config import AutoSkillConfig
 from deerflow.skills.auto import store
+from deerflow.skills.auto.abstraction import collect_entities, leaked_fields, redact_surfaces
+from deerflow.skills.auto.decision import find_novel_tools, normalize_reasons, verify_update
 from deerflow.skills.auto.naming import resolve_skill_name, scenario_slug
 from deerflow.skills.auto.trajectory import RunTrajectory, render_trajectory
 from deerflow.skills.security_scanner import scan_skill_content
@@ -78,6 +95,32 @@ _INDEX_MAX_ENTRIES = 60
 _INDEX_DESCRIPTION_BUDGET = 220
 #: Bounded snippet of an unparseable model response kept for diagnosis.
 _RAW_DIAGNOSTIC_BUDGET = 600
+#: How many leaked entities are named in the one repair attempt.
+_REPAIR_ENTITY_BUDGET = 20
+#: How many tools the deterministic tool-diff section lists.
+_TOOL_DIFF_MAX_TOOLS = 20
+
+#: Fields that must stay abstract: a concrete entity here narrows the skill to one
+#: subject and stops it matching the next run of the same scenario class.
+_ABSTRACT_FIELDS: tuple[str, ...] = (
+    "scenario",
+    "description",
+    "when_to_use",
+    "data_fetching",
+    "reasoning",
+    "answer_format",
+    "caveats",
+)
+#: Per-field publish bound, so the abstraction check inspects the published bytes.
+_FIELD_LIMITS: dict[str, int] = {
+    "scenario": _SCENARIO_CHAR_BUDGET,
+    "description": _DESCRIPTION_CHAR_BUDGET,
+    "when_to_use": _SECTION_CHAR_BUDGET,
+    "data_fetching": _SECTION_CHAR_BUDGET,
+    "reasoning": _SECTION_CHAR_BUDGET,
+    "answer_format": _SECTION_CHAR_BUDGET,
+    "caveats": _SECTION_CHAR_BUDGET,
+}
 
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 
@@ -105,37 +148,59 @@ class SynthesizedSkill:
     pruned: tuple[int, ...] = ()
     #: Legacy per-user packages retired by this write.
     swept: tuple[str, ...] = ()
+    #: Substantive reasons that survived verification (``update`` only).
+    update_reasons: tuple[str, ...] = ()
+    #: Entities the model would not remove, redacted deterministically before publish.
+    redacted_entities: tuple[str, ...] = ()
 
 
 _SYNTHESIS_SYSTEM_INSTRUCTION = """\
-你是 DeerFlow 的技能沉淀引擎。你会看到一次真实运行的完整执行轨迹（用户请求、命中的技能、工具调用与返回摘要、最终回答），以及【当前已有技能】（可能为空）。
+你是 DeerFlow 的技能沉淀引擎。你会看到一次真实运行的完整执行轨迹（用户请求、命中的技能、工具调用与返回摘要、最终回答）、【当前已有技能】（可能为空），以及平台对"本次工具是否超出已有技能定义"的确定性核对结果。
 
-你的任务是把这次运行提炼成一个**可复用的技能（SKILL.md）**，使下一次遇到同类问题时，智能体能直接按此技能复现同样的取数与分析路径。
+你的任务是把这次运行提炼成一个**可复用的技能（SKILL.md）**，使下一次遇到**同一类问题**时，智能体能直接按此技能复现同样的取数与分析路径。
 
 严格要求：
 1. 只输出一个 JSON 对象，不要输出任何解释文字、不要包裹 markdown 代码块。
 2. JSON 字段固定为：
    - "decision": 三选一
-       * "no_change" —— 已有技能已经完整覆盖本次运行的取数路径、推理逻辑与回答格式，本次没有带来任何新增信息
-       * "update"    —— 已有技能被命中，但本次运行暴露了它缺失或错误的地方（新工具、更优入参、失败兜底、更清晰的回答格式、口径纠正）
+       * "no_change" —— 本次运行的取数路径、推理流程与回答结构都落在【当前已有技能】的定义之内，只有具体主体、数值或示例不同，没有带来新的可复用知识
+       * "update"    —— 已有技能被命中，但本次运行**超出了它的定义**（理由见 update_reasons 词表）
        * "create"    —— 没有已有技能覆盖该场景，需要新建
    - "reason": 一句话说明为什么是这个 decision（update 时必须指出具体新增/纠正了什么）
-   - "scenario": 场景名称，不超过 30 个字，与用户请求同语种
-   - "scenario_slug": 场景的英文连字符短标识，仅小写字母/数字/连字符，不超过 48 字符（例如 "pevc-funding-lookup"）
-   - "description": 技能描述，用于技能匹配。必须包含：这个技能做什么 + 什么时候该用它 + 触发关键词。与用户请求同语种。不超过 300 字。
-   - "when_to_use": markdown，详细说明适用与不适用的场景
-   - "data_fetching": markdown，**有序**说明取数步骤：调用哪个工具/MCP 服务、关键入参含义、期望返回什么、失败时如何替代
+   - "update_reasons": 数组，仅当 decision="update" 时必填。只能取以下值：
+       * "new_tool"      —— 调用了已有技能正文未定义的工具（平台会用轨迹核对，不成立会被丢弃）
+       * "new_flow"      —— 取数顺序或推理路径与已有技能不同
+       * "answer_format" —— 回答结构或呈现方式被改进
+       * "new_dimension" —— 用户要求新增、或本次确实补齐了新的回答维度
+       * "correction"    —— 纠正了已有技能中的错误命令、参数或数据口径
+       * "fallback"      —— 新增了失败兜底或替代取数路径
+     以下值**不能单独构成 update**：只有它们时应判 no_change，可写在 reason 里：
+       * "examples_only"（只有示例需要变化）、"data_values"（只有数据值不同）、"wording"（只是措辞更好）
+   - "scenario": 场景名称，不超过 30 个字，与用户请求同语种。必须是**问题类别**（如"上市公司股东结构查询"），不得是本次的具体对象
+   - "scenario_slug": 场景的英文连字符短标识，仅小写字母/数字/连字符，不超过 48 字符（例如 "listed-company-shareholder-structure"）
+   - "description": 技能描述，用于技能匹配。必须包含：这个技能做什么 + 什么时候该用它 + 触发关键词，并且描述的是**一类问题**而非某一个主体。与用户请求同语种。不超过 300 字。
+   - "when_to_use": markdown，详细说明适用与不适用的场景（按问题类型描述）
+   - "data_fetching": markdown，**有序**说明取数步骤：调用哪个工具/MCP 服务、每个关键入参的含义与取值类型、期望返回什么、失败时如何替代
    - "reasoning": markdown，说明拿到数据后如何分析推理、判断标准、需要注意的口径
    - "answer_format": markdown，给出回答的结构模板（标题层级、必备字段、表格/列表形式、结论呈现方式）
+   - "examples": markdown，1-2 个具体示例（本次的问法、关键入参、结论骨架）。**只有这个字段允许出现具体实体**
    - "caveats": markdown，边界情况与常见陷阱；确无内容时给空字符串
+   - "entities": 数组，列出本次运行涉及的具体实体：公司/人物/产品/地点名称、证券代码或统一社会信用代码、具体日期与金额。它们只允许出现在 examples 中
 3. 判定纪律（重要）：
-   - 如果【当前已有技能】非空，优先判断 no_change。仅仅"这次的数据值不同""措辞可以更漂亮"不构成 update。
-   - 只有当本次运行带来了已有技能里**没有的可复用知识**时才 update：新工具、新的调用顺序、新的必要入参、已有技能没写的失败兜底、明显更优的回答结构、或纠正了已有技能的错误。
+   - 【当前已有技能】非空时，先判断 no_change。推理流程与回答结构没有超出技能定义、只有示例或数据值需要变化的，必须 no_change，不要为了让技能"看起来更新"而重写。
+   - 只有本次运行带来了技能定义之外的可复用知识才 update，并在 update_reasons 中如实列出。平台会核对 new_tool；理由不成立会被丢弃，全部不成立时按 no_change 处理（不写盘）。
    - decision 为 no_change 时，其余技能字段可以省略或留空。
-4. 提炼的是**方法与路径**，不是这一次的具体数值。具体公司名、金额、日期只能作为示例出现在括号里。
+4. 抽象化纪律（重要）：除 "examples" 外的所有字段（含 scenario 与 description）都不得出现具体公司名、人名、产品名、地名、代码、具体金额或具体日期；
+   一律改用类别化表述，如"目标公司/查询主体""标的证券""报告期""指定地区""查询关键词"。技能必须能被同一类的其他问题直接复用。
 5. 工具名必须与轨迹中实际出现的工具名完全一致，不要编造工具。
 6. 不要在输出中包含密钥、令牌、个人隐私信息。
 """
+
+_ABSTRACTION_REPAIR_INSTRUCTION = """
+
+【重要】上一次输出违反了抽象化纪律：以下具体实体出现在了 examples 之外的字段中：{entities}。
+请重新输出完整的 JSON 对象：保持 decision、scenario_slug 与各字段的原有含义不变，只把 examples 之外字段中的这些实体改写为类别化表述
+（如"目标公司""该主体""报告期""指定地区"），具体案例只保留在 examples 字段。仍然只输出一个 JSON 对象，不要任何解释文字。"""
 
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
@@ -254,6 +319,7 @@ def render_skill_markdown(
     version: int,
     thread_id: str | None,
     run_id: str | None,
+    examples: str = "",
 ) -> str:
     """Render the ``SKILL.md`` document for a generated skill."""
     scenario = _lf(scenario).strip()
@@ -263,6 +329,7 @@ def render_skill_markdown(
     reasoning = _lf(reasoning).strip()
     answer_format = _lf(answer_format).strip()
     caveats = _lf(caveats).strip()
+    examples = _lf(examples).strip()
 
     generated_at = datetime.now(UTC).isoformat(timespec="seconds")
     frontmatter_lines = [
@@ -286,6 +353,7 @@ def render_skill_markdown(
         f"# {title}",
         "",
         f"> 本技能由 DeerFlow auto-skill 从真实运行轨迹自动沉淀生成（当前版本 v{version}，历史版本存于备份库）。",
+        "> 除「示例」外，正文只描述方法与路径，不绑定任何具体主体：换一个公司、一个报告期或一个地区同样适用。",
         "",
         "## 适用场景",
         "",
@@ -303,6 +371,8 @@ def render_skill_markdown(
         "",
         answer_format or "按用户请求的自然结构组织回答。",
     ]
+    if examples:
+        body_sections.extend(["", "## 示例", "", examples])
     if caveats:
         body_sections.extend(["", "## 注意事项", "", caveats])
 
@@ -374,6 +444,111 @@ def _render_scenario_index() -> str:
     return "\n".join(lines)
 
 
+def _field_text(payload: dict[str, Any], field: str) -> str:
+    """Read one publishable field at the same bound the renderer applies."""
+    return _text_field(payload, field, limit=_FIELD_LIMITS.get(field, _SECTION_CHAR_BUDGET))
+
+
+def _abstract_surfaces(payload: dict[str, Any]) -> dict[str, str]:
+    """The fields that must stay abstract, at their published bounds."""
+    return {field: _field_text(payload, field) for field in _ABSTRACT_FIELDS}
+
+
+def _leaked_entities(payload: dict[str, Any], entities: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
+    """Map each abstract field to the concrete entities it contains."""
+    if not entities:
+        return {}
+    return leaked_fields(_abstract_surfaces(payload), entities)
+
+
+def _adopt_repaired_fields(payload: dict[str, Any], repaired: dict[str, Any]) -> dict[str, Any]:
+    """Take the repair attempt's content fields, keeping the original decision.
+
+    The repair call's only job is abstraction, so ``decision`` / ``reason`` /
+    ``scenario_slug`` stay as first resolved: adopting a second opinion there
+    could rename the package mid-flight. A field the model omitted is kept from
+    the original rather than blanked.
+    """
+    merged = dict(payload)
+    for field in (*_ABSTRACT_FIELDS, "examples"):
+        value = repaired.get(field)
+        if isinstance(value, str) and value.strip():
+            merged[field] = value
+    entities = repaired.get("entities")
+    if isinstance(entities, (list, tuple, str)):
+        merged["entities"] = entities
+    return merged
+
+
+def _redact_payload(payload: dict[str, Any], entities: tuple[str, ...]) -> dict[str, Any]:
+    """Deterministically remove the leaked entities from the abstract fields."""
+    merged = dict(payload)
+    merged.update(redact_surfaces(_abstract_surfaces(payload), entities))
+    return merged
+
+
+def _render_tool_diff_section(trajectory: RunTrajectory, matched: list[store.StoredSkill]) -> str:
+    """State the platform's own tool diff, so an unevidenced ``new_tool`` is visible.
+
+    The model is asked to claim ``new_tool`` only when the run went outside the
+    skill's definition; handing it the same join the verifier computes keeps the
+    claim and the check agreeing, and gives the ``no_change`` discipline a fact to
+    lean on instead of an impression.
+    """
+    if not matched:
+        return ""
+    tool_names = list(dict.fromkeys(step.tool_name for step in trajectory.tool_steps))
+    if not tool_names:
+        return ""
+    novel = find_novel_tools(tool_names, [stored.content for stored in matched])
+    lines = [
+        "## 平台确定性核对：工具差异",
+        f"- 本次运行调用的工具：{', '.join(f'`{name}`' for name in tool_names[:_TOOL_DIFF_MAX_TOOLS])}",
+    ]
+    if novel:
+        lines.append(f"- 其中已有技能正文**未提及**的工具：{', '.join(f'`{name}`' for name in novel)}")
+    else:
+        lines.append("- 已有技能正文已覆盖本次调用的全部工具，本次没有新工具。")
+    lines.extend(["", "update_reasons 中的 new_tool 必须与上面的核对一致；不一致时该理由会被平台丢弃。"])
+    return "\n".join(lines)
+
+
+async def _repair_abstraction(
+    *,
+    payload: dict[str, Any],
+    leaks: dict[str, tuple[str, ...]],
+    evidence: str,
+    config: AutoSkillConfig,
+    app_config: AppConfig,
+    thread_id: str | None,
+) -> dict[str, Any]:
+    """Give the model one chance to abstract its own output.
+
+    Returns the merged payload. A failed, unparseable or raising repair keeps the
+    original so the caller's deterministic redaction still runs: the abstraction
+    invariant holds either way, and a repair outage must not discard the trajectory.
+    """
+    leaked = sorted({entity for found in leaks.values() for entity in found})[:_REPAIR_ENTITY_BUDGET]
+    instruction = _SYNTHESIS_SYSTEM_INSTRUCTION + _ABSTRACTION_REPAIR_INSTRUCTION.format(entities="、".join(f"“{entity}”" for entity in leaked))
+    try:
+        raw = await run_oneshot_llm(
+            system_instruction=instruction,
+            user_content=evidence,
+            run_name=AUTO_SKILL_RUN_NAME,
+            app_config=app_config,
+            model_name=config.model_name,
+            thread_id=thread_id,
+        )
+    except Exception:
+        logger.warning("auto-skill abstraction repair failed; redacting instead (thread=%s)", thread_id, exc_info=True)
+        return payload
+    repaired = _extract_json_object(raw)
+    if not isinstance(repaired, dict):
+        logger.warning("auto-skill abstraction repair returned no JSON object; redacting instead (thread=%s)", thread_id)
+        return payload
+    return _adopt_repaired_fields(payload, repaired)
+
+
 async def _static_scan_or_raise(name: str, content: str) -> list[dict[str, Any]]:
     """Run the deterministic scanner over the exact bytes about to be published."""
 
@@ -440,6 +615,7 @@ async def synthesize_skill(
             for part in (
                 render_trajectory(trajectory, max_chars=config.max_trajectory_chars),
                 _render_existing_skills_section(matched),
+                _render_tool_diff_section(trajectory, matched),
                 _render_scenario_index(),
             )
             if part
@@ -491,33 +667,93 @@ async def synthesize_skill(
             logger.info("auto-skill no_change for thread=%s run=%s: %s", thread_id, run_id, reason or "(no reason given)")
             return None
 
-        scenario = _text_field(payload, "scenario", limit=_SCENARIO_CHAR_BUDGET) or "auto scenario"
-        description = _text_field(payload, "description", limit=_DESCRIPTION_CHAR_BUDGET)
-        if not description:
-            logger.warning("auto-skill synthesis produced no description; skipping (thread=%s run=%s)", thread_id, run_id)
-            return None
-
         slug = scenario_slug(payload.get("scenario_slug"), query=trajectory.query)
         name = resolve_skill_name(prefix=config.name_prefix, slug=slug)
+        existing_target = await asyncio.to_thread(store.read_current, name)
 
         # Reconcile the declared decision with what is actually on disk: a model
         # that says "create" for a scenario which already exists is still an
         # update, and the store will back the outgoing version up either way.
         # Reporting it as create would misdescribe the audit trail.
-        if decision == "create" and await asyncio.to_thread(store.current_version, name) >= 1:
+        reconciled_create = False
+        if decision == "create" and existing_target is not None and existing_target.version >= 1:
             logger.info("auto-skill decision 'create' for %s which already exists; treating as update", name)
             decision = "update"
+            reconciled_create = True
+
+        # ── Verify the update claim against the run's own evidence ────────────
+        # An update rewrites a package every user shares, so it needs a substantive
+        # reason; a run that only differs in subject/values/wording is a no_change.
+        update_reasons: tuple[str, ...] = ()
+        if decision == "update":
+            matched_names = {stored.name for stored in matched}
+            contents = [stored.content for stored in matched]
+            if existing_target is not None and existing_target.name not in matched_names:
+                contents.append(existing_target.content)
+            novel_tools = find_novel_tools((step.tool_name for step in trajectory.tool_steps), contents)
+            verified = verify_update(
+                normalize_reasons(payload.get("update_reasons")),
+                novel_tools=novel_tools,
+                strict=not reconciled_create,
+            )
+            if not verified.is_update:
+                logger.info(
+                    "auto-skill update downgraded to no_change for %s (thread=%s run=%s): %s",
+                    name,
+                    thread_id,
+                    run_id,
+                    verified.note or "no substantive reason",
+                )
+                return None
+            update_reasons = verified.reasons
+            if verified.dropped:
+                logger.info("auto-skill %s dropped update reason(s): %s", name, ", ".join(verified.dropped))
+
+        # ── Abstraction gate: concrete entities belong to the examples only ───
+        entities = collect_entities(payload.get("entities"))
+        leaks = _leaked_entities(payload, entities)
+        redacted_entities: tuple[str, ...] = ()
+        if leaks:
+            payload = await _repair_abstraction(
+                payload=payload,
+                leaks=leaks,
+                evidence=evidence,
+                config=config,
+                app_config=app_config,
+                thread_id=thread_id,
+            )
+            entities = collect_entities(payload.get("entities"))
+            leaks = _leaked_entities(payload, entities)
+            if leaks:
+                redacted_entities = tuple(sorted({entity for found in leaks.values() for entity in found}))
+                payload = _redact_payload(payload, entities)
+                logger.warning(
+                    "auto-skill %s redacted concrete entities from %s (thread=%s run=%s)",
+                    name,
+                    ", ".join(sorted(leaks)),
+                    thread_id,
+                    run_id,
+                )
+            else:
+                logger.info("auto-skill %s abstraction repair removed the concrete entities (thread=%s run=%s)", name, thread_id, run_id)
+
+        scenario = _field_text(payload, "scenario") or "auto scenario"
+        description = _field_text(payload, "description")
+        if not description:
+            logger.warning("auto-skill synthesis produced no description; skipping (thread=%s run=%s)", thread_id, run_id)
+            return None
 
         def _render(version: int) -> str:
             return render_skill_markdown(
                 name=name,
                 scenario=scenario,
                 description=description,
-                when_to_use=_section(_text_field(payload, "when_to_use", limit=_SECTION_CHAR_BUDGET)),
-                data_fetching=_section(_text_field(payload, "data_fetching", limit=_SECTION_CHAR_BUDGET)),
-                reasoning=_section(_text_field(payload, "reasoning", limit=_SECTION_CHAR_BUDGET)),
-                answer_format=_section(_text_field(payload, "answer_format", limit=_SECTION_CHAR_BUDGET)),
-                caveats=_section(_text_field(payload, "caveats", limit=_SECTION_CHAR_BUDGET)),
+                when_to_use=_section(_field_text(payload, "when_to_use")),
+                data_fetching=_section(_field_text(payload, "data_fetching")),
+                reasoning=_section(_field_text(payload, "reasoning")),
+                answer_format=_section(_field_text(payload, "answer_format")),
+                caveats=_section(_field_text(payload, "caveats")),
+                examples=_section(_field_text(payload, "examples")),
                 version=version,
                 thread_id=thread_id,
                 run_id=run_id,
@@ -527,7 +763,7 @@ async def synthesize_skill(
         # assigned inside the store's lock, so a concurrent writer can make the
         # published content differ from this candidate by that one field; the
         # scanned body is identical either way.
-        expected_version = await asyncio.to_thread(store.current_version, name) + 1
+        expected_version = (existing_target.version if existing_target is not None else 0) + 1
         candidate = _render(expected_version)
         try:
             static_findings = await _static_scan_or_raise(name, candidate)
@@ -555,13 +791,15 @@ async def synthesize_skill(
             logger.warning("auto-skill legacy sweep failed for user=%s scenario=%s", user_id, slug, exc_info=True)
 
         logger.info(
-            "auto-skill %s %s v%d (scenario=%s, backed_up=%s, scanner=%s)",
+            "auto-skill %s %s v%d (scenario=%s, backed_up=%s, scanner=%s, reasons=%s, redacted=%s)",
             decision,
             name,
             result.version,
             scenario,
             result.backed_up_version,
             scanner_decision,
+            ",".join(update_reasons) or "-",
+            ",".join(redacted_entities) or "-",
         )
         return SynthesizedSkill(
             name=name,
@@ -574,6 +812,8 @@ async def synthesize_skill(
             backed_up_version=result.backed_up_version,
             pruned=result.pruned,
             swept=swept,
+            update_reasons=update_reasons,
+            redacted_entities=redacted_entities,
         )
     except AutoSkillSynthesisError as exc:
         logger.warning("auto-skill synthesis rejected: %s", exc)
