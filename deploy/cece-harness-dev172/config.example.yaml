@@ -205,6 +205,41 @@ database:
   pool_size: 5
   command_timeout: 30
 
+# Required for multi-worker Gateway deployment.
+run_events:
+  backend: db
+  max_trace_content: 10240
+  track_token_usage: true
+
+deployment:
+  multi_instance: true
+
+run_ownership:
+  lease_seconds: 30
+  grace_seconds: 10
+  heartbeat_enabled: true
+
+stream_bridge:
+  type: redis
+  redis_url: redis://redis:6379/0
+  queue_maxsize: 256
+  heartbeat_interval_seconds: 15
+  stream_ttl_seconds: 86400
+  max_connections: 320
+
+# Enable only after setting EXTERNAL_USER_API_KEY in .env.
+auth:
+  external_user:
+    enabled: true
+    api_key: $EXTERNAL_USER_API_KEY
+    provider_id: external-phone
+    email_domain: users.deerflow.internal
+    default_role: user
+    admin_phones: []
+    ticket_ttl_seconds: 120
+    session_expiry_minutes: null
+    frontend_base_url: http://172.25.18.172:17178
+
 sandbox:
   use: deerflow.community.aio_sandbox:AioSandboxProvider
   image: cece-harness-sandbox:base-v1
@@ -213,6 +248,8 @@ sandbox:
   container_prefix: cece-harness-sandbox
   replicas: 8
   idle_timeout: 900
+  ownership:
+    type: redis
   bash_command_timeout: 60
   environment:
     DISABLE_BROWSER: "true"
