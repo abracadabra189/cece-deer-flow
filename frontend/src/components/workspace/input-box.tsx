@@ -3354,9 +3354,7 @@ function AddAttachmentsButton({
   className,
   disabled,
   uploadLimits,
-  onOpen,
 }: {
-  onOpen?: () => void;
   className?: string;
   disabled?: boolean;
   uploadLimits?: UploadLimits;
@@ -3376,7 +3374,7 @@ function AddAttachmentsButton({
       className={cn("px-2!", className)}
       data-testid="add-attachments-button"
       disabled={disabled}
-      onClick={onOpen ?? (() => attachments.openFileDialog())}
+      onClick={() => attachments.openFileDialog()}
       title={tooltipContent}
     >
       <PaperclipIcon className="size-3" />

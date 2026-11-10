@@ -182,6 +182,10 @@ export default function ChatPage() {
     isHistoryLoading,
     hasMoreHistory,
     loadMoreHistory,
+    approvalRequests,
+    hasPendingApproval,
+    submitHitlApproval,
+    waitingForInputRunIds,
   } = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
     displayThreadId: threadId,
@@ -212,6 +216,9 @@ export default function ChatPage() {
         });
       }
     },
+    restInterrupts: threadMetadata.data?.interrupts,
+    restInterruptsLoading: threadMetadata.isLoading,
+    restInterruptsError: threadMetadata.isError,
   });
 
   const hasThreadMessages = thread.messages.length > 0;
@@ -437,6 +444,13 @@ export default function ChatPage() {
     },
     [currentKnowledgeScopeSnapshot, sendMessage, threadId],
   );
+  const handleSubmitApproval = useCallback(
+    (
+      request: (typeof approvalRequests)[number],
+      responses: Parameters<typeof submitHitlApproval>[2],
+    ) => submitHitlApproval(threadId, request, responses),
+    [submitHitlApproval, threadId],
+  );
   const handleStop = useCallback(async () => {
     await thread.stop();
   }, [thread]);
@@ -513,7 +527,8 @@ export default function ChatPage() {
     !isUploading &&
     !thread.isLoading &&
     !branchThread.isPending &&
-    !hasOpenHumanInputCard;
+    !hasOpenHumanInputCard &&
+    !hasPendingApproval;
 
   return (
     <ThreadContext.Provider value={{ thread, isMock }}>
@@ -563,12 +578,25 @@ export default function ChatPage() {
                     loadMoreHistory={loadMoreHistory}
                     isHistoryLoading={isHistoryLoading}
                     tokenUsageInlineMode="off"
+                    approvalRequests={approvalRequests}
+                    approvalMetadataLoading={
+                      hasPendingApproval && approvalRequests.length === 0
+                    }
+                    approvalMetadataError={
+                      hasPendingApproval &&
+                      approvalRequests.length === 0 &&
+                      threadMetadata.isError
+                    }
+                    onReloadApprovalMetadata={() => threadMetadata.refetch()}
+                    waitingForInputRunIds={waitingForInputRunIds}
+                    onSubmitApproval={handleSubmitApproval}
                     canRegenerate={
                       !isNewThread &&
                       !isMock &&
                       env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" &&
                       !isUploading &&
-                      !thread.isLoading
+                      !thread.isLoading &&
+                      !hasPendingApproval
                     }
                     onRegenerateMessage={handleRegenerate}
                     canEdit={editBase && !hasGoal}
@@ -585,7 +613,8 @@ export default function ChatPage() {
                       env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" &&
                       !isUploading &&
                       !thread.isLoading &&
-                      !branchThread.isPending
+                      !branchThread.isPending &&
+                      !hasPendingApproval
                     }
                     onBranchTurn={handleBranchTurn}
                   />
@@ -610,6 +639,12 @@ export default function ChatPage() {
                           outcome={goalOutcome}
                           isRunning={thread.isLoading}
                           hasOpenHumanInputCard={hasOpenHumanInputCard}
+                          hasPendingApproval={hasPendingApproval}
+                          approvalMetadataError={
+                            hasPendingApproval &&
+                            approvalRequests.length === 0 &&
+                            threadMetadata.isError
+                          }
                         />
                         {hasTodos && (
                           <TodoList
@@ -656,7 +691,11 @@ export default function ChatPage() {
                           selectorVisible && knowledgeScope ? (
                             <KnowledgeScopeSelector
                               agentName="lead_agent"
-                              disabled={thread.isLoading || isUploading}
+                              disabled={
+                                thread.isLoading ||
+                                isUploading ||
+                                hasPendingApproval
+                              }
                               selection={knowledgeScope}
                               onChange={setKnowledgeScope}
                             />
@@ -676,7 +715,8 @@ export default function ChatPage() {
                           env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
                           isUploading ||
                           modelControl.busy ||
-                          (!isNewThread && isHistoryLoading)
+                          (!isNewThread && isHistoryLoading) ||
+                          hasPendingApproval
                         }
                         onContextChange={(context, options) => {
                           if (options?.automatic)
