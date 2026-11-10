@@ -2,24 +2,32 @@ import { afterEach, expect, test, rs } from "@rstest/core";
 import { cleanup, render, screen } from "@testing-library/react";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { WorkspaceHeader } from "@/components/workspace/workspace-container";
 import { WorkspaceNavChatList } from "@/components/workspace/workspace-nav-chat-list";
-import { enUS } from "@/core/i18n/locales/en-US";
 
 rs.mock("next/navigation", () => ({
   usePathname: () => "/workspace/chats/new",
 }));
+rs.mock("@/core/i18n/hooks", () => ({
+  useI18n: () => ({
+    t: {
+      sidebar: {
+        chats: "对话",
+        agents: "智能体",
+        scheduledTasks: "定时任务",
+        agentsDisabledTooltip: "暂不可用",
+      },
+      capabilities: { title: "能力中心" },
+      usage: { title: "用量" },
+    },
+  }),
+}));
 rs.mock("@/core/agents", () => ({
   useAgentsApiEnabled: () => ({ enabled: false }),
-}));
-rs.mock("@/core/i18n/hooks", () => ({ useI18n: () => ({ t: enUS }) }));
-rs.mock("@/components/workspace/workspace-sidebar-trigger", () => ({
-  WorkspaceSidebarTrigger: () => null,
 }));
 
 afterEach(cleanup);
 
-test("keeps CECE-disabled destinations unavailable but exposes token usage", () => {
+test("presents CeCeMate navigation with only the skills route and inert Beta entries", () => {
   render(
     <SidebarProvider>
       <WorkspaceNavChatList />
@@ -27,24 +35,17 @@ test("keeps CECE-disabled destinations unavailable but exposes token usage", () 
   );
 
   for (const label of [
-    enUS.sidebar.agents,
-    enUS.sidebar.scheduledTasks,
-    enUS.capabilities.title,
+    "定时任务 Beta",
+    "专家 Beta",
+    "MCP 服务 Beta",
+    "文件库 Beta",
   ]) {
     const button = screen.getByRole("button", { name: label });
     expect(button.getAttribute("aria-disabled")).toBe("true");
     expect(button.querySelector("a")).toBeNull();
   }
 
-  expect(
-    screen.getByRole("link", { name: enUS.usage.title }).getAttribute("href"),
-  ).toBe("/workspace/usage");
-});
-
-test("does not expose the upstream GitHub link in the workspace header", () => {
-  const { container } = render(<WorkspaceHeader />);
-
-  expect(
-    container.querySelector('a[href="https://github.com/bytedance/deer-flow"]'),
-  ).toBeNull();
+  expect(screen.getByRole("link", { name: "技能" }).getAttribute("href")).toBe(
+    "/workspace/skills",
+  );
 });

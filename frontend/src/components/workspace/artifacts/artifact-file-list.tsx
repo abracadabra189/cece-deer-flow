@@ -69,38 +69,6 @@ export function ArtifactFileList({
     [selectArtifact, setOpen],
   );
 
-  const handleInstallSkill = useCallback(
-    async (e: React.MouseEvent, filepath: string) => {
-      e.stopPropagation();
-      e.preventDefault();
-
-      if (installingFile) return;
-
-      setInstallingFile(filepath);
-      try {
-        const result = await installSkill({
-          thread_id: threadId,
-          path: filepath,
-        });
-        if (result.success) {
-          toast.success(result.message);
-        } else {
-          toast.error(result.message || "Failed to install skill");
-        }
-      } catch (error) {
-        console.error("Failed to install skill:", error);
-        if (error instanceof SkillRequestError && error.isAdminRequired) {
-          toast.error(t.settings.skills.installAdminRequired);
-        } else {
-          toast.error("Failed to install skill");
-        }
-      } finally {
-        setInstallingFile(null);
-      }
-    },
-    [threadId, installingFile, t],
-  );
-
   const handleDownloadArchive = useCallback(async () => {
     if (!runId || downloadingArchive) return;
 
@@ -130,6 +98,37 @@ export function ArtifactFileList({
       setDownloadingArchive(false);
     }
   }, [downloadingArchive, runId, t, threadId]);
+
+  const handleInstallSkill = useCallback(
+    async (event: React.MouseEvent, filepath: string) => {
+      event.stopPropagation();
+      event.preventDefault();
+      if (installingFile) return;
+
+      setInstallingFile(filepath);
+      try {
+        const result = await installSkill({
+          thread_id: threadId,
+          path: filepath,
+        });
+        if (result.success) {
+          toast.success(result.message);
+        } else {
+          toast.error(result.message ?? "Failed to install skill");
+        }
+      } catch (error) {
+        console.error("Failed to install skill:", error);
+        toast.error(
+          error instanceof SkillRequestError && error.isAdminRequired
+            ? t.settings.skills.installAdminRequired
+            : "Failed to install skill",
+        );
+      } finally {
+        setInstallingFile(null);
+      }
+    },
+    [installingFile, t.settings.skills.installAdminRequired, threadId],
+  );
 
   const canDownloadArchive =
     archiveDownloadsEnabled &&
@@ -163,7 +162,7 @@ export function ArtifactFileList({
         {files.map((file) => (
           <Card
             key={file}
-            className="relative cursor-pointer p-3"
+            className="relative cursor-pointer border-[#e5eaf5] bg-white p-3 shadow-sm transition-colors hover:border-[#b9c9ff] hover:bg-[#f8faff]"
             onClick={() => handleClick(file)}
           >
             <CardHeader className="grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 pr-2 pl-1">
@@ -181,7 +180,7 @@ export function ArtifactFileList({
                   <Button
                     variant="ghost"
                     disabled={installingFile === file}
-                    onClick={(e) => handleInstallSkill(e, file)}
+                    onClick={(event) => void handleInstallSkill(event, file)}
                   >
                     {installingFile === file ? (
                       <LoaderIcon className="size-4 animate-spin" />
