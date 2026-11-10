@@ -43,9 +43,9 @@ import { useMaybeSidecar } from "../sidecar/context";
 
 function RightPanelLoading() {
   return (
-    <div className="grid size-full place-items-center">
-      <p role="status" className="text-muted-foreground text-sm">
-        Loading panel…
+    <div className="grid size-full place-items-center rounded-2xl bg-white">
+      <p role="status" className="text-sm text-[#738099]">
+        正在加载预览…
       </p>
     </div>
   );
@@ -384,7 +384,7 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
     }
     if (renderedRightPanel === "artifacts") {
       return (
-        <div className="relative flex size-full justify-center">
+        <div className="relative flex size-full justify-center rounded-2xl bg-white">
           <div className="absolute top-1 right-1 z-30">
             <Button
               size="icon-sm"
@@ -399,13 +399,15 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
           {artifacts.length === 0 ? (
             <ConversationEmptyState
               icon={<FilesIcon />}
-              title="No artifact selected"
-              description="Select an artifact to view its details"
+              title="暂未选择产物"
+              description="请从对话中的产物入口打开预览"
             />
           ) : (
             <div className="flex size-full max-w-(--container-width-sm) flex-col justify-center p-4 pt-8">
               <header className="shrink-0">
-                <h2 className="text-lg font-medium">Artifacts</h2>
+                <h2 className="text-lg font-semibold text-[#26324a]">
+                  产物预览
+                </h2>
               </header>
               <ScrollArea className="min-h-0 grow">
                 <ArtifactFileList
@@ -453,21 +455,21 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
           }}
         >
           <SheetContent
-            className="w-[calc(100vw-1rem)] max-w-none gap-0 p-0 sm:max-w-md [&>button]:hidden"
+            className="w-[calc(100vw-1rem)] max-w-none gap-0 border-[#dfe6f3] bg-[#f5f7fa] p-0 sm:max-w-md [&>button]:hidden"
             side="right"
           >
             <SheetHeader className="sr-only">
               <SheetTitle>
                 {renderedRightPanel === "sidecar"
-                  ? "Sidecar"
+                  ? "参考资料"
                   : renderedRightPanel === "browser"
-                    ? "Browser"
+                    ? "浏览器"
                     : renderedRightPanel === "details"
                       ? (messageDetails?.selectedDetail?.title ?? t.common.more)
-                      : "Artifacts"}
+                      : "产物预览"}
               </SheetTitle>
               <SheetDescription>
-                Browse the side panel for this conversation.
+                查看当前对话的辅助信息和产物预览。
               </SheetDescription>
             </SheetHeader>
             <div className="min-h-0 flex-1 p-3 pt-10">{rightPanelContent}</div>
@@ -505,7 +507,7 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
         withHandle
         disabled={!rightPanelOpen}
         className={cn(
-          "opacity-33 transition-opacity duration-200 ease-out hover:opacity-100 motion-reduce:transition-none",
+          "bg-[#e5eaf5] opacity-60 transition-opacity duration-200 ease-out hover:opacity-100 motion-reduce:transition-none",
           !rightPanelOpen && "pointer-events-none opacity-0",
         )}
       />
@@ -522,7 +524,7 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
         <aside
           aria-hidden={!rightPanelOpen}
           className={cn(
-            "size-full min-h-0 min-w-0 overflow-hidden transition-opacity duration-[280ms] ease-out motion-reduce:transition-none",
+            "size-full min-h-0 min-w-0 overflow-hidden border-l border-[#e5eaf5] bg-[#f5f7fa] transition-opacity duration-[280ms] ease-out motion-reduce:transition-none",
             rightPanelOpen ? "opacity-100" : "pointer-events-none opacity-0",
           )}
           id="artifacts"

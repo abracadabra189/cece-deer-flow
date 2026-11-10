@@ -1853,7 +1853,7 @@ export const enUS: Translations = {
 
   // Page titles (document title)
   pages: {
-    appName: "CECE",
+    appName: "CeCeMate",
     chats: "Chats",
     newChat: "New chat",
     untitled: "Untitled",

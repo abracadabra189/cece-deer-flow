@@ -4,24 +4,16 @@ import type { Message } from "@langchain/langgraph-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ChatStatus } from "ai";
 import {
-  AtSignIcon,
   CheckIcon,
-  ChevronDownIcon,
-  GraduationCapIcon,
-  LightbulbIcon,
+  CpuIcon,
+  GaugeIcon,
   Loader2Icon,
-  MicIcon,
   PaperclipIcon,
-  PlusIcon,
-  RocketIcon,
   SparklesIcon,
-  SquareIcon,
   TargetIcon,
   Undo2Icon,
   XIcon,
-  ZapIcon,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
 import {
   useCallback,
   useId,
@@ -41,10 +33,6 @@ import { toast } from "sonner";
 
 import {
   PromptInput,
-  PromptInputActionMenu,
-  PromptInputActionMenuContent,
-  PromptInputActionMenuItem,
-  PromptInputActionMenuTrigger,
   PromptInputAttachment,
   PromptInputAttachments,
   PromptInputButton,
@@ -58,7 +46,6 @@ import {
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
-import { ConfettiButton } from "@/components/ui/confetti-button";
 import {
   Dialog,
   DialogContent,
@@ -68,9 +55,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { fetch } from "@/core/api/fetcher";
 import { useAuth } from "@/core/auth/AuthProvider";
@@ -92,14 +80,11 @@ import {
 } from "@/core/messages/utils";
 import { useModels } from "@/core/models/hooks";
 import {
-  getReasoningEffortOptions,
   getResolvedMode,
   type InputMode,
-  isThinkingRequired,
   type ReasoningEffortValue,
   reasoningEffortForMode,
   resolveReasoningEffort,
-  supportsThinking as modelSupportsThinking,
 } from "@/core/models/reasoning";
 import { attachProjectDocument } from "@/core/projects/api";
 import {
@@ -151,12 +136,6 @@ import { isCompositionConfirmEnter, isIMEComposing } from "@/lib/ime";
 import { cn } from "@/lib/utils";
 
 import { Suggestion, Suggestions } from "../ai-elements/suggestion";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
 
 import {
   abortGoalRequest,
@@ -166,7 +145,6 @@ import {
   findSuggestionTemplatePlaceholder,
   finishGoalRequest,
   filterSkillsForAgent,
-  getGoalObjectiveCounter,
   getInputSubmitAction,
   getLeadingSlashCommandQuery,
   getMatchingSlashCommands,
@@ -199,20 +177,41 @@ import {
 } from "./mentions/mention-picker";
 import { getMentionQuery, type MentionQuery } from "./mentions/query";
 import { useThread } from "./messages/context";
-import { ModeHoverGuide } from "./mode-hover-guide";
 import {
   ModelPicker,
   ModelPickerContent,
   ModelPickerTrigger,
 } from "./model-picker-content";
 import { ReferenceAttachmentSummary, useMaybeSidecar } from "./sidecar";
-import { Tooltip } from "./tooltip";
 import {
   normalizeGoalStatusRead,
   type GoalChangeKind,
 } from "./use-active-goal";
 
 const COMPOSER_DRAFT_SAVE_DELAY_MS = 300;
+
+const CECE_MATE_MODE_OPTIONS: ReadonlyArray<{
+  value: InputMode;
+  label: string;
+  description: string;
+}> = [
+  { value: "flash", label: "快速响应", description: "适合轻量问答和快速处理" },
+  {
+    value: "thinking",
+    label: "思考模式",
+    description: "先分析再回答，兼顾速度与质量",
+  },
+  {
+    value: "pro",
+    label: "深度研究",
+    description: "适合需要多步推理的复杂任务",
+  },
+  {
+    value: "ultra",
+    label: "高强度推理",
+    description: "为复杂问题投入更多推理时间",
+  },
+];
 
 /** A `/goal` request either saved, failed (toast shown), or went stale. */
 type GoalCommandResult = "saved" | "failed" | "stale";
@@ -443,7 +442,6 @@ export function InputBox({
   const canSendBusyInput = !!onBusySubmit && canCreateRuns;
   useEffect(() => setRunInputMode("queue"), [threadId]);
   const queryClient = useQueryClient();
-  const searchParams = useSearchParams();
   const mentionListId = useId();
   const mentionPickerRef = useRef<MentionPickerHandle>(null);
   const [activeMentionOption, setActiveMentionOption] = useState<
@@ -813,78 +811,9 @@ export function InputBox({
   }, [context.model_name, models]);
 
   const resolvedModelName = selectedModel?.name;
-
-  const supportThinking = useMemo(
-    () => modelSupportsThinking(selectedModel),
-    [selectedModel],
-  );
-
-  const thinkingRequired = useMemo(
-    () => isThinkingRequired(selectedModel),
-    [selectedModel],
-  );
-
-  // Effort choices come from the model's reasoning contract (issue #5073), so
-  // a provider that only accepts e.g. low/high/max never sees a generic value.
-  const reasoningEffortOptions = useMemo(
-    () => getReasoningEffortOptions(selectedModel),
-    [selectedModel],
-  );
-
-  const supportReasoningEffort = reasoningEffortOptions.length > 0;
-
-  const effectiveReasoningEffort = useMemo(
-    () =>
-      resolveReasoningEffort(
-        selectedModel,
-        context.reasoning_effort ??
-          reasoningEffortForMode(context.mode ?? "pro", selectedModel),
-      ),
-    [context.mode, context.reasoning_effort, selectedModel],
-  );
-
-  const reasoningEffortLabel = useCallback(
-    (effort: string | undefined) => {
-      switch (effort) {
-        case "minimal":
-          return t.inputBox.reasoningEffortMinimal;
-        case "low":
-          return t.inputBox.reasoningEffortLow;
-        case "medium":
-          return t.inputBox.reasoningEffortMedium;
-        case "high":
-          return t.inputBox.reasoningEffortHigh;
-        case "xhigh":
-          return t.inputBox.reasoningEffortXhigh;
-        case "max":
-          return t.inputBox.reasoningEffortMax;
-        default:
-          return effort ?? "";
-      }
-    },
-    [t],
-  );
-
-  const reasoningEffortDescription = useCallback(
-    (effort: string) => {
-      switch (effort) {
-        case "minimal":
-          return t.inputBox.reasoningEffortMinimalDescription;
-        case "low":
-          return t.inputBox.reasoningEffortLowDescription;
-        case "medium":
-          return t.inputBox.reasoningEffortMediumDescription;
-        case "high":
-          return t.inputBox.reasoningEffortHighDescription;
-        case "xhigh":
-          return t.inputBox.reasoningEffortXhighDescription;
-        case "max":
-          return t.inputBox.reasoningEffortMaxDescription;
-        default:
-          return null;
-      }
-    },
-    [t],
+  const resolvedMode = getResolvedMode(context.mode, selectedModel);
+  const selectedModeOption = CECE_MATE_MODE_OPTIONS.find(
+    (option) => option.value === resolvedMode,
   );
 
   const draftKey = useMemo(
@@ -1216,18 +1145,6 @@ export function InputBox({
       });
     },
     [disabled, onContextChange, polishingInput, selectedModel],
-  );
-
-  const handleReasoningEffortSelect = useCallback(
-    (effort: ReasoningEffortValue) => {
-      if (disabled || polishingInput) {
-        return;
-      }
-      onContextChange?.({
-        reasoning_effort: effort,
-      });
-    },
-    [disabled, onContextChange, polishingInput],
   );
 
   const handleGoalCommand = useCallback(
@@ -1861,10 +1778,6 @@ export function InputBox({
     () => getLeadingSlashCommandQuery(textInput.value ?? ""),
     [textInput.value],
   );
-  const goalObjectiveCounter = useMemo(
-    () => getGoalObjectiveCounter(textInput.value ?? ""),
-    [textInput.value],
-  );
   const commandSuggestions = useMemo(
     () =>
       slashCommandQuery === null || hasInlineReferences
@@ -2188,8 +2101,6 @@ export function InputBox({
         : getSpeechRecognitionConstructor(window),
     [],
   );
-  const voiceInputSupported = speechRecognitionConstructor !== null;
-
   const getVoiceInputErrorMessage = useCallback(
     (kind: SpeechRecognitionErrorKind) => {
       switch (kind) {
@@ -2325,38 +2236,6 @@ export function InputBox({
       cleanupVoiceRecognition(recognition);
     }
   }, [cleanupVoiceRecognition]);
-
-  const toggleVoiceInput = useCallback(() => {
-    if (voiceListening) {
-      stopVoiceInput();
-      return;
-    }
-    if (composerLocked) {
-      return;
-    }
-    if (!speechRecognitionConstructor) {
-      toast.error(t.inputBox.voiceInputUnsupported);
-      return;
-    }
-
-    abortInputPolishRequest();
-    setInputPolishUndo(null);
-    promptHistoryIndexRef.current = null;
-    promptHistoryDraftRef.current = "";
-    voiceStopRequestedRef.current = false;
-    voiceBaseTextRef.current = textInput.value ?? "";
-    voiceLatestTextRef.current = voiceBaseTextRef.current;
-    startVoiceRecognition({ focusAfterStart: true });
-  }, [
-    abortInputPolishRequest,
-    composerLocked,
-    speechRecognitionConstructor,
-    startVoiceRecognition,
-    stopVoiceInput,
-    t.inputBox.voiceInputUnsupported,
-    textInput,
-    voiceListening,
-  ]);
 
   useEffect(() => {
     if (composerLocked && voiceListening) {
@@ -2942,18 +2821,6 @@ export function InputBox({
     threadId,
   ]);
 
-  const onSelectPlaceholder = useCallback((newText: string) => {
-    const placeholder = findSuggestionTemplatePlaceholder(newText);
-    if (placeholder) {
-      requestAnimationFrame(() => {
-        const textarea = textareaRef.current;
-        if (!textarea) return;
-        textarea.focus();
-        textarea.setSelectionRange(placeholder.start, placeholder.end);
-      });
-    }
-  }, []);
-
   return (
     <div
       ref={promptRootRef}
@@ -3010,6 +2877,7 @@ export function InputBox({
             listId={mentionListId}
             query={mentionQuery?.query ?? ""}
             searchInput={mentionButtonOpen}
+            skillsOnly={mentionButtonOpen}
             skills={mentionSkills}
             selectedSkills={inlineRefs
               .filter((ref) => ref.kind === "skill")
@@ -3076,7 +2944,7 @@ export function InputBox({
       )}
       <PromptInput
         className={cn(
-          "bg-background/85 relative z-10 rounded-2xl backdrop-blur-sm transition-all duration-300 ease-out *:data-[slot='input-group']:rounded-2xl",
+          "cecemate-composer relative z-10 rounded-[14px] border-[1.5px] border-[#dde6fa] bg-white p-[11px_13px_8px] shadow-[0_4px_18px_rgb(20_32_64_/_0.07)] transition-colors duration-200 focus-within:border-[#4f8bff] *:data-[slot='input-group']:rounded-xl",
           polishingInput &&
             "shadow-primary/10 ring-primary/25 shadow-lg ring-1",
           className,
@@ -3176,10 +3044,10 @@ export function InputBox({
             />
           )}
         </PromptInputHeader>
-        <div className="min-h-16 w-full min-w-0 px-3 py-3">
+        <div className="max-h-[150px] min-h-6 w-full min-w-0 px-0 py-0">
           {hasInlineReferences || inlineEditorActive ? (
             <div
-              className="max-h-48 min-h-6 w-full min-w-0 cursor-text overflow-y-auto text-base leading-7 break-words whitespace-pre-wrap md:text-sm"
+              className="max-h-[150px] min-h-6 w-full min-w-0 cursor-text overflow-y-auto text-[13.5px] leading-[1.85] break-words whitespace-pre-wrap"
               onClick={(event) => {
                 if (event.target === event.currentTarget) {
                   focusContentEditableEnd(inlineSkillTextRef.current);
@@ -3241,7 +3109,7 @@ export function InputBox({
             </div>
           ) : (
             <PromptInputTextarea
-              className="min-h-6! w-full min-w-0 p-0! leading-6!"
+              className="max-h-[150px] min-h-6! w-full min-w-0 p-0! text-[13.5px]! leading-[1.85]!"
               disabled={composerLocked}
               placeholder={t.inputBox.placeholder}
               autoFocus={autoFocus}
@@ -3268,31 +3136,40 @@ export function InputBox({
             />
           )}
         </div>
-        <PromptInputFooter className="flex flex-col gap-2 sm:flex-row sm:flex-nowrap">
-          <PromptInputTools className="w-full min-w-0 flex-wrap sm:w-auto sm:flex-1">
-            <Tooltip content={t.inputBox.mentionPicker}>
-              <PromptInputButton
-                aria-label={t.inputBox.mentionPicker}
-                data-testid="mention-button"
-                disabled={composerLocked}
-                onClick={openMentions}
-              >
-                <AtSignIcon className="size-4" />
-              </PromptInputButton>
-            </Tooltip>
+        <PromptInputFooter className="mt-1.5 flex flex-col gap-1.5 border-t border-[#f0f3fa] px-0! pt-2 pb-0! sm:flex-row sm:flex-nowrap">
+          <PromptInputTools className="w-full min-w-0 flex-wrap gap-1.5 sm:w-auto sm:flex-1">
             <AddAttachmentsButton
-              className="px-2!"
+              className="h-7 rounded-lg border border-[#e7ebf3] bg-[#fafbfe] px-2.5! text-xs text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]"
               disabled={composerLocked}
               uploadLimits={uploadLimits}
             />
-            <VoiceInputButton
+            <PromptInputButton
+              aria-label="技能"
+              className="h-7 gap-1 rounded-lg border border-[#e7ebf3] bg-[#fafbfe] px-2.5 text-xs text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]"
+              data-cecemate-skill-button="true"
+              data-testid="mention-button"
               disabled={composerLocked}
-              listening={voiceListening}
-              supported={voiceInputSupported}
-              onToggle={toggleVoiceInput}
-            />
-            <Tooltip
-              content={
+              onClick={openMentions}
+              title={t.inputBox.mentionPicker}
+            >
+              <SparklesIcon className="size-4" />
+              <span className="text-xs">技能</span>
+            </PromptInputButton>
+            <PromptInputButton
+              aria-label={
+                inputPolishUndoAvailable
+                  ? t.inputBox.inputPolishUndo
+                  : t.inputBox.inputPolish
+              }
+              className="size-6 rounded-full border border-[#e7ebf3] bg-white p-0! text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]"
+              data-testid="polish-input-button"
+              disabled={inputPolishDisabled}
+              onClick={
+                inputPolishUndoAvailable
+                  ? handleUndoInputPolish
+                  : handlePolishInput
+              }
+              title={
                 polishingInput
                   ? t.inputBox.inputPolishing
                   : inputPolishUndoAvailable
@@ -3300,276 +3177,60 @@ export function InputBox({
                     : t.inputBox.inputPolish
               }
             >
-              <PromptInputButton
-                aria-label={
-                  inputPolishUndoAvailable
-                    ? t.inputBox.inputPolishUndo
-                    : t.inputBox.inputPolish
-                }
-                className="px-2!"
-                data-testid="polish-input-button"
-                disabled={inputPolishDisabled}
-                onClick={
-                  inputPolishUndoAvailable
-                    ? handleUndoInputPolish
-                    : handlePolishInput
-                }
-              >
-                {polishingInput ? (
-                  <Loader2Icon className="size-3 animate-spin" />
-                ) : inputPolishUndoAvailable ? (
-                  <Undo2Icon className="size-3" />
-                ) : (
-                  <SparklesIcon className="size-3" />
-                )}
-              </PromptInputButton>
-            </Tooltip>
-            <PromptInputActionMenu>
-              <ModeHoverGuide
-                mode={
-                  context.mode === "flash" ||
-                  context.mode === "thinking" ||
-                  context.mode === "pro" ||
-                  context.mode === "ultra"
-                    ? context.mode
-                    : "flash"
-                }
-              >
-                <PromptInputActionMenuTrigger
-                  className="max-w-28 gap-1! px-2! sm:max-w-none"
+              {polishingInput ? (
+                <Loader2Icon className="size-3 animate-spin" />
+              ) : inputPolishUndoAvailable ? (
+                <Undo2Icon className="size-3" />
+              ) : (
+                <SparklesIcon className="size-3" />
+              )}
+            </PromptInputButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <PromptInputButton
+                  aria-label="选择任务模式"
+                  aria-pressed={resolvedMode === "pro"}
+                  className={cn(
+                    "h-7 gap-1 rounded-lg border border-[#e7ebf3] bg-[#fafbfe] px-2.5! text-xs text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]",
+                    resolvedMode === "pro" &&
+                      "border-[#c9dcfb] bg-[#edf3ff] text-[#2563eb]",
+                  )}
                   disabled={composerLocked}
                 >
-                  <div>
-                    {context.mode === "flash" && <ZapIcon className="size-3" />}
-                    {context.mode === "thinking" && (
-                      <LightbulbIcon className="size-3" />
-                    )}
-                    {context.mode === "pro" && (
-                      <GraduationCapIcon className="size-3" />
-                    )}
-                    {context.mode === "ultra" && (
-                      <RocketIcon className="size-3 text-[#dabb5e]" />
-                    )}
-                  </div>
-                  <div
-                    className={cn(
-                      "truncate text-xs font-normal",
-                      context.mode === "ultra" ? "golden-text" : "",
-                    )}
+                  <GaugeIcon className="size-3.5" />
+                  {selectedModeOption?.label ?? "深度研究"}
+                </PromptInputButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="w-60 rounded-xl border-[#dde6fa] bg-white p-1.5 shadow-[0_8px_24px_rgb(20_32_64_/_0.12)]"
+                sideOffset={6}
+              >
+                {CECE_MATE_MODE_OPTIONS.map((option) => (
+                  <DropdownMenuItem
+                    key={option.value}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[#3f4a5e] focus:bg-[#f2f6ff] focus:text-[#2563eb]"
+                    onSelect={() => handleModeSelect(option.value)}
                   >
-                    {(context.mode === "flash" && t.inputBox.flashMode) ||
-                      (context.mode === "thinking" &&
-                        t.inputBox.reasoningMode) ||
-                      (context.mode === "pro" && t.inputBox.proMode) ||
-                      (context.mode === "ultra" && t.inputBox.ultraMode)}
-                  </div>
-                </PromptInputActionMenuTrigger>
-              </ModeHoverGuide>
-              <PromptInputActionMenuContent className="w-80">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="text-muted-foreground text-xs">
-                    {t.inputBox.mode}
-                  </DropdownMenuLabel>
-                  <PromptInputActionMenu>
-                    {!thinkingRequired && (
-                      <PromptInputActionMenuItem
-                        className={cn(
-                          context.mode === "flash"
-                            ? "text-accent-foreground"
-                            : "text-muted-foreground/65",
-                        )}
-                        onSelect={() => handleModeSelect("flash")}
-                      >
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-1 font-bold">
-                            <ZapIcon
-                              className={cn(
-                                "mr-2 size-4",
-                                context.mode === "flash" &&
-                                  "text-accent-foreground",
-                              )}
-                            />
-                            {t.inputBox.flashMode}
-                          </div>
-                          <div className="pl-7 text-xs">
-                            {t.inputBox.flashModeDescription}
-                          </div>
-                        </div>
-                        {context.mode === "flash" ? (
-                          <CheckIcon className="ml-auto size-4" />
-                        ) : (
-                          <div className="ml-auto size-4" />
-                        )}
-                      </PromptInputActionMenuItem>
-                    )}
-                    {supportThinking && (
-                      <PromptInputActionMenuItem
-                        className={cn(
-                          context.mode === "thinking"
-                            ? "text-accent-foreground"
-                            : "text-muted-foreground/65",
-                        )}
-                        onSelect={() => handleModeSelect("thinking")}
-                      >
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-1 font-bold">
-                            <LightbulbIcon
-                              className={cn(
-                                "mr-2 size-4",
-                                context.mode === "thinking" &&
-                                  "text-accent-foreground",
-                              )}
-                            />
-                            {t.inputBox.reasoningMode}
-                          </div>
-                          <div className="pl-7 text-xs">
-                            {t.inputBox.reasoningModeDescription}
-                          </div>
-                        </div>
-                        {context.mode === "thinking" ? (
-                          <CheckIcon className="ml-auto size-4" />
-                        ) : (
-                          <div className="ml-auto size-4" />
-                        )}
-                      </PromptInputActionMenuItem>
-                    )}
-                    <PromptInputActionMenuItem
-                      className={cn(
-                        context.mode === "pro"
-                          ? "text-accent-foreground"
-                          : "text-muted-foreground/65",
-                      )}
-                      onSelect={() => handleModeSelect("pro")}
-                    >
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-1 font-bold">
-                          <GraduationCapIcon
-                            className={cn(
-                              "mr-2 size-4",
-                              context.mode === "pro" &&
-                                "text-accent-foreground",
-                            )}
-                          />
-                          {t.inputBox.proMode}
-                        </div>
-                        <div className="pl-7 text-xs">
-                          {t.inputBox.proModeDescription}
-                        </div>
-                      </div>
-                      {context.mode === "pro" ? (
-                        <CheckIcon className="ml-auto size-4" />
-                      ) : (
-                        <div className="ml-auto size-4" />
-                      )}
-                    </PromptInputActionMenuItem>
-                    <PromptInputActionMenuItem
-                      className={cn(
-                        context.mode === "ultra"
-                          ? "text-accent-foreground"
-                          : "text-muted-foreground/65",
-                      )}
-                      onSelect={() => handleModeSelect("ultra")}
-                    >
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-1 font-bold">
-                          <RocketIcon
-                            className={cn(
-                              "mr-2 size-4",
-                              context.mode === "ultra" && "text-[#dabb5e]",
-                            )}
-                          />
-                          <div
-                            className={cn(
-                              context.mode === "ultra" && "golden-text",
-                            )}
-                          >
-                            {t.inputBox.ultraMode}
-                          </div>
-                        </div>
-                        <div className="pl-7 text-xs">
-                          {t.inputBox.ultraModeDescription}
-                        </div>
-                      </div>
-                      {context.mode === "ultra" ? (
-                        <CheckIcon className="ml-auto size-4" />
-                      ) : (
-                        <div className="ml-auto size-4" />
-                      )}
-                    </PromptInputActionMenuItem>
-                  </PromptInputActionMenu>
-                </DropdownMenuGroup>
-              </PromptInputActionMenuContent>
-            </PromptInputActionMenu>
+                    <GaugeIcon className="size-4 shrink-0" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-medium">
+                        {option.label}
+                      </span>
+                      <span className="block text-[11px] text-[#8a94a6]">
+                        {option.description}
+                      </span>
+                    </span>
+                    {option.value === resolvedMode ? (
+                      <CheckIcon className="size-4 shrink-0 text-[#2563eb]" />
+                    ) : null}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             {knowledgeScopeControl}
-            {supportReasoningEffort && context.mode !== "flash" && (
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger
-                  className="hidden gap-1! px-2! sm:inline-flex"
-                  disabled={composerLocked}
-                >
-                  <div className="text-xs font-normal">
-                    {t.inputBox.reasoningEffort}:{" "}
-                    {reasoningEffortLabel(effectiveReasoningEffort)}
-                  </div>
-                </PromptInputActionMenuTrigger>
-                <PromptInputActionMenuContent className="w-70">
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-muted-foreground text-xs">
-                      {t.inputBox.reasoningEffort}
-                    </DropdownMenuLabel>
-                    <PromptInputActionMenu>
-                      {reasoningEffortOptions.map((effort) => (
-                        <PromptInputActionMenuItem
-                          key={effort}
-                          className={cn(
-                            effectiveReasoningEffort === effort
-                              ? "text-accent-foreground"
-                              : "text-muted-foreground/65",
-                          )}
-                          onSelect={() => handleReasoningEffortSelect(effort)}
-                        >
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center gap-1 font-bold">
-                              {reasoningEffortLabel(effort)}
-                            </div>
-                            {reasoningEffortDescription(effort) && (
-                              <div className="pl-2 text-xs">
-                                {reasoningEffortDescription(effort)}
-                              </div>
-                            )}
-                          </div>
-                          {effectiveReasoningEffort === effort ? (
-                            <CheckIcon className="ml-auto size-4" />
-                          ) : (
-                            <div className="ml-auto size-4" />
-                          )}
-                        </PromptInputActionMenuItem>
-                      ))}
-                    </PromptInputActionMenu>
-                  </DropdownMenuGroup>
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
-            )}
           </PromptInputTools>
-          <PromptInputTools className="w-full min-w-0 justify-end sm:w-auto">
-            {goalObjectiveCounter && (
-              <span
-                aria-label={t.inputBox.goalLengthCounter
-                  .replace("{length}", () =>
-                    String(goalObjectiveCounter.length),
-                  )
-                  .replace("{max}", () => String(goalObjectiveCounter.max))}
-                className={cn(
-                  "shrink-0 text-xs tabular-nums",
-                  goalObjectiveCounter.overLimit
-                    ? "text-destructive font-medium"
-                    : "text-muted-foreground",
-                )}
-                data-testid="goal-length-counter"
-              >
-                {goalObjectiveCounter.length}/{goalObjectiveCounter.max}
-              </span>
-            )}
+          <PromptInputTools className="w-full min-w-0 justify-end gap-1.5 sm:ml-auto sm:w-auto">
             <ModelPicker
               open={modelDialogOpen}
               onOpenChange={setModelDialogOpen}
@@ -3577,14 +3238,15 @@ export function InputBox({
               <ModelPickerTrigger asChild>
                 <PromptInputButton
                   className={cn(
-                    "max-w-40 min-w-0 sm:max-w-56",
+                    "h-7 max-w-40 min-w-0 rounded-lg border border-[#e7ebf3] !bg-[#fafbfe] px-2.5 text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:!bg-[#f2f6ff] hover:text-[#2563eb] data-[state=open]:!bg-[#f2f6ff] sm:max-w-56",
                     status === "streaming" &&
                       canSendBusyInput &&
                       "max-sm:max-w-28",
                   )}
                   disabled={composerLocked}
                 >
-                  <div className="flex min-w-0 flex-col text-left">
+                  <div className="flex min-w-0 items-center gap-1 text-left">
+                    <CpuIcon className="size-3.5 shrink-0" />
                     <span className="flex-1 truncate text-left text-xs font-normal">
                       {selectedModel?.display_name}
                     </span>
@@ -3599,62 +3261,16 @@ export function InputBox({
               />
             </ModelPicker>
             {status === "streaming" && canSendBusyInput && (
-              <>
-                <PromptInputActionMenu>
-                  <PromptInputActionMenuTrigger
-                    aria-label={t.inputBox.runInputMode}
-                    disabled={composerLocked}
-                  >
-                    {runInputMode === "queue"
-                      ? t.inputBox.queueMode
-                      : t.inputBox.steerMode}
-                    <ChevronDownIcon className="ml-1 size-3" aria-hidden />
-                  </PromptInputActionMenuTrigger>
-                  <PromptInputActionMenuContent>
-                    <PromptInputActionMenuItem
-                      onSelect={() => setRunInputMode("queue")}
-                    >
-                      <div>
-                        <div>{t.inputBox.queueMode}</div>
-                        <div className="text-muted-foreground text-xs">
-                          {t.inputBox.queueModeHelp}
-                        </div>
-                      </div>
-                      {runInputMode === "queue" && (
-                        <CheckIcon className="ml-auto size-4" />
-                      )}
-                    </PromptInputActionMenuItem>
-                    <PromptInputActionMenuItem
-                      onSelect={() => setRunInputMode("steer")}
-                    >
-                      <div>
-                        <div>{t.inputBox.steerMode}</div>
-                        <div className="text-muted-foreground text-xs">
-                          {t.inputBox.steerModeHelp}
-                        </div>
-                      </div>
-                      {runInputMode === "steer" && (
-                        <CheckIcon className="ml-auto size-4" />
-                      )}
-                    </PromptInputActionMenuItem>
-                  </PromptInputActionMenuContent>
-                </PromptInputActionMenu>
-                <PromptInputSubmit
-                  aria-label={t.inputBox.runInputSend}
-                  title={
-                    runInputMode === "queue"
-                      ? t.inputBox.queueModeHelp
-                      : t.inputBox.steerModeHelp
-                  }
-                  className="rounded-full"
-                  variant="outline"
-                  status={runInputSending ? "submitted" : "ready"}
-                  disabled={composerLocked || !textInput.value.trim()}
-                />
-              </>
+              <PromptInputSubmit
+                aria-label={t.inputBox.runInputSend}
+                className="size-8 rounded-full border border-[#d6def2] bg-white text-[#2563eb] shadow-none hover:bg-[#eef3ff]"
+                status={runInputSending ? "submitted" : "ready"}
+                variant="outline"
+                disabled={composerLocked || !textInput.value.trim()}
+              />
             )}
             <PromptInputSubmit
-              className="rounded-full"
+              className="size-8 rounded-full border-0 bg-linear-to-br from-[#2563eb] to-[#7b5cff] text-white shadow-[0_3px_10px_rgb(57_110_255_/_0.38)] hover:from-[#1d4ed8] hover:to-[#6844ed]"
               disabled={
                 composerLocked ||
                 stopDenied ||
@@ -3700,18 +3316,9 @@ export function InputBox({
         <div className="bg-background absolute right-0 -bottom-[17px] left-0 z-0 h-4"></div>
       )}
 
-      {isWelcomeMode &&
-        searchParams.get("mode") !== "skill" &&
-        !showCommandSuggestions &&
-        !showMentions && (
-          <div className="flex items-center justify-center pt-2">
-            <SuggestionList onSelectPlaceholder={onSelectPlaceholder} />
-          </div>
-        )}
-
       <p
         className={cn(
-          "text-muted-foreground/67 z-10 px-4 text-center text-xs leading-4",
+          "text-muted-foreground/67 z-10 px-4 text-center text-[11px] leading-4",
           !isWelcomeMode && "absolute top-full right-0 left-0",
         )}
       >
@@ -3743,111 +3350,6 @@ export function InputBox({
   );
 }
 
-function VoiceInputButton({
-  disabled,
-  listening,
-  supported,
-  onToggle,
-}: {
-  disabled?: boolean;
-  listening: boolean;
-  supported: boolean;
-  onToggle: () => void;
-}) {
-  const { t } = useI18n();
-  const tooltipContent = !supported
-    ? t.inputBox.voiceInputUnsupported
-    : listening
-      ? t.inputBox.voiceInputListening
-      : t.inputBox.voiceInputStart;
-  const label = listening
-    ? t.inputBox.voiceInputStopLabel
-    : t.inputBox.voiceInputStartLabel;
-
-  return (
-    <Tooltip content={<span className="block max-w-72">{tooltipContent}</span>}>
-      <PromptInputButton
-        aria-label={label}
-        aria-pressed={listening}
-        className={cn(
-          "px-2!",
-          listening && "text-primary bg-primary/10 hover:bg-primary/15",
-        )}
-        data-testid="voice-input-button"
-        disabled={(disabled ?? false) || !supported}
-        onClick={onToggle}
-      >
-        {listening ? (
-          <SquareIcon className="size-3 fill-current" />
-        ) : (
-          <MicIcon className="size-3" />
-        )}
-      </PromptInputButton>
-    </Tooltip>
-  );
-}
-
-function SuggestionList({
-  onSelectPlaceholder,
-}: {
-  onSelectPlaceholder: (newText: string) => void;
-}) {
-  const { t } = useI18n();
-  const { textInput } = usePromptInputController();
-  const handleSuggestionClick = useCallback(
-    (prompt: string | undefined) => {
-      if (!prompt) return;
-      textInput.setInput(prompt);
-      onSelectPlaceholder(prompt);
-    },
-    [textInput, onSelectPlaceholder],
-  );
-  return (
-    <Suggestions className="min-h-16 w-full max-w-full justify-center px-4 sm:w-fit sm:px-0">
-      <ConfettiButton
-        className="text-muted-foreground cursor-pointer rounded-full px-4 text-xs font-normal"
-        variant="outline"
-        size="sm"
-        onClick={() => handleSuggestionClick(t.inputBox.surpriseMePrompt)}
-      >
-        <SparklesIcon className="size-4" /> {t.inputBox.surpriseMe}
-      </ConfettiButton>
-      {t.inputBox.suggestions.map((suggestion) => (
-        <Suggestion
-          key={suggestion.suggestion}
-          icon={suggestion.icon}
-          suggestion={suggestion.suggestion}
-          onClick={() => handleSuggestionClick(suggestion.prompt)}
-        />
-      ))}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Suggestion icon={PlusIcon} suggestion={t.common.create} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuGroup>
-            {t.inputBox.suggestionsCreate.map((suggestion, index) =>
-              "type" in suggestion && suggestion.type === "separator" ? (
-                <DropdownMenuSeparator key={index} />
-              ) : (
-                !("type" in suggestion) && (
-                  <DropdownMenuItem
-                    key={suggestion.suggestion}
-                    onClick={() => handleSuggestionClick(suggestion.prompt)}
-                  >
-                    {suggestion.icon && <suggestion.icon className="size-4" />}
-                    {suggestion.suggestion}
-                  </DropdownMenuItem>
-                )
-              ),
-            )}
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </Suggestions>
-  );
-}
-
 function AddAttachmentsButton({
   className,
   disabled,
@@ -3867,16 +3369,16 @@ function AddAttachmentsButton({
       )
     : t.inputBox.addAttachments;
   return (
-    <Tooltip content={<span className="block max-w-80">{tooltipContent}</span>}>
-      <PromptInputButton
-        aria-label={t.inputBox.addAttachments}
-        className={cn("px-2!", className)}
-        data-testid="add-attachments-button"
-        disabled={disabled}
-        onClick={() => attachments.openFileDialog()}
-      >
-        <PaperclipIcon className="size-3" />
-      </PromptInputButton>
-    </Tooltip>
+    <PromptInputButton
+      aria-label={t.inputBox.addAttachments}
+      className={cn("px-2!", className)}
+      data-testid="add-attachments-button"
+      disabled={disabled}
+      onClick={() => attachments.openFileDialog()}
+      title={tooltipContent}
+    >
+      <PaperclipIcon className="size-3" />
+      <span className="text-xs">附件</span>
+    </PromptInputButton>
   );
 }

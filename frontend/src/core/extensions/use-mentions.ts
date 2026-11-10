@@ -9,7 +9,11 @@ import { useFrontendExtensions } from "./hooks";
 import { searchExtensionMentions } from "./mentions";
 
 const empty = { items: [], failed: false };
-export function useExtensionMentions(query: string, threadId: string) {
+export function useExtensionMentions(
+  query: string,
+  threadId: string,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
   const { user } = useAuth();
   const { locale } = useI18n();
   const extensions = useFrontendExtensions();
@@ -23,12 +27,14 @@ export function useExtensionMentions(query: string, threadId: string) {
     }),
     [user?.id, locale, threadId, extensions.data],
   );
-  const hasProviders = (scope.entries ?? []).some(
-    (entry) =>
-      entry.viewer_id === scope.userId &&
-      entry.settings.enabled === true &&
-      (entry.extension?.mentionProviders?.length ?? 0) > 0,
-  );
+  const hasProviders =
+    enabled &&
+    (scope.entries ?? []).some(
+      (entry) =>
+        entry.viewer_id === scope.userId &&
+        entry.settings.enabled === true &&
+        (entry.extension?.mentionProviders?.length ?? 0) > 0,
+    );
   const request = useMemo(
     () => ({ scope, query, attempt }),
     [scope, query, attempt],
@@ -74,8 +80,9 @@ export function useExtensionMentions(query: string, threadId: string) {
   return {
     ...(result ?? empty),
     failed: extensions.isError || result?.failed === true,
-    loading: extensions.isPending || result === undefined,
+    loading: enabled && (extensions.isPending || result === undefined),
     retry: () => {
+      if (!enabled) return;
       void extensions.refetch();
       retry((value) => value + 1);
     },
