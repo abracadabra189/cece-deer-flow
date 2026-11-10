@@ -333,7 +333,7 @@ describe("mention selection focus", () => {
       '[contenteditable="true"]',
     )!;
     act(() => focusReferenceAt(editor, 2));
-    const picker = screen.getByTestId("add-attachments-button");
+    const picker = screen.getByTestId("mention-button");
     act(() => picker.focus());
     holdAnimationFrames();
     fireEvent.click(picker);
@@ -630,11 +630,13 @@ describe("unified composer mentions", () => {
     enterMention(container, "@");
     expect(screen.queryByRole("option", { name: "Writer brief" })).toBeNull();
   });
-  it("the attachment button opens the same picker", () => {
+  it("the attachment button opens the native file chooser instead of the reference picker", () => {
     renderComposer();
+    const fileInput = screen.getByLabelText("Upload files");
+    const click = rs.spyOn(fileInput, "click");
     fireEvent.click(screen.getByTestId("add-attachments-button"));
-    expect(screen.getByTestId("mention-picker")).toBeTruthy();
-    expect(screen.getByRole("option", { name: "Upload a file" })).toBeTruthy();
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("mention-picker")).toBeNull();
   });
   it("does not select upload automatically for an unknown query", () => {
     const { container } = renderComposer();
@@ -848,7 +850,7 @@ describe("reference review regressions", () => {
     await waitFor(() =>
       expect(screen.getByTestId("inline-skill-reference")).toBeTruthy(),
     );
-    fireEvent.click(screen.getByTestId("mention-button"));
+    enterMention(container, "@report");
     fireEvent.click(screen.getByRole("option", { name: "report.pdf" }));
     await waitFor(() => expect(attach).toHaveBeenCalled());
     expect(screen.getByRole("textbox").getAttribute("contenteditable")).toBe(
@@ -883,9 +885,8 @@ it("the picker search exposes its active option while selected state remains ind
   expect(search.getAttribute("aria-activedescendant")).toBe(research.id);
   expect(research.getAttribute("aria-selected")).toBe("false");
   fireEvent.keyDown(search, { key: "ArrowDown" });
-  expect(search.getAttribute("aria-activedescendant")).toBe(
-    screen.getByRole("option", { name: "report.pdf" }).id,
-  );
+  expect(screen.queryByRole("option", { name: "report.pdf" })).toBeNull();
+  expect(search.getAttribute("aria-activedescendant")).toBe(research.id);
   expect(research.getAttribute("aria-selected")).toBe("false");
 });
 
@@ -982,12 +983,15 @@ describe("reference discovery failures and polish round trips", () => {
     ).toBe("writer");
   });
 
-  it("offers capability retry from the picker without a selected conversation", async () => {
+  it("offers capability retry from typed @ references without a selected conversation", async () => {
     capability.enabled = false;
     capability.isSuccess = false;
     capability.error = new Error("503 temporary");
-    renderComposer("picker-cap-error");
-    fireEvent.click(screen.getByTestId("mention-button"));
+    const { container } = renderComposer("picker-cap-error");
+    enterMention(container, "@");
+    await waitFor(() =>
+      expect(screen.getByTestId("mention-picker")).toBeTruthy(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(capability.refetch).toHaveBeenCalledTimes(1);
   });

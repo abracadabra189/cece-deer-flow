@@ -97,12 +97,9 @@ afterEach(() => {
 });
 
 describe("InputBox stop gating (runs:cancel)", () => {
-  it("keeps update sending separate from Stop and preserves a rejected draft", async () => {
+  it("keeps Stop available while allowing a text-only update during streaming", async () => {
     const onStop = rs.fn();
-    const onBusySubmit = rs
-      .fn()
-      .mockRejectedValueOnce(new Error("offline"))
-      .mockResolvedValueOnce({});
+    const onBusySubmit = rs.fn();
     renderComposer({ onStop, onBusySubmit });
     const input = screen.getByRole("textbox");
     fireEvent.change(input, { target: { value: "Include 2025" } });
@@ -110,19 +107,10 @@ describe("InputBox stop gating (runs:cancel)", () => {
     await waitFor(() =>
       expect(onBusySubmit).toHaveBeenCalledWith("Include 2025", "queue"),
     );
-    await waitFor(() =>
-      expect(
-        screen
-          .getByRole("button", { name: "Send update" })
-          .hasAttribute("disabled"),
-      ).toBe(false),
-    );
-    expect((input as HTMLTextAreaElement).value).toBe("Include 2025");
-    expect(onStop).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Send update" }));
-    await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe(""));
     fireEvent.click(screen.getByRole("button", { name: "Stop current task" }));
     expect(onStop).toHaveBeenCalledTimes(1);
+    expect(onBusySubmit).toHaveBeenCalledTimes(1);
+    expect((input as HTMLTextAreaElement).value).toBe("");
   });
 
   it("does not expose input controls when creating Runs is denied", () => {

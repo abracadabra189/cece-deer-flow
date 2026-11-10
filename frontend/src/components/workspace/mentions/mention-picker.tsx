@@ -59,6 +59,7 @@ export function MentionPicker({
   ref,
   query,
   searchInput = false,
+  skillsOnly = false,
   skills,
   skillsLoading = false,
   skillsError,
@@ -79,6 +80,8 @@ export function MentionPicker({
   ref?: Ref<MentionPickerHandle>;
   query: string;
   searchInput?: boolean;
+  /** The visible CeCeMate composer button opens the skill catalog only. */
+  skillsOnly?: boolean;
   skills: Skill[];
   skillsLoading?: boolean;
   skillsError?: unknown;
@@ -106,10 +109,10 @@ export function MentionPicker({
   const labels = t.inputBox;
   const untitled = t.pages.untitled;
   const documents = useInfiniteProjectDocuments(projectId ?? "", {
-    enabled: !!projectId,
+    enabled: !skillsOnly && !!projectId,
   });
   const conversations = useInfiniteThreads(undefined, {
-    enabled: capability.enabled,
+    enabled: !skillsOnly && capability.enabled,
   });
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -119,6 +122,7 @@ export function MentionPicker({
   const extensions = useExtensionMentions(
     searchInput ? search : query,
     threadId,
+    { enabled: !skillsOnly },
   );
   const options = useMemo(() => {
     const result: Option[] = skills
@@ -133,20 +137,21 @@ export function MentionPicker({
           !selectedSkills?.includes(skill.name) &&
           new Set(selectedSkills).size >= MAX_EXPLICIT_SKILLS,
       }));
-    for (const document of documents.data?.pages.flatMap(
-      (page) => page.documents,
-    ) ?? []) {
-      result.push({
-        id: `file:${document.id}`,
-        label: document.name,
-        description: document.content_missing
-          ? labels.mentionUnavailable
-          : undefined,
-        selection: { kind: "file", document },
-        disabled: document.content_missing,
-      });
-    }
-    if (capability.enabled) {
+    if (!skillsOnly)
+      for (const document of documents.data?.pages.flatMap(
+        (page) => page.documents,
+      ) ?? []) {
+        result.push({
+          id: `file:${document.id}`,
+          label: document.name,
+          description: document.content_missing
+            ? labels.mentionUnavailable
+            : undefined,
+          selection: { kind: "file", document },
+          disabled: document.content_missing,
+        });
+      }
+    if (!skillsOnly && capability.enabled) {
       const seen = new Set<string>();
       for (const thread of conversations.data?.pages.flat() ?? []) {
         if (thread.thread_id === threadId || seen.has(thread.thread_id))
@@ -176,24 +181,26 @@ export function MentionPicker({
         .toLocaleLowerCase()
         .includes(filter),
     );
-    for (const item of extensions.items) {
-      const id = extensionMentionId(item);
+    if (!skillsOnly) {
+      for (const item of extensions.items) {
+        const id = extensionMentionId(item);
+        filtered.push({
+          id: `extension:${id}`,
+          label: item.label,
+          description: item.description,
+          selection: { kind: "extension", reference: item },
+          selected: selectedExtensions.includes(id),
+          disabled:
+            !selectedExtensions.includes(id) &&
+            new Set(selectedExtensions).size >= MAX_EXTENSION_MENTIONS,
+        });
+      }
       filtered.push({
-        id: `extension:${id}`,
-        label: item.label,
-        description: item.description,
-        selection: { kind: "extension", reference: item },
-        selected: selectedExtensions.includes(id),
-        disabled:
-          !selectedExtensions.includes(id) &&
-          new Set(selectedExtensions).size >= MAX_EXTENSION_MENTIONS,
+        id: "upload",
+        label: labels.mentionUpload,
+        selection: { kind: "upload" },
       });
     }
-    filtered.push({
-      id: "upload",
-      label: labels.mentionUpload,
-      selection: { kind: "upload" },
-    });
     return filtered;
   }, [
     extensions.items,
@@ -209,6 +216,7 @@ export function MentionPicker({
     filter,
     labels,
     untitled,
+    skillsOnly,
   ]);
   const available = options.filter((option) => !option.disabled);
   const active =
@@ -261,32 +269,44 @@ export function MentionPicker({
         ?.scrollIntoView?.({ block: "nearest" });
   }, [activeOptionId]);
   const loading =
-    extensions.loading ||
+    (!skillsOnly && extensions.loading) ||
     skillsLoading ||
-    capability.isLoading ||
-    (!!projectId && documents.isPending) ||
-    (capability.enabled && conversations.isPending);
+    (!skillsOnly && capability.isLoading) ||
+    (!skillsOnly && !!projectId && documents.isPending) ||
+    (!skillsOnly && capability.enabled && conversations.isPending);
   const failed =
-    extensions.failed ||
-    !!capability.error ||
+    (!skillsOnly && extensions.failed) ||
+    (!skillsOnly && !!capability.error) ||
     !!skillsError ||
-    (!!projectId && documents.isError) ||
-    (capability.enabled && conversations.isError);
+    (!skillsOnly && !!projectId && documents.isError) ||
+    (!skillsOnly && capability.enabled && conversations.isError);
   const groups = [
     { kind: "skill", title: labels.mentionSkills, Icon: SparklesIcon },
-    { kind: "file", title: labels.mentionFiles, Icon: FileIcon },
-    {
-      kind: "conversation",
-      title: labels.mentionConversations,
-      Icon: MessagesSquareIcon,
-    },
-    { kind: "extension", title: labels.mentionExtensions, Icon: PuzzleIcon },
-    { kind: "upload", title: "", Icon: UploadIcon },
+    ...(!skillsOnly
+      ? ([
+          { kind: "file", title: labels.mentionFiles, Icon: FileIcon },
+        ] as const)
+      : []),
+    ...(!skillsOnly
+      ? ([
+          {
+            kind: "conversation",
+            title: labels.mentionConversations,
+            Icon: MessagesSquareIcon,
+          },
+          {
+            kind: "extension",
+            title: labels.mentionExtensions,
+            Icon: PuzzleIcon,
+          },
+          { kind: "upload", title: "", Icon: UploadIcon },
+        ] as const)
+      : []),
   ] as const;
   return (
     <div
       ref={rootRef}
-      className="bg-popover text-popover-foreground border-border rounded-xl border p-2 shadow-lg"
+      className="rounded-xl border border-[#dfe6f3] bg-white p-2 text-[#26324a] shadow-[0_8px_24px_rgb(20_32_64_/_0.12)]"
       data-testid="mention-picker"
     >
       <div className="flex items-center gap-2 px-2 pb-2">
@@ -341,7 +361,7 @@ export function MentionPicker({
             <div
               key={kind}
               role="group"
-              aria-label={title || labels.mentionUpload}
+              aria-label={title ?? labels.mentionUpload}
             >
               {title && (
                 <div className="text-muted-foreground px-2 py-1 text-xs">
@@ -362,8 +382,7 @@ export function MentionPicker({
                   onClick={() => choose(option)}
                   className={cn(
                     "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm disabled:opacity-40",
-                    active?.id === option.id &&
-                      "bg-accent text-accent-foreground",
+                    active?.id === option.id && "bg-[#eef3ff] text-[#2563eb]",
                   )}
                 >
                   <Icon className="size-4 shrink-0" />
@@ -398,11 +417,12 @@ export function MentionPicker({
           <button
             type="button"
             onClick={() => {
-              if (extensions.failed) extensions.retry();
+              if (!skillsOnly && extensions.failed) extensions.retry();
               if (capability.error) void capability.refetch?.();
               if (skillsError) void onRetrySkills?.();
-              if (projectId && documents.isError) void documents.refetch();
-              if (capability.enabled && conversations.isError)
+              if (!skillsOnly && projectId && documents.isError)
+                void documents.refetch();
+              if (!skillsOnly && capability.enabled && conversations.isError)
                 void conversations.refetch();
             }}
           >
@@ -410,24 +430,25 @@ export function MentionPicker({
           </button>
         </div>
       )}
-      {(documents.hasNextPage ||
-        (capability.enabled && conversations.hasNextPage)) && (
-        <button
-          type="button"
-          className="px-2 py-2 text-xs underline"
-          disabled={
-            documents.isFetchingNextPage || conversations.isFetchingNextPage
-          }
-          onClick={() => {
-            if (documents.hasNextPage) void documents.fetchNextPage();
-            if (capability.enabled && conversations.hasNextPage)
-              void conversations.fetchNextPage();
-          }}
-        >
-          {labels.mentionLoadMore}
-        </button>
-      )}
-      {!projectId && (
+      {!skillsOnly &&
+        (documents.hasNextPage ||
+          (capability.enabled && conversations.hasNextPage)) && (
+          <button
+            type="button"
+            className="px-2 py-2 text-xs underline"
+            disabled={
+              documents.isFetchingNextPage || conversations.isFetchingNextPage
+            }
+            onClick={() => {
+              if (documents.hasNextPage) void documents.fetchNextPage();
+              if (capability.enabled && conversations.hasNextPage)
+                void conversations.fetchNextPage();
+            }}
+          >
+            {labels.mentionLoadMore}
+          </button>
+        )}
+      {!skillsOnly && !projectId && (
         <p className="text-muted-foreground px-2 py-1 text-xs">
           {labels.mentionNoProject}
         </p>
@@ -435,7 +456,7 @@ export function MentionPicker({
       <p className="text-muted-foreground px-2 py-1 text-xs">
         {labels.mentionMultipleSkills}
       </p>
-      {capability.enabled && (
+      {!skillsOnly && capability.enabled && (
         <p className="text-muted-foreground px-2 py-1 text-xs">
           {labels.referenceConversationsLimit(capability.maxReferences)}
         </p>
