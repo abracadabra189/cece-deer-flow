@@ -41,6 +41,7 @@ _HOST_PUBLIC_PATH_PREFIXES = (
     "/openapi.json",
     "/api/v1/auth/oauth/",
     "/api/v1/auth/callback/",
+    "/api/v1/auth/external/",
     "/api/webhooks/",
 )
 _HOST_PUBLIC_EXACT_PATHS = frozenset(
@@ -53,7 +54,7 @@ _HOST_PUBLIC_EXACT_PATHS = frozenset(
         "/api/v1/auth/providers",
     }
 )
-_HOST_CSRF_EXEMPT_EXACT_PATHS = frozenset({"/api/v1/auth/me"})
+_HOST_CSRF_EXEMPT_EXACT_PATHS = frozenset({"/api/v1/auth/me", "/api/v1/auth/external/provision"})
 _CSRF_STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
 _STANDARD_CONVERTOR_REGEXES = {
     "str": "[^/]+",

@@ -113,6 +113,25 @@ Unauthenticated auth routes (`/register`, `/setup-status`, `/providers`,
 `get_app_config()` through `asyncio.to_thread`: each read stats and hashes the
 config files. Coverage: `tests/blocking_io/test_auth_router_config_reads.py`.
 
+External user-system provisioning (`/api/v1/auth/external`, gated by
+`auth.external_user.enabled`, 404 when off) reads config the same off-loop way and
+is public in `AuthMiddleware` while self-authenticating, like the signed webhooks:
+`POST /provision` accepts only the shared `api_key` (`X-External-User-Key` or
+Bearer) and resolves-or-registers an account by phone, linked as
+`(oauth_provider=provider_id, oauth_id=phone)` with a derived reserved
+`users.email` and no password — an unrelated owner of that email is a 409, never a
+takeover. It is CSRF-exempt (a key-authenticated machine caller has no
+double-submit pair) and deliberately absent from `_AUTH_EXEMPT_PATHS`, which would
+also trigger the Origin check and CSRF-cookie issuance. `GET /login` spends a
+signed ticket exactly once — the claims carry `uid`, never `sub`, so a ticket can
+never replay as a session token — then issues the ordinary session cookies and 302s
+to the frontend `/auth/callback`, so the browser flow needs no frontend change;
+every failure redirects to `/login?error=external_login_failed` without setting a
+cookie, keeping the endpoint from becoming a ticket-validity oracle. Contract:
+`backend/docs/API.md#external-user-provisioning`; trust boundary:
+`backend/docs/AUTH_DESIGN.md`. Tests: `test_external_user_auth.py` plus the
+config-read anchors named above.
+
 Managed-model `/discover` and `/import` require administrator access before
 reading credentials or making outbound requests. Discovery is read-only and
 bounded (20 seconds, 2 MiB, 2,000 IDs/20 pages); it never follows redirects

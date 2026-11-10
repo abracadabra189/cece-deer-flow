@@ -2,21 +2,22 @@
 
 ``get_app_config()`` stats and re-hashes ``config.yaml`` and
 ``extensions_config.json`` on every call, and reparses them after an edit.
-``/register``, ``/setup-status``, ``/providers``, ``/oauth/{provider}`` and
-``/callback/{provider}`` are unauthenticated and each read the live ``auth``
-section, so the read runs in a worker, as ``/login/local``'s throttle policy
-does (``test_login_local_throttle.py``).
+``/register``, ``/setup-status``, ``/providers``, ``/oauth/{provider}``,
+``/callback/{provider}`` and the two ``/external/`` routes are unauthenticated
+and each read the live ``auth`` section, so the read runs in a worker, as
+``/login/local``'s throttle policy does (``test_login_local_throttle.py``).
 
 Each request runs against real config files and asserts an answer only the
-file on disk produces (registration closed, the configured SSO provider), so an
-anchor cannot pass because the route stopped reading the config.
+file on disk produces (registration closed, the configured SSO provider, the
+configured external-user key and frontend base URL), so an anchor cannot pass
+because the route stopped reading the config.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -26,7 +27,10 @@ import pytest_asyncio
 from blockbuster import BlockingError
 from fastapi import FastAPI
 
+from app.gateway.auth import config as auth_config_module
+from app.gateway.auth.config import AuthConfig, set_auth_config
 from app.gateway.routers import auth as auth_router
+from app.gateway.routers import external_users as external_users_router
 from deerflow.config.app_config import get_app_config, reset_app_config
 from deerflow.config.extensions_config import reset_extensions_config
 
@@ -45,6 +49,10 @@ auth:
         display_name: Corp SSO
         issuer: https://sso.example.com
         client_id: deerflow
+  external_user:
+    enabled: true
+    api_key: external-anchor-key-0123456789
+    frontend_base_url: https://deerflow.example.com
 """
 
 
@@ -61,7 +69,19 @@ def local_provider(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     provider = AsyncMock()
     provider.count_admin_users.return_value = 0
     monkeypatch.setattr(auth_router, "get_local_provider", lambda: provider)
+    monkeypatch.setattr(external_users_router, "get_local_provider", lambda: provider)
     return provider
+
+
+@pytest.fixture
+def pinned_jwt_secret() -> Iterator[str]:
+    """Pin the signing secret so ticket verification does no lazy file I/O."""
+    previous = auth_config_module._auth_config
+    set_auth_config(AuthConfig(jwt_secret="blocking-io-anchor-secret-0123456789"))
+    try:
+        yield "blocking-io-anchor-secret-0123456789"
+    finally:
+        auth_config_module._auth_config = previous
 
 
 @pytest_asyncio.fixture
@@ -80,6 +100,7 @@ async def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, local_provider
 
     app = FastAPI()
     app.include_router(auth_router.router)
+    app.include_router(external_users_router.router)
     transport = httpx.ASGITransport(app=app)
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://gateway.test") as http_client:
@@ -125,6 +146,26 @@ async def test_oauth_callback_reads_oidc_config_off_the_loop(client: httpx.Async
 
     assert response.status_code == 302
     assert response.headers["location"].startswith("https://deerflow.example.com/")
+
+
+async def test_external_provision_reads_config_off_the_loop(client: httpx.AsyncClient, local_provider: AsyncMock) -> None:
+    """Both the enabled flag and the key come from the file: a wrong key is 401, not 404."""
+    response = await client.post(
+        "/api/v1/auth/external/provision",
+        json={"phone": "+8613800138000"},
+        headers={"X-External-User-Key": "not-the-configured-key"},
+    )
+
+    assert response.status_code == 401
+    local_provider.get_user_by_oauth.assert_not_called()
+
+
+async def test_external_login_reads_config_off_the_loop(client: httpx.AsyncClient, pinned_jwt_secret: str) -> None:
+    response = await client.get("/api/v1/auth/external/login", params={"ticket": "not-a-ticket"})
+
+    assert response.status_code == 302
+    # The failure redirect carries the frontend base URL from the config file.
+    assert response.headers["location"] == "https://deerflow.example.com/login?error=external_login_failed"
 
 
 @pytest.mark.parametrize("read", [auth_router._local_registration_enabled, get_app_config], ids=["registration", "app-config"])
