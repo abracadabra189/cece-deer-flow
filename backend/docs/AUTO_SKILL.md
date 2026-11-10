@@ -34,10 +34,14 @@ run completes, answer already streamed
                  └─ asyncio.run(_process_batch)  fresh loop per batch
                       └─ synthesize_skill(...)
                            ├─ resolve the auto-skills this run actually hit
+                           ├─ evidence = trajectory + hit skills + tool diff + scenario index
                            ├─ run_oneshot_llm → decision + structured JSON
                            │     ├─ no_change → stop (nothing is written)
                            │     └─ create / update → continue
                            ├─ scenario_slug → stable visible name
+                           ├─ verify the update claim (reasons + tool evidence)
+                           │     └─ unsubstantiated → stop, as no_change
+                           ├─ abstraction gate: entity leak → repair → redact
                            ├─ render SKILL.md
                            ├─ validate + enforce_static_scan + scan_skill_content
                            ├─ store.write_skill  (lock → stage → backup old → rename)
@@ -121,18 +125,48 @@ explicit `decision`:
 
 | decision | meaning | effect |
 |---|---|---|
-| `no_change` | the skill already covers this run's data path, reasoning and answer format | **nothing is written** — no version churn, no scan cost |
-| `update` | the run revealed something the skill lacks: a new tool, a better parameter, a failure fallback, a sharper answer format, a corrected definition | old package → backup store, improved package published |
+| `no_change` | the run stayed inside the skill's definition — only its subject, values or examples differ | **nothing is written** — no version churn, no scan cost |
+| `update` | the run went **beyond** the skill's definition (see the verified reasons below) | old package → backup store, improved package published |
 | `create` | no existing skill covers the scenario | first publication |
-
-The prompt states the discipline explicitly: a different data *value* or prettier
-wording is **not** an update. This is what keeps a solved scenario from
-regenerating a near-identical skill on every run.
 
 An unknown or absent `decision` degrades to `create`; `no_change` short-circuits
 before the security scans, so a no-op run costs one model call and nothing else.
 A `create` decision aimed at a name that already exists is recorded as `update`,
 so the audit trail describes what actually happened.
+
+### The update is verified, not trusted
+
+An update rewrites a package **every user shares**, so a declared `update` must
+carry evidence. `skills/auto/decision.py` owns the contract:
+
+| `update_reasons` value | counts as substantive | note |
+|---|---|---|
+| `new_tool` | yes | **evidence-checked** — dropped when the platform's own tool diff finds no tool outside the skill's text |
+| `new_flow` | yes | different data-fetch order or reasoning path |
+| `answer_format` | yes | the answer structure was improved |
+| `new_dimension` | yes | the user asked for, or the run added, an answer dimension |
+| `correction` | yes | a wrong command, parameter or data definition was fixed |
+| `fallback` | yes | a new failure fallback / alternative path |
+| `examples_only`, `data_values`, `wording` | **no** | this run's data, never a reason to rewrite |
+| anything else | **no** | unknown tokens are dropped, not trusted |
+
+`verify_update()` keeps the update only when at least one substantive reason
+survives; otherwise the decision degrades to `no_change`, nothing is written and
+the log says why. A declared `update` with **no** reasons at all also degrades —
+the vocabulary is the contract. The one exception is a `create` that the store
+reconciles to an update because the scenario already exists: the create vocabulary
+carries no reasons, so absence is not a failed check (`strict=False`), but reasons
+that *are* declared still get verified.
+
+The tool diff is computed once and used twice: it is rendered into the prompt as
+`## 平台确定性核对：工具差异` (so the model's `new_tool` claim and the verifier
+agree), and it is the evidence `verify_update` checks against. The comparison
+covers both the skills the run loaded and the target package it is about to
+rewrite — a run can reach an existing scenario through the scenario index without
+ever loading it.
+
+Dropped reasons and downgrades are logged at INFO; `SynthesizedSkill.update_reasons`
+carries the surviving ones for the audit trail.
 
 ### The scenario index
 
@@ -158,6 +192,72 @@ A reasoning model occasionally answers in prose or emits a truncated object. One
 retry is made with a stricter instruction appended, and both failures log a
 bounded snippet of the raw response (`_RAW_DIAGNOSTIC_BUDGET`) — without it this
 failure mode is undiagnosable in production. Two failures drop the trajectory.
+
+---
+
+## Abstraction: a skill describes a class of questions
+
+A generated skill must describe a **class** of questions. If its body hard-codes
+one company, the next run about another company either fails to match it or, worse,
+matches it and follows a procedure written for somebody else. So every surface
+except the examples section must stay abstract:
+
+| surface | concrete entities allowed |
+|---|---|
+| `scenario`, `description` | no — these drive matching, so an entity narrows the skill to one subject |
+| `when_to_use`, `data_fetching`, `reasoning`, `answer_format`, `caveats` | no — method and path only |
+| `examples` | **yes** — this is where the run's subject, arguments and result skeleton live |
+
+The model declares the run's entities (`entities`) and the platform checks them
+against the abstract surfaces (`skills/auto/abstraction.py`). On a leak:
+
+1. **one repair attempt** — the model is re-prompted with the leaked entity list
+   and asked to abstract them, keeping its decision and slug; content fields are
+   adopted from the retry, decision fields are not (a second opinion must not
+   rename the package mid-flight);
+2. **deterministic redaction** — a repair that fails, raises, returns unparseable
+   output or still leaks is replaced by `redact_entities()`, which substitutes
+   `ENTITY_PLACEHOLDER` (`【实体】`), longest entity first so overlapping matches
+   cannot leave fragments, collapsing adjacent placeholders.
+
+The examples section is never redacted. `SynthesizedSkill.redacted_entities`
+records what the platform had to remove, and the rewrite is logged at WARNING: a
+redacted skill is published, but a model that keeps leaking is worth knowing about.
+Entities are bounded (2–64 chars, at most 40) so a model that declares the whole
+answer as "entities" cannot turn redaction into a wipe.
+
+### The generated document
+
+```markdown
+---
+name: auto-{scenario-slug}
+description: "…what it does + when to use it + trigger words, as a class…"
+metadata:
+  author: "auto-skill"
+  version: "3"
+  scenario: "…problem class…"
+  generated-at: "…"
+  source-thread: "…"
+  source-run: "…"
+---
+
+# {scenario}
+
+> 本技能由 DeerFlow auto-skill 从真实运行轨迹自动沉淀生成（当前版本 v3，历史版本存于备份库）。
+> 除「示例」外，正文只描述方法与路径，不绑定任何具体主体：换一个公司、一个报告期或一个地区同样适用。
+
+## 适用场景      ← when_to_use
+## 取数逻辑      ← data_fetching (ordered steps, parameter meanings, fallbacks)
+## 推理逻辑      ← reasoning
+## 回答格式      ← answer_format
+## 示例          ← examples (only section that may name the run's subject)
+## 注意事项      ← caveats (omitted when empty)
+```
+
+The header states the abstraction rule inside the published body on purpose: the
+next update reads that body back as its "current skill" evidence, so the discipline
+survives a rewrite instead of depending on the prompt alone. `## 示例` and
+`## 注意事项` are omitted when the model returned nothing for them.
 
 ---
 
@@ -374,6 +474,39 @@ running processes converge promptly rather than eventually.
 
 ---
 
+## Matching: learned skills are checked first
+
+Publishing a skill is only half the feature — the next run has to find it. The
+skills prompt therefore gives learned skills their own priority block, ahead of
+everything else, and states the order explicitly:
+
+1. check the learned skills for a scenario that matches this request;
+2. load one (`describe_skill` → `read_file`, or `read_file` directly in the
+   full-metadata mode) and follow it;
+3. **then** decide whether another skill is still needed, and load one only when
+   the matched learned skill does not cover the request.
+
+Both discovery modes render it, because a deployment picks one via
+`skills.deferred_discovery`:
+
+| mode | block | contents |
+|---|---|---|
+| deferred (`true`) | `<auto_skill_index>` before `<skill_index>` | `name: description` — descriptions are resolved from the warm enabled-skills cache, because a learned skill's name is an English slug and a Chinese request would otherwise have nothing to match on |
+| full metadata (`false`) | `<auto_skills>` before `<available_skills>` | the same `<skill>` entries, partitioned |
+
+Membership is `name.startswith(f"{auto_skill.name_prefix}-")` within the enabled
+set, gated on `auto_skill.enabled`; the prefix is read defensively (`getattr`) so
+a partial config snapshot degrades to "no priority block" instead of raising
+inside prompt assembly. A failed description lookup degrades to names only. The
+index is bounded (`AUTO_INDEX_MAX_ENTRIES`, `AUTO_INDEX_DESCRIPTION_BUDGET`);
+anything past the cap stays reachable through `describe_skill`. Values are
+HTML-escaped like every other skill metadata render site, so a generated
+description cannot close the tag and forge a framework block.
+
+The legacy rendering is `lru_cache`d, so the prefix is part of the cache key.
+
+---
+
 ## Configuration
 
 ```yaml
@@ -417,7 +550,10 @@ plus `restore_backup` are the recovery path when something bad does get publishe
 | `tests/test_auto_skill_middleware.py` | gates, identity capture, async path, never-breaks-a-run |
 | `tests/test_auto_skill_queue.py` | batching, bounded latency/memory, drain, failure isolation |
 | `tests/test_auto_skill_store.py` | global visibility, backup/restore, retention, atomic publication, concurrency, legacy sweep, bulk migration |
-| `tests/test_auto_skill_synthesizer.py` | decision routing, scenario index, JSON recovery, YAML-safe rendering, scan gates, global cache invalidation |
+| `tests/test_auto_skill_decision.py` | reason vocabulary, tool-diff evidence, the downgrade to `no_change` |
+| `tests/test_auto_skill_abstraction.py` | entity normalization, leak detection, redaction ordering and bounds |
+| `tests/test_auto_skill_synthesizer.py` | decision routing, update verification, abstraction gate, scenario index, JSON recovery, YAML-safe rendering, scan gates, global cache invalidation |
+| `tests/test_auto_skill_prompt_priority.py` | the priority block in both discovery modes, bounds, escaping, degradation |
 | `tests/test_auto_skill_config.py` | validation, reload boundary, lead-chain wiring |
 | `tests/test_auto_skill_end_to_end.py` | the real chain with only the model stubbed |
 

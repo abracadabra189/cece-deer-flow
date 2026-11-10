@@ -340,6 +340,57 @@ def _render_available_skill(name: str, description: str, category: SkillCategory
     return f"    <skill>\n        <name>{esc_name}</name>\n        <description>{esc_description} {_skill_mutability_label(category)}</description>\n        <location>{esc_location}</location>\n    </skill>"
 
 
+def _resolve_auto_skill_prefix(app_config: AppConfig | None) -> str | None:
+    """Configured auto-skill name prefix (``"auto-"``), or ``None`` when disabled.
+
+    Read defensively: prompt assembly receives partial config snapshots (custom
+    agents, tests, and the embedded client all pass narrower objects), and a
+    missing ``auto_skill`` section must degrade to "no priority block" rather than
+    raise inside system-prompt rendering.
+    """
+    auto_skill = getattr(app_config, "auto_skill", None)
+    if auto_skill is None or not getattr(auto_skill, "enabled", False):
+        return None
+    prefix = str(getattr(auto_skill, "name_prefix", "") or "").strip().lower()
+    return f"{prefix}-" if prefix else None
+
+
+def _is_auto_skill_name(name: str, auto_prefix: str | None) -> bool:
+    """Whether ``name`` belongs to the platform-learned skill series."""
+    return auto_prefix is not None and name.startswith(auto_prefix)
+
+
+def _auto_skill_entries(
+    skill_names: Iterable[str],
+    auto_prefix: str | None,
+    *,
+    app_config: AppConfig | None = None,
+    user_id: str | None = None,
+) -> tuple[tuple[str, str], ...]:
+    """``(name, description)`` for the learned skills visible to this build.
+
+    Descriptions are worth the lookup: deferred discovery renders names only, and a
+    learned skill's name is an English slug, so a Chinese request would have
+    nothing to match against in ``<auto_skill_index>``. The read goes through the
+    warm enabled-skills cache, and any failure degrades to names only — a prompt
+    section must never fail an agent build.
+    """
+    if auto_prefix is None:
+        return ()
+    wanted = sorted({name for name in skill_names if _is_auto_skill_name(name, auto_prefix)})
+    if not wanted:
+        return ()
+
+    descriptions: dict[str, str] = {}
+    try:
+        for skill in get_enabled_skills_for_config(app_config, user_id=user_id):
+            if skill.name in wanted:
+                descriptions[skill.name] = skill.description or ""
+    except Exception:
+        logger.warning("auto-skill prompt index could not resolve descriptions; rendering names only", exc_info=True)
+    return tuple((name, descriptions.get(name, "")) for name in wanted)
+
+
 def clear_skills_system_prompt_cache() -> None:
     _invalidate_enabled_skills_cache()
 
@@ -885,12 +936,26 @@ def _get_cached_skills_prompt_section(
     available_skills_key: tuple[str, ...] | None,
     container_base_path: str,
     skill_evolution_section: str,
+    auto_skill_prefix: str | None = None,
 ) -> str:
     filtered = [(name, description, category, location) for name, description, category, location in skill_signature if available_skills_key is None or name in available_skills_key]
+    auto_filtered = [entry for entry in filtered if _is_auto_skill_name(entry[0], auto_skill_prefix)]
+    other_filtered = [entry for entry in filtered if not _is_auto_skill_name(entry[0], auto_skill_prefix)]
+
     skills_list = ""
-    if filtered:
-        skill_items = "\n".join(_render_available_skill(name, description, category, location) for name, description, category, location in filtered)
+    if other_filtered:
+        skill_items = "\n".join(_render_available_skill(name, description, category, location) for name, description, category, location in other_filtered)
         skills_list = f"<available_skills>\n{skill_items}\n</available_skills>"
+
+    auto_section = ""
+    verification_order = ""
+    if auto_filtered:
+        auto_items = "\n".join(_render_available_skill(name, description, category, location) for name, description, category, location in auto_filtered)
+        auto_section = f"<auto_skills>\n{auto_items}\n</auto_skills>"
+        verification_order = """**Skill Verification Order — check the learned skills first:**
+1. <auto_skills> holds scenarios this platform already learned from real runs. If the current request belongs to one of them, read_file that SKILL.md and follow it.
+2. Only then decide whether a skill in <available_skills> is still needed. Load one only when the matched learned skill does not cover this request — never load extra skills "just in case".
+3. When nothing in <auto_skills> matches, use the progressive loading flow above."""
 
     disabled_section = ""
     if disabled_skill_signature:
@@ -924,6 +989,8 @@ You have access to skills that provide optimized workflows for specific tasks. E
 
 **Skills are located at:** {container_base_path}
 {skill_evolution_section}
+{verification_order}
+{auto_section}
 {skills_list}
 {disabled_section}
 
@@ -965,8 +1032,12 @@ def get_skills_prompt_section(
         skill_evolution_enabled = app_config.skill_evolution.enabled
 
     skill_evolution_section = _build_skill_evolution_section(skill_evolution_enabled)
+    auto_skill_prefix = _resolve_auto_skill_prefix(app_config)
 
-    # ── Deferred discovery path — storage not needed (caller supplies names) ─
+    # ── Deferred discovery path — the caller supplies the visible names ──────
+    # Learned skills are resolved to (name, description) so the priority block can
+    # be matched on meaning, not on an English slug; everything else stays
+    # name-only and is fetched through ``describe_skill``.
     if skill_names is not None:
         from deerflow.skills.describe import get_skill_index_prompt_section
 
@@ -974,6 +1045,7 @@ def get_skills_prompt_section(
             skill_names=skill_names,
             container_base_path=container_base_path,
             skill_evolution_section=skill_evolution_section,
+            auto_skill_entries=_auto_skill_entries(skill_names, auto_skill_prefix, app_config=app_config, user_id=user_id),
         )
 
     # ── Legacy full-metadata path — load ALL skills for disabled-skill section
@@ -997,7 +1069,7 @@ def get_skills_prompt_section(
     available_key = tuple(sorted(available_skills)) if available_skills is not None else None
     if not skill_signature and not disabled_skill_signature and available_key is not None:
         return ""
-    return _get_cached_skills_prompt_section(skill_signature, disabled_skill_signature, available_key, container_base_path, skill_evolution_section)
+    return _get_cached_skills_prompt_section(skill_signature, disabled_skill_signature, available_key, container_base_path, skill_evolution_section, auto_skill_prefix)
 
 
 def get_agent_soul(agent_name: str | None, *, user_id: str | None = None) -> str:
