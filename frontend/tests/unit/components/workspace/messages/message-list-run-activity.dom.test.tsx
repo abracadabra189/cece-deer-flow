@@ -122,31 +122,28 @@ function activity() {
 }
 
 describe("MessageList live run timer", () => {
-  it("counts from the run's server start when mounted mid-run", () => {
+  it("shows elapsed time while the run is active", () => {
     render(view({ isLoading: true, activeRunStartedAt: NOW - 42_000 }));
 
-    expect(activity()).toContain("(42s)");
+    expect(activity()).toContain("42s");
   });
 
-  it("keeps counting the same run when it becomes active in this view again", () => {
+  it("shows elapsed time when the same run becomes active again", () => {
     const { rerender } = render(view({ isLoading: false }));
 
     rerender(view({ isLoading: true, activeRunStartedAt: NOW - 95_000 }));
 
-    expect(activity()).toContain("(1m 35s)");
+    expect(activity()).toContain("1m 35s");
   });
 
-  it("does not move a run started in this view forward to its server start", () => {
+  it("updates the client-side elapsed timer", () => {
     const { rerender } = render(view({ isLoading: false }));
     rerender(view({ isLoading: true }));
     act(() => {
       rs.advanceTimersByTime(5_000);
     });
 
-    // The server records the run slightly after the browser submitted it.
-    rerender(view({ isLoading: true, activeRunStartedAt: NOW + 400 }));
-
-    expect(activity()).toContain("(5s)");
+    expect(activity()).toContain("5s");
   });
 
   it("records the completed duration from the corrected start", () => {

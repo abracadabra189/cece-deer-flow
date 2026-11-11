@@ -46,15 +46,22 @@ function WorkspaceSidebarContents() {
       <SidebarHeader className="gap-0 p-0">
         <WorkspaceHeader />
       </SidebarHeader>
-      <SidebarContent className="gap-0 px-2 pt-0">
+      <SidebarContent className="gap-0 overflow-hidden px-2 pt-0">
         <WorkspaceNavChatList />
-        <RecentChatList />
-        <ProjectsSection />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <ProjectsSection />
+          <RecentChatList />
+        </div>
       </SidebarContent>
       <SidebarFooter className="border-sidebar-border border-t p-2">
         <WorkspaceNavMenu />
       </SidebarFooter>
-      {!isMobile && <SidebarRail />}
+      {!isMobile && (
+        <SidebarRail
+          className="cursor-default hover:after:bg-transparent"
+          title=""
+        />
+      )}
     </>
   );
 }

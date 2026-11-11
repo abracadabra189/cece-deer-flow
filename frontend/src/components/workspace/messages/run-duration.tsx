@@ -1,6 +1,5 @@
 "use client";
 
-import { Clock3Icon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Shimmer } from "@/components/ai-elements/shimmer";
@@ -10,32 +9,30 @@ import { cn } from "@/lib/utils";
 
 export function RunActivity({ startTime }: { startTime: number | null }) {
   const { t } = useI18n();
-  const [elapsed, setElapsed] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (startTime === null) {
-      setElapsed(0);
       return;
     }
 
-    const updateElapsed = () => {
-      setElapsed(Math.max(0, Math.floor((Date.now() - startTime) / 1000)));
-    };
-    updateElapsed();
-    const interval = setInterval(updateElapsed, 1000);
-    return () => clearInterval(interval);
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, [startTime]);
 
-  const formatted = formatRunDuration(elapsed, t.runDuration);
+  const elapsedSeconds =
+    startTime === null ? 0 : Math.max(0, Math.floor((now - startTime) / 1000));
+  const formatted = formatRunDuration(elapsedSeconds, t.runDuration) ?? "";
 
   return (
     <div
       className="text-muted-foreground flex items-center gap-2 text-sm"
       data-testid="run-activity"
     >
-      <Clock3Icon className="size-4" />
-      <Shimmer duration={1}>{t.runDuration.working}</Shimmer>
-      {formatted && <span aria-hidden="true">({formatted})</span>}
+      <Shimmer
+        duration={1}
+      >{`${t.runDuration.working} (${formatted})`}</Shimmer>
     </div>
   );
 }
