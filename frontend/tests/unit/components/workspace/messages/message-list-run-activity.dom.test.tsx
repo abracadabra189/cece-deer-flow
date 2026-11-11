@@ -91,9 +91,11 @@ const MESSAGES = [
 
 function view({
   isLoading,
+  activeRunId,
   activeRunStartedAt,
 }: {
   isLoading: boolean;
+  activeRunId?: string;
   activeRunStartedAt?: number | null;
 }) {
   return (
@@ -102,6 +104,7 @@ function view({
     >
       <MessageList
         threadId="thread-1"
+        activeRunId={activeRunId}
         activeRunStartedAt={activeRunStartedAt}
         thread={
           {
@@ -122,18 +125,18 @@ function activity() {
 }
 
 describe("MessageList live run timer", () => {
-  it("starts the live timer from the local loading edge", () => {
+  it("counts from the run's server start when mounted mid-run", () => {
     render(view({ isLoading: true, activeRunStartedAt: NOW - 42_000 }));
 
-    expect(activity()).toContain("0s");
+    expect(activity()).toContain("42s");
   });
 
-  it("does not backdate the live timer when the same run becomes active again", () => {
+  it("keeps counting the same run when it becomes active in this view again", () => {
     const { rerender } = render(view({ isLoading: false }));
 
     rerender(view({ isLoading: true, activeRunStartedAt: NOW - 95_000 }));
 
-    expect(activity()).toContain("0s");
+    expect(activity()).toContain("1m 35s");
   });
 
   it("updates the client-side elapsed timer", () => {
@@ -143,17 +146,16 @@ describe("MessageList live run timer", () => {
       rs.advanceTimersByTime(5_000);
     });
 
+    // The server records the run slightly after the browser submitted it.
+    rerender(view({ isLoading: true, activeRunStartedAt: NOW + 400 }));
+
     expect(activity()).toContain("5s");
   });
 
-  it("records the completed duration from the local loading edge", () => {
+  it("records the completed duration from the corrected start", () => {
     const { rerender } = render(
       view({ isLoading: true, activeRunStartedAt: NOW - 42_000 }),
     );
-
-    act(() => {
-      rs.advanceTimersByTime(42_000);
-    });
 
     rerender(view({ isLoading: false, activeRunStartedAt: null }));
 

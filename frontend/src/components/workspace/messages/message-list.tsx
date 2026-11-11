@@ -523,8 +523,8 @@ export function MessageList({
   const browserView = useMaybeBrowserView();
   const pushBrowserFrame = browserView?.pushFrame;
   const messageCount = messages.length;
-  // Start from mount or the loading edge, then move back to the active run's
-  // server start once known: a run observed mid-flight began before this view.
+  // Match test224: start locally, then replace it with the authoritative
+  // active-run start when the server identifies a run observed mid-flight.
   const [turnStartTime, setTurnStartTime] = useState<number | null>(() =>
     thread.isLoading ? Date.now() : null,
   );
@@ -562,12 +562,19 @@ export function MessageList({
     prevIsLoading.current = thread.isLoading;
   }, [groupedMessages, thread.error, thread.isLoading, threadId]);
 
-  // Keep the server timestamp wired for callers that still provide it, but
-  // deliberately do not backdate the live indicator. The 3.0 behavior starts
-  // from the local loading edge so a rejoined run never opens at 10 minutes.
   useEffect(() => {
-    void activeRunStartedAt;
-  }, [activeRunStartedAt]);
+    const startTime = turnStartTimeRef.current;
+    if (
+      !thread.isLoading ||
+      startTime === null ||
+      activeRunStartedAt === null ||
+      activeRunStartedAt >= startTime
+    ) {
+      return;
+    }
+    turnStartTimeRef.current = activeRunStartedAt;
+    setTurnStartTime(activeRunStartedAt);
+  }, [activeRunStartedAt, thread.isLoading]);
 
   useEffect(() => {
     // Only the primary chat surface drives the shared browser panel. The
