@@ -3044,6 +3044,7 @@ export function InputBox({
             )}
             {sidecar && sidecar.conversationQuotes.length > 0 && (
               <ReferenceAttachmentSummary
+                compact
                 references={sidecar.conversationQuotes}
                 testId="conversation-quote-attachment"
                 onClear={() => sidecar.clearConversationQuotes()}

@@ -49,5 +49,14 @@ describe("interaction-only bundle boundaries", () => {
     expect(chatBox).toMatch(
       /renderedRightPanel === "artifacts"[\s\S]*?selectedArtifact \?[\s\S]*?<ArtifactFileDetail/,
     );
+    expect(chatBox).toContain("aria-label={t.common.close}");
+    expect(chatBox).toContain("setArtifactsOpen(false);");
+
+    const detail = read(
+      "src/components/workspace/artifacts/artifact-file-detail.tsx",
+    );
+    expect(detail).toContain("icon={ArrowLeftIcon}");
+    expect(detail).toContain("label={t.common.backToArtifactList}");
+    expect(detail).toContain("returnToList();");
   });
 });

@@ -221,6 +221,8 @@ export interface Translations {
     share: string;
     openInNewWindow: string;
     close: string;
+    back: string;
+    backToArtifactList: string;
     more: string;
     search: string;
     loadMore: string;
@@ -256,6 +258,7 @@ export interface Translations {
     branch: string;
     showArtifacts: string;
     showResultArea: string;
+    collapseResultArea: string;
     browser: string;
     showBrowser: string;
   };
