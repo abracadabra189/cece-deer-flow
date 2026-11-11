@@ -129,8 +129,10 @@ Bearer) and resolves-or-registers an account by phone, linked as
 takeover. It is CSRF-exempt (a key-authenticated machine caller has no
 double-submit pair) and deliberately absent from `_AUTH_EXEMPT_PATHS`, which would
 also trigger the Origin check and CSRF-cookie issuance. `GET /login` spends a
-signed ticket exactly once — the claims carry `uid`, never `sub`, so a ticket can
-never replay as a session token — then issues the ordinary session cookies and 302s
+signed ticket exactly once — durably, via an atomic claim on the shared
+`external_login_tickets` table, so peers cannot each redeem it — and the claims
+carry `uid`, never `sub`, so a ticket can never replay as a session token. It
+then issues the ordinary session cookies and 302s
 to the frontend `/auth/callback`, so the browser flow needs no frontend change;
 every failure redirects to `/login?error=external_login_failed` without setting a
 cookie, keeping the endpoint from becoming a ticket-validity oracle. Contract:

@@ -30,7 +30,7 @@ claiming while paused. Preserve explicit retry/resume and terminal projection;
 
 ## Unique-key upserts
 
-A repository method that creates or updates a row by a unique key must survive two first writers: both can miss the SELECT, and the later INSERT raises `IntegrityError`, a 500 for the caller. Use a dialect `on_conflict_do_update` when every key column is non-null, or retry the select-then-write after rolling back the session, as `ChannelConnectionRepository.upsert_connection` / `set_thread_id` and `FeedbackRepository.upsert` do. Feedback keeps the retry because `user_id` is nullable and a NULL key never conflicts, so ON CONFLICT would stop updating the NULL-user row.
+A repository method that creates or updates a row by a unique key must survive two first writers: both can miss the SELECT, and the later INSERT raises `IntegrityError`, a 500 for the caller. Use a dialect `on_conflict_do_update` when every key column is non-null, or retry the select-then-write after rolling back the session, as `ChannelConnectionRepository.upsert_connection` / `set_thread_id` and `FeedbackRepository.upsert` do. Feedback keeps the retry because `user_id` is nullable and a NULL key never conflicts, so ON CONFLICT would stop updating the NULL-user row. A **one-shot claim** (row existence *is* the answer) uses `on_conflict_do_nothing` + the affected-row count instead; see `external_login_tickets/sql.py`.
 
 ## JSON integer filters
 

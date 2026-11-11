@@ -423,9 +423,11 @@ POST /api/v1/auth/external/provision
 
 **票据与会话**：`login_ticket` 用 `AUTH_JWT_SECRET` 签名，声明里是 `uid` 而不是 `sub`，
 因此它永远无法被当成会话 JWT 重放（`TokenPayload` 要求 `sub`，会判为 MALFORMED）。
-默认存活 120 秒、按 `jti` 进程内单次消费；多 worker 部署下单次消费是**每进程**的，
-真正约束重放窗口的是短 TTL——与 OIDC state cookie 的无状态取舍一致。票据消费成功后
-下发的就是普通会话 Cookie，后续请求与密码登录用户完全同权、同 CSRF、同 PAT 规则。
+默认存活 120 秒。**单次消费由数据库保证**：兑换即向 `external_login_tickets` 执行一次
+`INSERT … ON CONFLICT (jti) DO NOTHING`，`jti` 主键使多个 Gateway worker／多副本对
+"已用过"达成一致（进程内缓存做不到这点——每个进程都会各放行一次）；过期行在同一事务内
+按批清扫。无法写入消费记录（无数据库、存储异常）时**拒绝票据**，绝不退化为进程内判定。
+票据消费成功后下发的就是普通会话 Cookie，后续请求与密码登录用户完全同权、同 CSRF、同 PAT 规则。
 
 **运维**：改 `auth.external_user.*` 属于热重载字段（下一轮装配生效）；改 `.env` 里的
 密钥必须重建容器（`env_file` 只在创建时读取）。日志里搜 `External provisioning`

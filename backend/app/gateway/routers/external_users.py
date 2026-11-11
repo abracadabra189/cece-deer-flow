@@ -14,9 +14,10 @@ Two endpoints, one flow::
 ``provision`` is server-to-server and authenticated **only** by the shared
 ``auth.external_user.api_key``; that key is worth an account for any phone
 number, so it is an admin-grade secret (see
-:class:`deerflow.config.auth_config.ExternalUserAuthConfig`). ``login`` is
-public but consumes a short-lived, single-use signed ticket, so holding a ticket
-is what authorizes it — the same shape as the OIDC callback.
+:class:`deerflow.config.auth_config.ExternalUserAuthConfig`). ``login`` is public
+but consumes a short-lived signed ticket whose single use is recorded in the
+application database, so holding an unspent ticket is what authorizes it — the
+same shape as the OIDC callback, and safe across Gateway workers and replicas.
 
 The redirect reuses the existing frontend ``/auth/callback`` page, so no frontend
 change is required and the token never lands in browser storage.
@@ -220,7 +221,7 @@ async def external_login(
     if not config.enabled:
         return failure
 
-    payload = consume_external_login_ticket(ticket) if ticket else None
+    payload = await consume_external_login_ticket(ticket) if ticket else None
     if payload is None:
         return failure
 
