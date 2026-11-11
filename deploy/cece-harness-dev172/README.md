@@ -43,6 +43,7 @@ Operator notes for this environment:
 - Accounts are linked as `(oauth_provider=external-phone, oauth_id=<normalized phone>)` with a derived `users.email` of `{phone}@users.deerflow.internal` and **no password**, so password login stays impossible for them and the external system owns their authentication. The supplied `username` is stored as the `external_username` user preference.
 - A phone already owned by an unrelated local account answers `409` rather than being seized; a disabled account answers `403`.
 - `auth.external_user.*` is hot-reloadable, but the key lives in `.env`, so rotating it requires `--force-recreate gateway`.
+- Ticket single-use is durable (`external_login_tickets`, migration `0053`), so this environment runs `GATEWAY_WORKERS=2` safely: 30 concurrent redemptions of one ticket grant exactly one session. Do **not** set `DEER_FLOW_*` shell variables when recreating this stack — Compose interpolation prefers the shell over `--env-file`, which would mount the repository-root config instead of this baseline.
 - Full flow, field tables and the integration checklist: `docs/EXTERNAL_USER_INTEGRATION.md`; HTTP contract: `backend/docs/API.md#external-user-provisioning`.
 
 ## Automatic skill synthesis (`auto_skill`)

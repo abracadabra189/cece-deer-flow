@@ -227,8 +227,12 @@ browser never sees a JSON error.
 
 Tickets are signed with `AUTH_JWT_SECRET`, carry `uid` (never `sub`, so a ticket
 can never be replayed as a session token), live `ticket_ttl_seconds` (default 120,
-max 900), and are single-use per Gateway process; with `GATEWAY_WORKERS > 1` the
-single-use guarantee is per worker and the short TTL is what bounds replay.
+max 900), and are **single-use across the whole deployment**: consumption is one
+atomic `INSERT … ON CONFLICT (jti) DO NOTHING` into `external_login_tickets`, so
+every Gateway worker and every replica sharing the application database agrees on
+"already spent". Expired rows are swept in the same transaction. If the claim
+cannot be recorded (no database, store error) the ticket is rejected — the
+endpoint fails closed rather than falling back to a process-local record.
 
 Errors: `401` missing/invalid key · `404` feature disabled · `403` account
 disabled · `409` the derived email belongs to an unrelated account (an external
