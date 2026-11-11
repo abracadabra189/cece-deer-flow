@@ -389,7 +389,9 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
           </div>
           <div className="absolute top-2 right-2 z-30">
             <Button
+              aria-label={t.common.close}
               size="icon-sm"
+              title={t.common.close}
               variant="ghost"
               onClick={() => {
                 setArtifactsOpen(false);
@@ -433,6 +435,7 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
     threadId,
     artifacts,
     setArtifactsOpen,
+    t,
   ]);
 
   if (isMobile) {

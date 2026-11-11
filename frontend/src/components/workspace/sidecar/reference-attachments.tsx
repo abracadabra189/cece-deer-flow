@@ -50,11 +50,13 @@ export function ReferenceAttachmentSummary({
   onClear,
   className,
   testId,
+  compact = false,
 }: {
   references: SidecarReference[];
   onClear?: () => void;
   className?: string;
   testId?: string;
+  compact?: boolean;
 }) {
   const { t } = useI18n();
   if (references.length === 0) {
@@ -71,20 +73,39 @@ export function ReferenceAttachmentSummary({
     <div
       className={cn(
         "border-border bg-muted/40 text-foreground inline-flex max-w-[min(18rem,100%)] items-center gap-1.5 rounded-full border px-2.5 py-1.5 shadow-sm",
+        compact &&
+          "h-7 max-w-full rounded-md border-[#dfe7f6] bg-white px-2 py-0 text-[#4d5a70] shadow-[0_1px_1px_rgb(20_32_64_/_0.03)]",
         className,
       )}
       data-testid={testId}
     >
       <Tooltip content={<ReferencePreview references={references} />}>
-        <span className="flex min-w-0 cursor-default items-center gap-1.5">
-          <MessageSquareQuoteIcon className="text-muted-foreground size-4 shrink-0" />
-          <span className="truncate text-sm font-medium">{label}</span>
+        <span
+          className={cn(
+            "flex min-w-0 cursor-default items-center gap-1.5",
+            compact && "gap-1",
+          )}
+        >
+          <MessageSquareQuoteIcon
+            className={cn(
+              "text-muted-foreground size-4 shrink-0",
+              compact && "size-3 text-[#4f8bff]",
+            )}
+          />
+          <span
+            className={cn("truncate text-sm font-medium", compact && "text-xs")}
+          >
+            {label}
+          </span>
         </span>
       </Tooltip>
       {onClear && (
         <Button
           aria-label={t.sidecar.clearReferences}
-          className="text-muted-foreground hover:text-foreground size-6 rounded-full"
+          className={cn(
+            "text-muted-foreground hover:text-foreground size-6 rounded-full",
+            compact && "size-5 rounded-sm hover:bg-[#edf3ff]",
+          )}
           size="icon-sm"
           type="button"
           variant="ghost"

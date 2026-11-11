@@ -11,7 +11,7 @@ import {
   RotateCcwIcon,
   SaveIcon,
   SquareArrowOutUpRightIcon,
-  XIcon,
+  ArrowLeftIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -96,8 +96,8 @@ export function ArtifactFileDetail({
   const isAdmin = user?.system_role === "admin";
   const {
     artifacts,
-    setOpen,
     select,
+    returnToList,
     drafts,
     setDrafts,
     editingPath,
@@ -672,8 +672,8 @@ export function ArtifactFileDetail({
               />
             )}
             <ArtifactAction
-              icon={XIcon}
-              label={t.common.close}
+              icon={ArrowLeftIcon}
+              label={t.common.backToArtifactList}
               onClick={() => {
                 if (
                   !hasUnsavedDrafts ||
@@ -681,10 +681,10 @@ export function ArtifactFileDetail({
                 ) {
                   setDrafts({});
                   setEditingPath(null);
-                  setOpen(false);
+                  returnToList();
                 }
               }}
-              tooltip={t.common.close}
+              tooltip={t.common.backToArtifactList}
             />
           </ArtifactActions>
         </div>
