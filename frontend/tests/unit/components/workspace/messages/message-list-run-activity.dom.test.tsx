@@ -90,10 +90,12 @@ const MESSAGES = [
 ] as Message[];
 
 function view({
+  threadId = "thread-1",
   isLoading,
   activeRunId,
   activeRunStartedAt,
 }: {
+  threadId?: string;
   isLoading: boolean;
   activeRunId?: string;
   activeRunStartedAt?: number | null;
@@ -103,7 +105,7 @@ function view({
       value={{ locale: "en-US", setLocale: () => undefined, t: enUS }}
     >
       <MessageList
-        threadId="thread-1"
+        threadId={threadId}
         activeRunId={activeRunId}
         activeRunStartedAt={activeRunStartedAt}
         thread={
@@ -168,6 +170,29 @@ describe("MessageList live run timer", () => {
         isLoading: true,
         activeRunId: "run-new",
         activeRunStartedAt: NOW,
+      }),
+    );
+
+    expect(activity()).toContain("0s");
+  });
+
+  it("resets the activity timer when the visible thread changes while loading", () => {
+    const { rerender } = render(
+      view({
+        threadId: "thread-old",
+        isLoading: true,
+        activeRunId: "run-old",
+        activeRunStartedAt: NOW - 10 * 60_000,
+      }),
+    );
+
+    expect(activity()).toContain("10m");
+
+    rerender(
+      view({
+        threadId: "thread-new",
+        isLoading: true,
+        activeRunStartedAt: null,
       }),
     );
 

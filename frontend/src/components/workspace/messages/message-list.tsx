@@ -530,13 +530,22 @@ export function MessageList({
   );
   const turnStartTimeRef = useRef(turnStartTime);
   const timedRunIdRef = useRef<string | undefined>(undefined);
+  const previousThreadIdRef = useRef(threadId);
   const [clientDurationsByGroupId, setClientDurationsByGroupId] = useState<
     ReadonlyMap<string, number>
   >(() => new Map());
   const prevIsLoading = useRef(thread.isLoading);
 
   useEffect(() => {
-    if (thread.isLoading && !prevIsLoading.current) {
+    const threadChanged = previousThreadIdRef.current !== threadId;
+    previousThreadIdRef.current = threadId;
+
+    if (threadChanged) {
+      const nextStartTime = thread.isLoading ? Date.now() : null;
+      timedRunIdRef.current = undefined;
+      turnStartTimeRef.current = nextStartTime;
+      setTurnStartTime(nextStartTime);
+    } else if (thread.isLoading && !prevIsLoading.current) {
       const now = Date.now();
       turnStartTimeRef.current = now;
       setTurnStartTime(now);
