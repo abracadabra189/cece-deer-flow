@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { useI18n } from "@/core/i18n/hooks";
 import { formatRunDuration } from "@/core/messages/run-duration";
+import { cn } from "@/lib/utils";
 
 export function RunActivity({ startTime }: { startTime: number | null }) {
   const { t } = useI18n();
@@ -41,8 +42,10 @@ export function RunActivity({ startTime }: { startTime: number | null }) {
 
 export function RunDurationLabel({
   durationSeconds,
+  className,
 }: {
   durationSeconds: number;
+  className?: string;
 }) {
   const { t } = useI18n();
   const formatted = formatRunDuration(durationSeconds, t.runDuration);
@@ -51,15 +54,31 @@ export function RunDurationLabel({
   }
 
   return (
-    <span data-testid="run-duration" title={t.runDuration.description}>
+    <span
+      className={className}
+      data-testid="run-duration"
+      title={t.runDuration.description}
+    >
       {t.runDuration.completedIn(formatted)}
     </span>
   );
 }
 
-export function RunDuration({ durationSeconds }: { durationSeconds: number }) {
+export function RunDuration({
+  durationSeconds,
+  revealOnHover = false,
+}: {
+  durationSeconds: number;
+  revealOnHover?: boolean;
+}) {
   return (
-    <div className="text-muted-foreground border-border/60 mb-3 border-b pb-3 text-sm">
+    <div
+      className={cn(
+        "text-muted-foreground border-border/60 mb-3 border-b pb-3 text-sm",
+        revealOnHover &&
+          "invisible h-0 overflow-hidden border-b-0 pb-0 opacity-0 transition-[height,opacity,margin] group-hover/run-duration:visible group-hover/run-duration:mb-3 group-hover/run-duration:h-auto group-hover/run-duration:border-b group-hover/run-duration:pb-3 group-hover/run-duration:opacity-100",
+      )}
+    >
       <RunDurationLabel durationSeconds={durationSeconds} />
     </div>
   );

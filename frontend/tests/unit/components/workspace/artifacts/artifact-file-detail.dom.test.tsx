@@ -39,6 +39,7 @@ rs.mock("@/components/workspace/artifacts/context", () => ({
     autoSelect: false,
     select: rs.fn(),
     deselect: rs.fn(),
+    returnToList: rs.fn(),
     open: true,
     autoOpen: false,
     setOpen: rs.fn(),

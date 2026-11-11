@@ -130,7 +130,7 @@ import {
   MessageTokenUsageDebugList,
   MessageTokenUsageList,
 } from "./message-token-usage";
-import { RunActivity, RunDuration } from "./run-duration";
+import { RunActivity, RunDuration, RunDurationLabel } from "./run-duration";
 import { ScheduledRunPrompt } from "./scheduled-run-prompt";
 import { ScheduledTaskCard } from "./scheduled-task-card";
 import { ScheduledTaskEventLine } from "./scheduled-task-event-line";
@@ -1046,6 +1046,8 @@ export function MessageList({
       isStreaming: boolean,
       enableBranchForTurn: boolean,
       enableRegenerateForTurn: boolean,
+      durationDisplays: RunDurationDisplay[] = [],
+      tokenUsage?: ReactNode,
       skills?: SkillUsage[],
     ) => {
       const clipboardData = getAssistantTurnCopyData(messages, { isStreaming });
@@ -1145,6 +1147,21 @@ export function MessageList({
                 </Button>
               </Tooltip>
             )}
+          {!isStreaming && (durationDisplays.length > 0 || tokenUsage) && (
+            <div className="text-muted-foreground ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px]">
+              {durationDisplays.length > 0 && (
+                <span className="inline-flex items-center whitespace-nowrap">
+                  {durationDisplays.map((display) => (
+                    <RunDurationLabel
+                      key={display.runId}
+                      durationSeconds={display.durationSeconds}
+                    />
+                  ))}
+                </span>
+              )}
+              {tokenUsage}
+            </div>
+          )}
         </div>
       );
     },
@@ -1174,10 +1191,12 @@ export function MessageList({
       turnUsageMessages?: Message[] | null;
       inlineDebug?: boolean;
       debugMessageIds?: string[];
+      className?: string;
     }) => {
       if (tokenUsageInlineMode === "per_turn") {
         return (
           <MessageTokenUsageList
+            className={className}
             enabled={true}
             isLoading={thread.isLoading}
             messages={turnUsageMessages ?? []}
@@ -1195,6 +1214,7 @@ export function MessageList({
         );
         return (
           <MessageTokenUsageDebugList
+            className={className}
             enabled={true}
             isLoading={thread.isLoading}
             steps={tokenDebugSteps.filter((step) =>
@@ -1207,6 +1227,7 @@ export function MessageList({
       return null;
     },
     [
+      className,
       showTokenDebugSummaries,
       thread.isLoading,
       tokenDebugSteps,
@@ -1257,9 +1278,10 @@ export function MessageList({
     content: ReactNode,
     inlineDurationRunIds: string[] = [],
   ) => {
-    const displays = getGroupRunDurations(group, groupIndex).filter(
-      (display) => !inlineDurationRunIds.includes(display.runId),
-    );
+    const groupIsLoading = thread.isLoading && groupIndex === lastGroupIndex;
+    const displays = (
+      groupIsLoading ? [] : getGroupRunDurations(group, groupIndex)
+    ).filter((display) => !inlineDurationRunIds.includes(display.runId));
     if (!content && displays.length === 0) {
       return null;
     }
@@ -1267,12 +1289,13 @@ export function MessageList({
     return (
       <div
         key={`duration-group:${group.id ?? groupIndex}`}
-        className="flex w-full flex-col gap-2"
+        className="group/run-duration flex w-full flex-col gap-2"
       >
         {displays.map((display) => (
           <RunDuration
             key={display.runId}
             durationSeconds={display.durationSeconds}
+            revealOnHover
           />
         ))}
         {content}
@@ -1397,7 +1420,9 @@ export function MessageList({
                               : undefined
                           }
                           durationSeconds={
-                            reasoningDurations.get(msg)?.durationSeconds
+                            group.type === "assistant"
+                              ? undefined
+                              : reasoningDurations.get(msg)?.durationSeconds
                           }
                           showCopyButton={group.type !== "assistant"}
                           showWorkspaceChanges={workspaceChangeAnchorGroupIndices.has(
@@ -1456,10 +1481,6 @@ export function MessageList({
                         </div>
                       );
                     })}
-                    {renderTokenUsage({
-                      messages: group.messages,
-                      turnUsageMessages,
-                    })}
                     {group.type === "assistant" &&
                       renderAssistantActions(
                         group.messages,
@@ -1476,6 +1497,19 @@ export function MessageList({
                             typeof message.run_id === "string" &&
                             waitingForInputRunIds.has(message.run_id),
                         ) && group.id === latestAssistantGroupId,
+                        displays,
+                        <MessageTokenUsageList
+                          className="mt-0 border-t-0 pt-0"
+                          enabled={true}
+                          isLoading={
+                            groupIsLoading ||
+                            isAssistantMessageGroupStreaming(
+                              group.messages,
+                              streamingMessages,
+                            )
+                          }
+                          messages={group.messages}
+                        />,
                         sidecarSurface
                           ? undefined
                           : skillUsageByGroupIndex.get(groupIndex),
@@ -1493,7 +1527,7 @@ export function MessageList({
                       </p>
                     ) : null}
                   </div>,
-                  inlineDurationRunIds,
+                  [...displays.map((display) => display.runId)],
                 );
               } else if (group.type === "assistant:clarification") {
                 const message = group.messages[0];
