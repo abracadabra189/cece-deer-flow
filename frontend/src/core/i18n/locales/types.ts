@@ -77,6 +77,26 @@ export interface Translations {
     catalogEntry: string;
     catalogHint: string;
     installationGuide: string;
+    detail: {
+      guide: string;
+      gettingStarted: string;
+      requirements: string;
+      loaded: string;
+      loadedHint: string;
+      tools: string;
+      pages: string;
+      management: string;
+      readyHint: string;
+      disabledHint: string;
+      failedHint: string;
+      noPageHint: string;
+      guideHint: string;
+      technicalDetails: string;
+      package: string;
+      namespace: string;
+      refresh: string;
+      refreshHint: string;
+    };
     catalog: Record<
       | "workflows"
       | "reportSections"
@@ -93,7 +113,12 @@ export interface Translations {
       | "weknora"
       | "lightrag"
       | "example",
-      { title: string; description: string }
+      {
+        title: string;
+        description: string;
+        gettingStarted?: { title: string; description: string }[];
+        requirements?: string[];
+      }
     >;
     pageUnavailable: string;
     pageUnavailableHint: string;
@@ -203,6 +228,8 @@ export interface Translations {
     download: string;
     thinking: string;
     artifacts: string;
+    resultArea: string;
+    resultArtifacts: string;
     public: string;
     custom: string;
     notAvailableInDemoMode: string;
@@ -228,6 +255,7 @@ export interface Translations {
     editRerunWarning: string;
     branch: string;
     showArtifacts: string;
+    showResultArea: string;
     browser: string;
     showBrowser: string;
   };
@@ -576,6 +604,15 @@ export interface Translations {
     scheduledTasks: string;
     agentsDisabledTooltip: string;
     channels: string;
+  };
+  taskGroups: {
+    title: string;
+    newTaskGroup: string;
+    namePlaceholder: string;
+    moveToTaskGroup: string;
+    removeFromTaskGroup: string;
+    createFailed: string;
+    moveFailed: string;
   };
   // Sidebar projects section
   projects: {

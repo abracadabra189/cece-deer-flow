@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useThreadActivity } from "@/core/threads/activity";
 
+import { ProjectsSection } from "./projects-section";
 import { RecentChatList } from "./recent-chat-list";
 import { ThreadDeleteDialogProvider } from "./thread-delete-dialog";
 import { WorkspaceHeader } from "./workspace-header";
@@ -48,6 +49,7 @@ function WorkspaceSidebarContents() {
       <SidebarContent className="gap-0 px-2 pt-0">
         <WorkspaceNavChatList />
         <RecentChatList />
+        <ProjectsSection />
       </SidebarContent>
       <SidebarFooter className="border-sidebar-border border-t p-2">
         <WorkspaceNavMenu />

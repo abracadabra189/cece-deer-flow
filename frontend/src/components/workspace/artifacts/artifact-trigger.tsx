@@ -10,26 +10,27 @@ import { useArtifacts } from "./context";
 
 export const ArtifactTrigger = () => {
   const { t } = useI18n();
-  const { artifacts, setOpen: setArtifactsOpen } = useArtifacts();
+  const { artifacts, deselect, setOpen: setArtifactsOpen } = useArtifacts();
   const sidecar = useMaybeSidecar();
 
   if (!artifacts || artifacts.length === 0) {
     return null;
   }
   return (
-    <Tooltip content={t.common.showArtifacts}>
+    <Tooltip content={t.common.showResultArea}>
       <Button
-        aria-label={t.common.showArtifacts}
-        className="rounded-xl border border-[#dfe6f3] bg-white text-[#65718a] shadow-sm hover:bg-[#eef3ff] hover:text-[#2563eb]"
+        aria-label={t.common.showResultArea}
+        className="border-ring/50 bg-ring hover:bg-ring/90 rounded-xl border text-white shadow-sm hover:text-white"
         variant="ghost"
         data-testid="artifact-trigger"
         onClick={() => {
           sidecar?.close();
+          deselect();
           setArtifactsOpen(true);
         }}
       >
         <FilesIcon />
-        <span className="hidden sm:inline">{t.common.artifacts}</span>
+        <span className="hidden sm:inline">{t.common.resultArea}</span>
       </Button>
     </Tooltip>
   );

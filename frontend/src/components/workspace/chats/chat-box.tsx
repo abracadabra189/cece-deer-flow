@@ -373,19 +373,21 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
     if (renderedRightPanel === "sidecar") {
       return <SidecarPanel />;
     }
-    if (renderedRightPanel === "artifacts" && selectedArtifact) {
-      return (
-        <ArtifactFileDetail
-          className="size-full"
-          filepath={selectedArtifact}
-          threadId={threadId}
-        />
-      );
-    }
     if (renderedRightPanel === "artifacts") {
       return (
-        <div className="relative flex size-full justify-center rounded-2xl bg-white">
-          <div className="absolute top-1 right-1 z-30">
+        <div className="border-border bg-card relative flex size-full flex-col overflow-hidden rounded-xl border">
+          <header className="border-border flex h-12 shrink-0 items-center border-b px-4">
+            <h2 className="text-sm font-semibold">{t.common.resultArea}</h2>
+          </header>
+          <div className="border-border shrink-0 border-b px-4 pt-2">
+            <span className="border-ring text-ring inline-flex items-center gap-1 border-b-2 px-2 pb-2 text-sm font-semibold">
+              {t.common.resultArtifacts}
+              <span className="text-muted-foreground text-xs font-medium">
+                {artifacts.length}
+              </span>
+            </span>
+          </div>
+          <div className="absolute top-2 right-2 z-30">
             <Button
               size="icon-sm"
               variant="ghost"
@@ -396,28 +398,31 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
               <XIcon />
             </Button>
           </div>
-          {artifacts.length === 0 ? (
-            <ConversationEmptyState
-              icon={<FilesIcon />}
-              title="暂未选择产物"
-              description="请从对话中的产物入口打开预览"
-            />
-          ) : (
-            <div className="flex size-full max-w-(--container-width-sm) flex-col justify-center p-4 pt-8">
-              <header className="shrink-0">
-                <h2 className="text-lg font-semibold text-[#26324a]">
-                  产物预览
-                </h2>
-              </header>
-              <ScrollArea className="min-h-0 grow">
+          <div className="min-h-0 grow">
+            {selectedArtifact ? (
+              <ArtifactFileDetail
+                className="size-full"
+                filepath={selectedArtifact}
+                threadId={threadId}
+              />
+            ) : artifacts.length === 0 ? (
+              <div className="grid size-full place-items-center p-4">
+                <ConversationEmptyState
+                  icon={<FilesIcon />}
+                  title="暂未选择产物"
+                  description="请从对话中的产物入口打开预览"
+                />
+              </div>
+            ) : (
+              <ScrollArea className="size-full">
                 <ArtifactFileList
-                  className="max-w-(--container-width-sm) p-4 pt-12"
+                  className="p-4"
                   files={artifacts}
                   threadId={threadId}
                 />
               </ScrollArea>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       );
     }
