@@ -289,6 +289,8 @@ export const enUS: Translations = {
     download: "Download",
     thinking: "Thinking",
     artifacts: "Artifacts",
+    resultArea: "Results",
+    resultArtifacts: "Artifacts",
     public: "Public",
     custom: "Custom",
     notAvailableInDemoMode: "Not available in demo mode",
@@ -315,6 +317,7 @@ export const enUS: Translations = {
       "Rerunning restores conversation state only. Files, memory, and external actions are not undone.",
     branch: "Branch conversation",
     showArtifacts: "Show artifacts of this conversation",
+    showResultArea: "Show results of this conversation",
     browser: "Browser",
     showBrowser: "Open browser panel",
   },
@@ -759,6 +762,15 @@ export const enUS: Translations = {
     agents: "Agents",
     scheduledTasks: "Scheduled tasks",
     agentsDisabledTooltip: "Feature not enabled",
+  },
+  taskGroups: {
+    title: "Task groups",
+    newTaskGroup: "New task group",
+    namePlaceholder: "Task group name",
+    moveToTaskGroup: "Move to task group",
+    removeFromTaskGroup: "Remove from task group",
+    createFailed: "Failed to create task group",
+    moveFailed: "Failed to move task",
   },
 
   // Knowledge scope for custom-agent chat

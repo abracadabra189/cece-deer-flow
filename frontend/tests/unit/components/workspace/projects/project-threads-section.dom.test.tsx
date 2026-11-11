@@ -12,10 +12,15 @@ rs.mock("next/link", () => {
   const MockLink = ({
     href,
     children,
+    ...props
   }: {
     href: string;
     children: React.ReactNode;
-  }) => <a href={href}>{children}</a>;
+  } & React.ComponentProps<"a">) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  );
   return { default: MockLink };
 });
 
@@ -49,7 +54,7 @@ afterEach(() => {
 });
 
 describe("ProjectThreadsSection", () => {
-  it("renders a divider on every row except the final one", () => {
+  it("renders prototype-style task cards with the real task title and update time", () => {
     const { container } = render(
       <Wrapper>
         <ProjectThreadsSection
@@ -65,12 +70,14 @@ describe("ProjectThreadsSection", () => {
     const links = container.querySelectorAll<HTMLAnchorElement>("a");
     expect(links).toHaveLength(3);
     expect(links[0]?.href).toContain("/workspace/chats/t-1");
-    const rowDivs = [...links].map((link) => link.firstElementChild);
-    expect(rowDivs[0]?.classList.contains("border-b")).toBe(true);
-    expect(rowDivs[1]?.classList.contains("border-b")).toBe(true);
-    // Only the final data row drops the divider — the check must hold even
-    // when virtualization mounts just a window of rows.
-    expect(rowDivs[2]?.classList.contains("border-b")).toBe(false);
+    const firstRow = container.querySelector(
+      '[data-testid="project-task-row"]',
+    );
+    expect(firstRow).not.toBeNull();
+    expect(firstRow?.classList.contains("rounded-xl")).toBe(true);
+    expect(firstRow?.classList.contains("border")).toBe(true);
+    expect(firstRow?.textContent).toContain("First");
+    expect(firstRow?.textContent).toContain("ago");
   });
 
   it("shows the untitled fallback and the load-more button for a partial page", () => {

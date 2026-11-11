@@ -56,6 +56,7 @@ import { exportThread, type ThreadExportFormat } from "@/core/threads/export";
 import {
   fetchThreadExportMessages,
   useInfiniteThreads,
+  useMoveThreadToProject,
   usePinThread,
   useRenameThread,
 } from "@/core/threads/hooks";
@@ -75,6 +76,7 @@ import {
 import { env } from "@/env";
 import { isIMEComposing } from "@/lib/ime";
 
+import { MoveToProjectMenu, NewProjectDialog } from "./move-to-project-menu";
 import {
   ThreadOriginIcon,
   ThreadUnreadDot,
@@ -105,6 +107,7 @@ export function ThreadSidebarItem({
   const requestDelete = useThreadDeleteDialog();
   const { mutate: renameThread } = useRenameThread();
   const { mutate: updatePinnedThread } = usePinThread();
+  const { mutate: moveThreadToProject } = useMoveThreadToProject();
   // The move mutation is owned here (not inside `MoveToProjectMenu`) because
   // selecting a project closes the dropdown and unmounts the menu — a
   // per-mutate `onError` registered there would be dropped before a failed
@@ -113,6 +116,7 @@ export function ThreadSidebarItem({
   // `NewProjectDialog` below.
 
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [newTaskGroupDialogOpen, setNewTaskGroupDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [exporting, setExporting] = useState(false);
 
@@ -152,6 +156,24 @@ export function ThreadSidebarItem({
       },
     );
   }, [t.chats.pinChatFailed, thread, updatePinnedThread]);
+
+  const handleMoveToTaskGroup = useCallback(
+    (projectId: string | null) => {
+      moveThreadToProject(
+        { threadId: thread.thread_id, projectId },
+        {
+          onError: (error) => {
+            toast.error(
+              error instanceof Error && error.message
+                ? error.message
+                : t.taskGroups.moveFailed,
+            );
+          },
+        },
+      );
+    },
+    [moveThreadToProject, t.taskGroups.moveFailed, thread.thread_id],
+  );
 
   const handleShare = useCallback(async () => {
     // Always use Vercel URL for sharing so others can access
@@ -327,6 +349,12 @@ export function ThreadSidebarItem({
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            <DropdownMenuSeparator />
+            <MoveToProjectMenu
+              thread={thread}
+              onNewProject={() => setNewTaskGroupDialogOpen(true)}
+              onMoveProject={handleMoveToTaskGroup}
+            />
             {canDeleteThreads && (
               <>
                 <DropdownMenuSeparator />
@@ -372,8 +400,11 @@ export function ThreadSidebarItem({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* New Project Dialog (mounted outside the DropdownMenu so it survives
-          the menu closing when "New project…" is selected) */}
+      <NewProjectDialog
+        thread={thread}
+        open={newTaskGroupDialogOpen}
+        onOpenChange={setNewTaskGroupDialogOpen}
+      />
     </SidebarMenuItem>
   );
 }

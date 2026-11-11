@@ -275,6 +275,8 @@ export const zhCN: Translations = {
     download: "下载",
     thinking: "思考",
     artifacts: "文件",
+    resultArea: "结果区",
+    resultArtifacts: "产物",
     public: "公共",
     custom: "自定义",
     notAvailableInDemoMode: "在演示模式下不可用",
@@ -301,6 +303,7 @@ export const zhCN: Translations = {
       "重新运行只恢复对话状态，不会撤销文件、Memory 或外部操作。",
     branch: "分叉",
     showArtifacts: "查看此对话的文件",
+    showResultArea: "查看此对话的结果区",
     browser: "浏览器",
     showBrowser: "打开浏览器面板",
   },
@@ -716,6 +719,15 @@ export const zhCN: Translations = {
     agents: "智能体",
     scheduledTasks: "定时任务",
     agentsDisabledTooltip: "功能未启用",
+  },
+  taskGroups: {
+    title: "分组任务",
+    newTaskGroup: "新建分组",
+    namePlaceholder: "分组名称",
+    moveToTaskGroup: "移动到分组",
+    removeFromTaskGroup: "移出分组",
+    createFailed: "创建分组失败",
+    moveFailed: "移动任务失败",
   },
 
   // 自定义智能体聊天中的知识库范围

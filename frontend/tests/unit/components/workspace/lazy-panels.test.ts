@@ -37,4 +37,17 @@ describe("interaction-only bundle boundaries", () => {
     );
     expect(chatBox.match(/dynamic\(/g)?.length).toBeGreaterThanOrEqual(4);
   });
+
+  it("keeps result-area navigation visible while an artifact is previewed", () => {
+    const chatBox = read("src/components/workspace/chats/chat-box.tsx");
+
+    expect(chatBox).toContain("{t.common.resultArea}");
+    expect(chatBox).toContain("{t.common.resultArtifacts}");
+    expect(chatBox).not.toContain(
+      'if (renderedRightPanel === "artifacts" && selectedArtifact)',
+    );
+    expect(chatBox).toMatch(
+      /renderedRightPanel === "artifacts"[\s\S]*?selectedArtifact \?[\s\S]*?<ArtifactFileDetail/,
+    );
+  });
 });

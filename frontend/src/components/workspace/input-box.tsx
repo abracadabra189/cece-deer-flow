@@ -2944,7 +2944,7 @@ export function InputBox({
       )}
       <PromptInput
         className={cn(
-          "cecemate-composer relative z-10 rounded-[14px] border-[1.5px] border-[#dde6fa] bg-white p-[11px_13px_8px] shadow-[0_4px_18px_rgb(20_32_64_/_0.07)] transition-colors duration-200 focus-within:border-[#4f8bff] *:data-[slot='input-group']:rounded-xl",
+          "cecemate-composer relative z-10 rounded-[14px] border-[1.5px] border-[#dde6fa] bg-white p-[8px_12px_6px] shadow-[0_4px_18px_rgb(20_32_64_/_0.07)] transition-colors duration-200 focus-within:border-[#4f8bff] *:data-[slot='input-group']:rounded-xl",
           polishingInput &&
             "shadow-primary/10 ring-primary/25 shadow-lg ring-1",
           className,
@@ -2968,10 +2968,10 @@ export function InputBox({
             </div>
           </div>
         )}
-        <PromptInputHeader className="flex-wrap px-3 pt-3 pb-0 empty:hidden">
+        <PromptInputHeader className="block px-0 py-0 empty:hidden">
           {!!conversationCapability.error &&
             inlineRefs.some((ref) => ref.kind === "conversation") && (
-              <div role="alert" className="w-full text-xs">
+              <div role="alert" className="mb-2 w-full text-xs">
                 {t.inputBox.mentionFailed}{" "}
                 <button
                   type="button"
@@ -2983,66 +2983,73 @@ export function InputBox({
                 </button>
               </div>
             )}
-          <PromptInputAttachments className="contents p-0">
-            {(attachment) => (
-              <div className="max-w-60">
-                <PromptInputAttachment data={attachment} />
-              </div>
-            )}
-          </PromptInputAttachments>
-          {projectAttachments
-            .filter((attachment) => !attachment.source_document_id)
-            .map((attachment) => (
+          <div
+            className="flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto rounded-[10px] border border-[#e7ebf3] bg-[#fafbfe] px-2 py-1.5 empty:hidden"
+            data-testid="composer-attachment-tray"
+          >
+            <PromptInputAttachments className="contents p-0">
+              {(attachment) => (
+                <div className="max-w-60">
+                  <PromptInputAttachment data={attachment} />
+                </div>
+              )}
+            </PromptInputAttachments>
+            {projectAttachments
+              .filter((attachment) => !attachment.source_document_id)
+              .map((attachment) => (
+                <div
+                  key={attachment.virtual_path}
+                  className="flex h-7 max-w-full items-center gap-1.5 rounded-md border border-[#dfe7f6] bg-white py-0 pr-1 pl-2 text-xs font-medium text-[#4d5a70] shadow-[0_1px_1px_rgb(20_32_64_/_0.03)]"
+                  data-testid="project-attachment-chip"
+                >
+                  <PaperclipIcon className="size-3 shrink-0 text-[#4f8bff]" />
+                  <span className="max-w-40 truncate">
+                    {attachment.filename}
+                  </span>
+                  <button
+                    aria-label={t.inputBox.removeProjectAttachment}
+                    className="focus-visible:ring-primary/40 -mr-0.5 ml-0.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm transition-colors hover:bg-[#edf3ff] focus-visible:ring-2 focus-visible:outline-none"
+                    type="button"
+                    onClick={() =>
+                      setProjectAttachments((previous) =>
+                        previous.filter(
+                          (candidate) =>
+                            candidate.virtual_path !== attachment.virtual_path,
+                        ),
+                      )
+                    }
+                  >
+                    <XIcon className="size-3" />
+                  </button>
+                </div>
+              ))}
+            {polishingInput && (
               <div
-                key={attachment.virtual_path}
-                className="bg-muted text-muted-foreground flex h-7 items-center gap-1.5 rounded-full border py-0 pr-1 pl-2.5 text-xs font-medium"
-                data-testid="project-attachment-chip"
+                aria-live="polite"
+                className="text-primary bg-primary/10 border-primary/20 relative z-30 flex h-7 items-center gap-1.5 rounded-md border py-0 pr-1 pl-2 text-xs font-medium"
+                role="status"
               >
-                <PaperclipIcon className="size-3" />
-                <span className="max-w-40 truncate">{attachment.filename}</span>
+                <Loader2Icon className="size-3 animate-spin" />
+                {t.inputBox.inputPolishing}
                 <button
-                  aria-label={t.inputBox.removeProjectAttachment}
-                  className="hover:bg-primary/20 focus-visible:ring-primary/40 -mr-0.5 ml-0.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                  aria-label={t.inputBox.inputPolishCancel}
+                  className="hover:bg-primary/20 focus-visible:ring-primary/40 -mr-0.5 ml-0.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                  data-testid="cancel-polish-input-button"
+                  onClick={abortInputPolishRequest}
                   type="button"
-                  onClick={() =>
-                    setProjectAttachments((previous) =>
-                      previous.filter(
-                        (candidate) =>
-                          candidate.virtual_path !== attachment.virtual_path,
-                      ),
-                    )
-                  }
                 >
                   <XIcon className="size-3" />
                 </button>
               </div>
-            ))}
-          {polishingInput && (
-            <div
-              aria-live="polite"
-              className="text-primary bg-primary/10 border-primary/20 relative z-30 flex h-7 items-center gap-1.5 rounded-full border py-0 pr-1 pl-2.5 text-xs font-medium"
-              role="status"
-            >
-              <Loader2Icon className="size-3 animate-spin" />
-              {t.inputBox.inputPolishing}
-              <button
-                aria-label={t.inputBox.inputPolishCancel}
-                className="hover:bg-primary/20 focus-visible:ring-primary/40 -mr-0.5 ml-0.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
-                data-testid="cancel-polish-input-button"
-                onClick={abortInputPolishRequest}
-                type="button"
-              >
-                <XIcon className="size-3" />
-              </button>
-            </div>
-          )}
-          {sidecar && sidecar.conversationQuotes.length > 0 && (
-            <ReferenceAttachmentSummary
-              references={sidecar.conversationQuotes}
-              testId="conversation-quote-attachment"
-              onClear={() => sidecar.clearConversationQuotes()}
-            />
-          )}
+            )}
+            {sidecar && sidecar.conversationQuotes.length > 0 && (
+              <ReferenceAttachmentSummary
+                references={sidecar.conversationQuotes}
+                testId="conversation-quote-attachment"
+                onClear={() => sidecar.clearConversationQuotes()}
+              />
+            )}
+          </div>
         </PromptInputHeader>
         <div className="max-h-[150px] min-h-6 w-full min-w-0 px-0 py-0">
           {hasInlineReferences || inlineEditorActive ? (
@@ -3136,7 +3143,7 @@ export function InputBox({
             />
           )}
         </div>
-        <PromptInputFooter className="mt-1.5 flex flex-col gap-1.5 border-t border-[#f0f3fa] px-0! pt-2 pb-0! sm:flex-row sm:flex-nowrap">
+        <PromptInputFooter className="mt-1 flex flex-col gap-1 border-t border-[#f0f3fa] px-0! pt-1.5 pb-0! sm:flex-row sm:flex-nowrap">
           <PromptInputTools className="w-full min-w-0 flex-wrap gap-1.5 sm:w-auto sm:flex-1">
             <AddAttachmentsButton
               className="h-7 rounded-lg border border-[#e7ebf3] bg-[#fafbfe] px-2.5! text-xs text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]"
