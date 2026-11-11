@@ -152,6 +152,28 @@ describe("MessageList live run timer", () => {
     expect(activity()).toContain("5s");
   });
 
+  it("resets the activity timer when a newer active run replaces an older one", () => {
+    const { rerender } = render(
+      view({
+        isLoading: true,
+        activeRunId: "run-old",
+        activeRunStartedAt: NOW - 10 * 60_000,
+      }),
+    );
+
+    expect(activity()).toContain("10m");
+
+    rerender(
+      view({
+        isLoading: true,
+        activeRunId: "run-new",
+        activeRunStartedAt: NOW,
+      }),
+    );
+
+    expect(activity()).toContain("0s");
+  });
+
   it("records the completed duration from the corrected start", () => {
     const { rerender } = render(
       view({ isLoading: true, activeRunStartedAt: NOW - 42_000 }),

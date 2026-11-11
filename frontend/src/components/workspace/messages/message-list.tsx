@@ -529,6 +529,7 @@ export function MessageList({
     thread.isLoading ? Date.now() : null,
   );
   const turnStartTimeRef = useRef(turnStartTime);
+  const timedRunIdRef = useRef<string | undefined>(undefined);
   const [clientDurationsByGroupId, setClientDurationsByGroupId] = useState<
     ReadonlyMap<string, number>
   >(() => new Map());
@@ -557,6 +558,7 @@ export function MessageList({
         });
       }
       turnStartTimeRef.current = null;
+      timedRunIdRef.current = undefined;
       setTurnStartTime(null);
     }
     prevIsLoading.current = thread.isLoading;
@@ -564,17 +566,25 @@ export function MessageList({
 
   useEffect(() => {
     const startTime = turnStartTimeRef.current;
-    if (
-      !thread.isLoading ||
-      startTime === null ||
-      activeRunStartedAt === null ||
-      activeRunStartedAt >= startTime
-    ) {
+    if (!thread.isLoading || startTime === null) {
       return;
     }
+
+    if (activeRunId && timedRunIdRef.current !== activeRunId) {
+      const nextStartTime = activeRunStartedAt ?? Date.now();
+      timedRunIdRef.current = activeRunId;
+      turnStartTimeRef.current = nextStartTime;
+      setTurnStartTime(nextStartTime);
+      return;
+    }
+
+    if (activeRunStartedAt === null || activeRunStartedAt >= startTime) {
+      return;
+    }
+
     turnStartTimeRef.current = activeRunStartedAt;
     setTurnStartTime(activeRunStartedAt);
-  }, [activeRunStartedAt, thread.isLoading]);
+  }, [activeRunId, activeRunStartedAt, thread.isLoading]);
 
   useEffect(() => {
     // Only the primary chat surface drives the shared browser panel. The
