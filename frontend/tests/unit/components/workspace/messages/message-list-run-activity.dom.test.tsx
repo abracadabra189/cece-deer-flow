@@ -122,18 +122,18 @@ function activity() {
 }
 
 describe("MessageList live run timer", () => {
-  it("shows elapsed time while the run is active", () => {
+  it("starts the live timer from the local loading edge", () => {
     render(view({ isLoading: true, activeRunStartedAt: NOW - 42_000 }));
 
-    expect(activity()).toContain("42s");
+    expect(activity()).toContain("0s");
   });
 
-  it("shows elapsed time when the same run becomes active again", () => {
+  it("does not backdate the live timer when the same run becomes active again", () => {
     const { rerender } = render(view({ isLoading: false }));
 
     rerender(view({ isLoading: true, activeRunStartedAt: NOW - 95_000 }));
 
-    expect(activity()).toContain("1m 35s");
+    expect(activity()).toContain("0s");
   });
 
   it("updates the client-side elapsed timer", () => {
@@ -146,10 +146,14 @@ describe("MessageList live run timer", () => {
     expect(activity()).toContain("5s");
   });
 
-  it("records the completed duration from the corrected start", () => {
+  it("records the completed duration from the local loading edge", () => {
     const { rerender } = render(
       view({ isLoading: true, activeRunStartedAt: NOW - 42_000 }),
     );
+
+    act(() => {
+      rs.advanceTimersByTime(42_000);
+    });
 
     rerender(view({ isLoading: false, activeRunStartedAt: null }));
 

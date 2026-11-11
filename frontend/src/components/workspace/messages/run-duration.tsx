@@ -23,7 +23,10 @@ export function RunActivity({ startTime }: { startTime: number | null }) {
 
   const elapsedSeconds =
     startTime === null ? 0 : Math.max(0, Math.floor((now - startTime) / 1000));
-  const formatted = formatRunDuration(elapsedSeconds, t.runDuration) ?? "";
+  const formatted =
+    elapsedSeconds === 0
+      ? "0s"
+      : (formatRunDuration(elapsedSeconds, t.runDuration) ?? "");
 
   return (
     <div

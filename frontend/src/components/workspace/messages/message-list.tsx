@@ -562,19 +562,12 @@ export function MessageList({
     prevIsLoading.current = thread.isLoading;
   }, [groupedMessages, thread.error, thread.isLoading, threadId]);
 
+  // Keep the server timestamp wired for callers that still provide it, but
+  // deliberately do not backdate the live indicator. The 3.0 behavior starts
+  // from the local loading edge so a rejoined run never opens at 10 minutes.
   useEffect(() => {
-    const startTime = turnStartTimeRef.current;
-    if (
-      !thread.isLoading ||
-      startTime === null ||
-      activeRunStartedAt === null ||
-      activeRunStartedAt >= startTime
-    ) {
-      return;
-    }
-    turnStartTimeRef.current = activeRunStartedAt;
-    setTurnStartTime(activeRunStartedAt);
-  }, [activeRunStartedAt, thread.isLoading]);
+    void activeRunStartedAt;
+  }, [activeRunStartedAt]);
 
   useEffect(() => {
     // Only the primary chat surface drives the shared browser panel. The
