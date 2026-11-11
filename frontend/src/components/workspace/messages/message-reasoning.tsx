@@ -52,7 +52,10 @@ export function MessageReasoning({
       <ReasoningTrigger className="group/reasoning w-fit cursor-pointer gap-1.5 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4">
         {!isLoading && durationSeconds !== undefined ? (
           <>
-            <RunDurationLabel durationSeconds={durationSeconds} />
+            <RunDurationLabel
+              className="opacity-0 transition-opacity group-hover/assistant-turn:opacity-100"
+              durationSeconds={durationSeconds}
+            />
             <span className="sr-only"> {t.runDuration.reasoning}</span>
           </>
         ) : isLoading ? (

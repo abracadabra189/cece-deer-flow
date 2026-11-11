@@ -1981,6 +1981,7 @@ export const enUS: Translations = {
     input: "Input",
     output: "Output",
     total: "Total",
+    unit: "tokens",
     view: "Display",
     unavailable:
       "No token usage yet. Usage appears only after a successful model response when the provider returns usage_metadata.",

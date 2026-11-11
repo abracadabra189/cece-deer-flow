@@ -1686,6 +1686,7 @@ export interface Translations {
     input: string;
     output: string;
     total: string;
+    unit: string;
     view: string;
     unavailable: string;
     unavailableShort: string;
