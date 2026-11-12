@@ -262,7 +262,7 @@ auth:
     admin_phones: []
     ticket_ttl_seconds: 120
     session_expiry_minutes: null
-    frontend_base_url: http://172.25.18.172:17178
+    frontend_base_url: http://172.20.28.224:17178
 
 sandbox:
   use: deerflow.community.aio_sandbox:AioSandboxProvider
