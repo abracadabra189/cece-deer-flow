@@ -452,7 +452,11 @@ export default function ChatPage() {
     [submitHitlApproval, threadId],
   );
   const handleStop = useCallback(async () => {
-    await thread.stop();
+    try {
+      await thread.stop();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "停止失败，请重试");
+    }
   }, [thread]);
   const handleRegenerate = useCallback(
     (messageId: string, supersededMessageIds: string[]) =>

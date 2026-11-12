@@ -48,7 +48,7 @@ function WorkspaceSidebarContents() {
       </SidebarHeader>
       <SidebarContent className="gap-0 overflow-hidden px-2 pt-0">
         <WorkspaceNavChatList />
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
           <ProjectsSection />
           <RecentChatList />
         </div>

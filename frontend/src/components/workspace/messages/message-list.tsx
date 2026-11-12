@@ -523,19 +523,29 @@ export function MessageList({
   const browserView = useMaybeBrowserView();
   const pushBrowserFrame = browserView?.pushFrame;
   const messageCount = messages.length;
-  // Start from mount or the loading edge, then move back to the active run's
-  // server start once known: a run observed mid-flight began before this view.
+  // Match test224: start locally, then replace it with the authoritative
+  // active-run start when the server identifies a run observed mid-flight.
   const [turnStartTime, setTurnStartTime] = useState<number | null>(() =>
     thread.isLoading ? Date.now() : null,
   );
   const turnStartTimeRef = useRef(turnStartTime);
+  const timedRunIdRef = useRef<string | undefined>(undefined);
+  const previousThreadIdRef = useRef(threadId);
   const [clientDurationsByGroupId, setClientDurationsByGroupId] = useState<
     ReadonlyMap<string, number>
   >(() => new Map());
   const prevIsLoading = useRef(thread.isLoading);
 
   useEffect(() => {
-    if (thread.isLoading && !prevIsLoading.current) {
+    const threadChanged = previousThreadIdRef.current !== threadId;
+    previousThreadIdRef.current = threadId;
+
+    if (threadChanged) {
+      const nextStartTime = thread.isLoading ? Date.now() : null;
+      timedRunIdRef.current = undefined;
+      turnStartTimeRef.current = nextStartTime;
+      setTurnStartTime(nextStartTime);
+    } else if (thread.isLoading && !prevIsLoading.current) {
       const now = Date.now();
       turnStartTimeRef.current = now;
       setTurnStartTime(now);
@@ -557,6 +567,7 @@ export function MessageList({
         });
       }
       turnStartTimeRef.current = null;
+      timedRunIdRef.current = undefined;
       setTurnStartTime(null);
     }
     prevIsLoading.current = thread.isLoading;
@@ -564,17 +575,25 @@ export function MessageList({
 
   useEffect(() => {
     const startTime = turnStartTimeRef.current;
-    if (
-      !thread.isLoading ||
-      startTime === null ||
-      activeRunStartedAt === null ||
-      activeRunStartedAt >= startTime
-    ) {
+    if (!thread.isLoading || startTime === null) {
       return;
     }
+
+    if (activeRunId && timedRunIdRef.current !== activeRunId) {
+      const nextStartTime = activeRunStartedAt ?? Date.now();
+      timedRunIdRef.current = activeRunId;
+      turnStartTimeRef.current = nextStartTime;
+      setTurnStartTime(nextStartTime);
+      return;
+    }
+
+    if (activeRunStartedAt === null || activeRunStartedAt >= startTime) {
+      return;
+    }
+
     turnStartTimeRef.current = activeRunStartedAt;
     setTurnStartTime(activeRunStartedAt);
-  }, [activeRunStartedAt, thread.isLoading]);
+  }, [activeRunId, activeRunStartedAt, thread.isLoading]);
 
   useEffect(() => {
     // Only the primary chat surface drives the shared browser panel. The
