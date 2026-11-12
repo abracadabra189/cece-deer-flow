@@ -113,7 +113,7 @@ models:
 
 token_budget:
   enabled: true
-  max_tokens: 1500000
+  max_tokens: 3000000
   warn_threshold: 0.40
   hard_stop_threshold: 1.0
 
@@ -198,12 +198,71 @@ skill_evolution:
   moderation_model_name: qwen3.8-flash   # null 则回落到默认对话模型
   security_fail_closed: true             # 审核模型不可用时拒绝写入，而非放行
 
+# ============================================================================
+# 外部用户系统接入（手机号开通 + 免密登录）
+# ============================================================================
+# POST /api/v1/auth/external/provision：外部后端用「手机号 + 用户名」换取账号与凭据，
+#   已注册则复用、未注册则立即建号；返回 access_token 与一次性 login_url。
+# GET  /api/v1/auth/external/login?ticket=…：浏览器兑换票据，下发会话 Cookie 后
+#   302 到 /auth/callback，用户直接处于登录态（前端无需改动）。
+#
+# api_key 是本接口唯一的凭据，等于「可为任意手机号开号」，按管理员密钥管理：
+# 只放 .env、只在内网或 TLS 之后暴露、轮换即改环境变量。启用而密钥缺失或短于
+# 16 字符时配置加载直接失败。此处刻意使用 dev172 专属变量名，避免与其他环境共用一把钥匙。
+# 契约见 backend/docs/API.md#external-user-provisioning，流程见 docs/EXTERNAL_USER_INTEGRATION.md。
+auth:
+  external_user:
+    enabled: true
+    api_key: $EXTERNAL_USER_API_KEY_DEV172
+    provider_id: external-phone            # 写入 users.oauth_provider；接第二套外部系统时要换掉
+    email_domain: users.deerflow.internal  # 派生邮箱 {phone}@{domain}，仅存储键，不是收件域
+    default_role: user
+    admin_phones: []                       # 需要管理员权限的手机号
+    ticket_ttl_seconds: 120                # 一次性登录票据有效期（10-900）
+    session_expiry_minutes: null           # null = 跟随 JWT 默认（7 天）
+    frontend_base_url: null                # null = 同源（nginx 2027 即前端）
+
 database:
   backend: postgres
   postgres_url: $DATABASE_URL
   postgres_schema: deerflow
   pool_size: 5
   command_timeout: 30
+
+# Required for multi-worker Gateway deployment.
+run_events:
+  backend: db
+  max_trace_content: 10240
+  track_token_usage: true
+
+deployment:
+  multi_instance: true
+
+run_ownership:
+  lease_seconds: 30
+  grace_seconds: 10
+  heartbeat_enabled: true
+
+stream_bridge:
+  type: redis
+  redis_url: redis://redis:6379/0
+  queue_maxsize: 256
+  heartbeat_interval_seconds: 15
+  stream_ttl_seconds: 86400
+  max_connections: 320
+
+# Enable only after setting EXTERNAL_USER_API_KEY in .env.
+auth:
+  external_user:
+    enabled: true
+    api_key: $EXTERNAL_USER_API_KEY
+    provider_id: external-phone
+    email_domain: users.deerflow.internal
+    default_role: user
+    admin_phones: []
+    ticket_ttl_seconds: 120
+    session_expiry_minutes: null
+    frontend_base_url: http://172.25.18.172:17178
 
 sandbox:
   use: deerflow.community.aio_sandbox:AioSandboxProvider
@@ -213,6 +272,8 @@ sandbox:
   container_prefix: cece-harness-sandbox
   replicas: 8
   idle_timeout: 900
+  ownership:
+    type: redis
   bash_command_timeout: 60
   environment:
     DISABLE_BROWSER: "true"

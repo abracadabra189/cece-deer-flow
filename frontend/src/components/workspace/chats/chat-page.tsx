@@ -1,8 +1,6 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Folder } from "lucide-react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -10,8 +8,6 @@ import { toast } from "sonner";
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
 import { BrowserTrigger } from "@/components/workspace/browser-view";
-import { ContextUsageBadge } from "@/components/workspace/context-usage-badge";
-import { ExportTrigger } from "@/components/workspace/export-trigger";
 import { GoalStatus } from "@/components/workspace/goal-status";
 import {
   InputBox,
@@ -28,15 +24,9 @@ import {
   SidecarProvider,
   SidecarTrigger,
 } from "@/components/workspace/sidecar";
-import { ThreadArchiveStatus } from "@/components/workspace/thread-archive-status";
-import { ThreadBackgroundTasks } from "@/components/workspace/thread-background-tasks";
-import { ThreadExtensionActions } from "@/components/workspace/thread-extension-actions";
 import { ThreadRunInputs } from "@/components/workspace/thread-run-inputs";
-import { ThreadScheduledTasksButton } from "@/components/workspace/thread-scheduled-tasks-button";
-import { ThreadSubagentBatches } from "@/components/workspace/thread-subagent-batches";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
-import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
 import { useActiveGoal } from "@/components/workspace/use-active-goal";
 import { Welcome } from "@/components/workspace/welcome";
 import { WorkspaceSidebarTrigger } from "@/components/workspace/workspace-sidebar-trigger";
@@ -61,14 +51,12 @@ import {
 } from "@/core/messages/human-input";
 import { isHiddenFromUIMessage } from "@/core/messages/utils";
 import { modelTaskInput } from "@/core/models/control";
-import { useModels } from "@/core/models/hooks";
 import { useModelControl } from "@/core/models/use-model-control";
 import { notificationBody } from "@/core/notification/body";
 import { useNotification } from "@/core/notification/hooks";
-import { useProject } from "@/core/projects";
 import { useThreadScheduledTaskEvents } from "@/core/scheduled-tasks/events";
 import { useScheduleToolResultRefresh } from "@/core/scheduled-tasks/hooks";
-import { useLocalSettings, useThreadSettings } from "@/core/settings";
+import { useThreadSettings } from "@/core/settings";
 import { resolveThreadContext, selectThreadModel } from "@/core/settings/store";
 import { createThread } from "@/core/threads/api";
 import {
@@ -76,12 +64,7 @@ import {
   INFINITE_THREADS_QUERY_KEY_PREFIX,
   useThreadMetadata,
   useThreadStream,
-  useThreadTokenUsage,
 } from "@/core/threads/hooks";
-import {
-  selectContextUsage,
-  threadTokenUsageToTokenUsage,
-} from "@/core/threads/token-usage";
 import { projectIdOfThread, textOfMessage } from "@/core/threads/utils";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
@@ -100,14 +83,6 @@ export default function ChatPage() {
   const searchParams = useSearchParams();
   const { threadId, setThreadId, isNewThread, setIsNewThread, isMock } =
     useThreadChat();
-  // Project-scoped new chat: `/workspace/chats/new?project={id}` assigns the
-  // thread to the project on the FIRST submit — primarily via an explicit
-  // `POST /api/threads` pre-create with `project_id`, with the run-request
-  // metadata seed as the fallback channel (the SDK's own threads.create
-  // strips the reserved key, so the seed alone races the sidebar). Only
-  // meaningful while the thread is still lazy (`isNewThread`); once
-  // materialized the URL is replaced with the thread route and the param is
-  // gone. Invalid ids are dropped by backend admission.
   const projectParam = isNewThread ? searchParams.get("project") : null;
   // `isNewThread` tracks whether the backend has the thread yet — gates the
   // SDK's history fetch (see issue #2746).  `isWelcomeMode` is the visual
@@ -124,13 +99,7 @@ export default function ChatPage() {
   const prepareModelControl = modelControl.prepare;
   const [modelChoiceSummary, setModelChoiceSummary] = useState("");
   useEffect(() => setModelChoiceSummary(""), [threadId, user?.id]);
-  const [localSettings, setLocalSettings] = useLocalSettings();
   const { enabled: browserControlEnabled } = useBrowserControlEnabled();
-  const { tokenUsageEnabled } = useModels();
-  const threadTokenUsage = useThreadTokenUsage(
-    isNewThread || isMock ? undefined : threadId,
-    { enabled: !isMock },
-  );
   const threadMetadata = useThreadMetadata(threadId, {
     enabled: !isNewThread && !isMock,
     isMock,
@@ -147,8 +116,6 @@ export default function ChatPage() {
     enabled: !isMock,
   });
   const branchThread = useBranchThread();
-  const backendTokenUsage = threadTokenUsageToTokenUsage(threadTokenUsage.data);
-  const contextUsage = selectContextUsage(threadTokenUsage.data);
   const mountedRef = useRef(false);
   useSpecificChatMode();
 
@@ -203,7 +170,6 @@ export default function ChatPage() {
 
   const {
     thread,
-    pendingUsageMessages,
     sendMessage,
     sendInput,
     runInputs,
@@ -284,25 +250,12 @@ export default function ChatPage() {
     threadMetadata.isLoading,
   ]);
 
-  // Born assigned: pre-create the thread row with its project so the sidebar
-  // lists it under the project immediately. Idempotent server-side on
-  // `thread_id`, so retrying the same first message (same `threadId` while
-  // `isNewThread`) reuses the existing row instead of double-creating. This
-  // is the sole membership channel — run requests never carry the project
-  // key.
-  //
-  // Also runs before InputBox issues a `/goal <condition>` PUT (via
-  // `onPrepareThread`): the goal endpoint materializes a missing thread row
-  // itself, and an unassigned row would make this later idempotent create a
-  // membership no-op.
+  // A project-scoped new chat must create its thread with the project before
+  // the first run; otherwise the backend creates an unassigned thread first.
   const ensureProjectThread = useCallback(async () => {
-    if (!projectParam) {
-      return;
-    }
+    if (!projectParam) return;
     try {
       const created = await createThread(threadId, projectParam);
-      // Keep confirmed membership available while the first metadata read is pending
-      // or fails after the composer materializes this new project thread.
       queryClient.setQueryData(
         ["thread", "metadata", threadId, false],
         created,
@@ -311,30 +264,19 @@ export default function ChatPage() {
         queryKey: INFINITE_THREADS_QUERY_KEY_PREFIX,
       });
     } catch (error) {
-      // Any failure (e.g. the project was deleted/archived between page load
-      // and submit): do NOT submit unassigned. Reject so PromptInput keeps
-      // the composer's text for a retry; the send in-flight guard is never
-      // engaged on this path, so retrying works immediately.
       toast.error(t.projects.projectUnavailable);
       throw error;
     }
-  }, [threadId, projectParam, queryClient, t]);
+  }, [projectParam, queryClient, t, threadId]);
 
-  // Submission fence. The cleanup runs when `threadId` changes (conversation
-  // switch on a persisted page — sidebar navigation keeps this component
-  // mounted), when the new-chat project scope changes (the sidebar "New
-  // chat" link can drop `?project=` without a pathname change), or on
-  // unmount. handleSubmit awaits the project pre-create before sending, and
-  // a navigation during that await must not let the stale continuation
-  // start a run for the abandoned conversation: its onStart would rewrite
-  // the newly selected conversation's URL and its completion would clear
-  // the new composer.
+  // Submission fence: if a user navigates while model selection or project
+  // creation is open, a stale continuation must not start a run elsewhere.
   const submissionEpochRef = useRef(0);
   useEffect(() => {
     return () => {
       submissionEpochRef.current += 1;
     };
-  }, [threadId, projectParam]);
+  }, [projectParam, threadId]);
 
   const handleSubmit = useCallback(
     async (message: PromptInputMessage, options?: InputBoxSubmitOptions) => {
@@ -362,10 +304,6 @@ export default function ChatPage() {
         }
       }
       await ensureProjectThread();
-      // Conversation switched (or the page unmounted) while the project
-      // pre-create was pending: drop the submission. Reject silently — the
-      // user has already moved on, so a toast would land on the new
-      // conversation — and PromptInput keeps the current composer text.
       if (submissionEpochRef.current !== submissionEpoch) {
         throw new Error("thread-submission-stale");
       }
@@ -514,7 +452,11 @@ export default function ChatPage() {
     [submitHitlApproval, threadId],
   );
   const handleStop = useCallback(async () => {
-    await thread.stop();
+    try {
+      await thread.stop();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "停止失败，请重试");
+    }
   }, [thread]);
   const handleRegenerate = useCallback(
     (messageId: string, supersededMessageIds: string[]) =>
@@ -560,9 +502,6 @@ export default function ChatPage() {
     [branchThread, isMock, isNewThread, router, t, threadId],
   );
 
-  const tokenUsageInlineMode = tokenUsageEnabled
-    ? localSettings.tokenUsage.inlineMode
-    : "off";
   const hasTodos = (thread.values.todos?.length ?? 0) > 0;
   const browserEnabled = !isNewThread && !isMock && browserControlEnabled;
   const { activeGoal, hasGoal, goalOutcome, setLocalGoal } = useActiveGoal(
@@ -579,14 +518,17 @@ export default function ChatPage() {
       ),
     [thread.messages],
   );
-
-  // Project affiliation chip: shown once the materialized thread's metadata
-  // carries `deerflow_project_id` (written by the create/move endpoints and
-  // exposed here read-only).
+  const handleWelcomeTask = useCallback(
+    async (prompt: string) => {
+      await handleSubmit({ text: prompt, files: [] });
+    },
+    [handleSubmit],
+  );
   const affiliatedProjectId =
     !isNewThread && !isMock && threadMetadata.data
       ? projectIdOfThread(threadMetadata.data)
       : null;
+
   // A goal blocks edit-and-rerun server-side; show the pencil locked.
   const editBase =
     !isNewThread &&
@@ -606,158 +548,100 @@ export default function ChatPage() {
         isMock={isMock}
       >
         <ChatBox threadId={threadId} browserEnabled={browserEnabled}>
-          <div className="relative flex size-full min-h-0 justify-between">
-            <header
-              className={cn(
-                "absolute top-0 right-0 left-0 flex h-12 shrink-0 items-center gap-2 px-2 sm:px-4",
-                isWelcomeMode
-                  ? "bg-background/0 z-40 backdrop-blur-none"
-                  : "bg-background/80 z-30 shadow-xs backdrop-blur",
-              )}
-            >
-              {!isMock && <WorkspaceSidebarTrigger className="md:hidden" />}
-              <div className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">
-                <ThreadTitle
-                  threadId={threadId}
-                  thread={thread}
-                  canonicalTitle={threadMetadata.data?.values?.title}
-                />
-                {!isNewThread &&
-                  !isMock &&
-                  env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" && (
-                    <ThreadArchiveStatus
-                      threadId={threadId}
-                      metadata={threadMetadata.data?.metadata}
-                    />
-                  )}
-                {affiliatedProjectId && (
-                  <ProjectAffiliationBadge projectId={affiliatedProjectId} />
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {!isNewThread &&
-                  !isMock &&
-                  env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" && (
-                    <ThreadBackgroundTasks threadId={threadId} />
-                  )}
-                {!isNewThread &&
-                  !isMock &&
-                  env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" && (
-                    <ThreadSubagentBatches threadId={threadId} />
-                  )}
-                {!isNewThread && !isMock && (
-                  <ThreadScheduledTasksButton threadId={threadId} />
-                )}
-                {tokenUsageEnabled ? (
-                  <TokenUsageIndicator
-                    threadId={isNewThread ? undefined : threadId}
-                    backendUsage={backendTokenUsage}
-                    contextUsage={contextUsage}
-                    enabled={tokenUsageEnabled}
-                    messages={thread.messages}
-                    pendingMessages={pendingUsageMessages}
-                    preferences={localSettings.tokenUsage}
-                    onPreferencesChange={(preferences) =>
-                      setLocalSettings("tokenUsage", preferences)
-                    }
+          <div className="relative flex size-full min-h-0 justify-between bg-[#f5f7fa]">
+            {!isWelcomeMode && (
+              <header className="absolute top-0 right-0 left-0 z-30 flex h-[46px] shrink-0 items-center gap-2 border-b border-[#e7ebf3] bg-white px-4">
+                {!isMock && <WorkspaceSidebarTrigger className="md:hidden" />}
+                <div className="flex min-w-0 flex-1 items-center gap-2 text-sm font-bold">
+                  <ThreadTitle
+                    threadId={threadId}
+                    thread={thread}
+                    canonicalTitle={threadMetadata.data?.values?.title}
                   />
-                ) : (
-                  <ContextUsageBadge contextUsage={contextUsage} />
-                )}
-                <SidecarTrigger />
-                {browserEnabled && <BrowserTrigger />}
-                <ExportTrigger threadId={threadId} />
-                <ThreadExtensionActions threadId={threadId} />
-                <ArtifactTrigger />
-              </div>
-            </header>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <SidecarTrigger />
+                  {browserEnabled && <BrowserTrigger />}
+                  <ArtifactTrigger />
+                </div>
+              </header>
+            )}
             <main className="flex min-h-0 max-w-full grow flex-col">
               <div className="flex min-h-0 flex-1 justify-center">
-                <MessageList
-                  activeRunId={activeRunId}
-                  activeRunStartedAt={activeRunStartedAt}
-                  archiveDownloadsEnabled={
-                    isNewThread || isMock || threadMetadata.data != null
-                  }
-                  className={cn("size-full", !isWelcomeMode && "pt-10")}
-                  testId="main-message-list"
-                  threadId={threadId}
-                  thread={thread}
-                  scheduledTaskEvents={scheduledTaskEvents.data}
-                  enableConversationOutline
-                  paddingBottom={MESSAGE_LIST_DEFAULT_PADDING_BOTTOM}
-                  hasMoreHistory={hasMoreHistory}
-                  loadMoreHistory={loadMoreHistory}
-                  isHistoryLoading={isHistoryLoading}
-                  tokenUsageInlineMode={tokenUsageInlineMode}
-                  approvalRequests={approvalRequests}
-                  approvalMetadataLoading={
-                    hasPendingApproval && approvalRequests.length === 0
-                  }
-                  approvalMetadataError={
-                    hasPendingApproval &&
-                    approvalRequests.length === 0 &&
-                    threadMetadata.isError
-                  }
-                  onReloadApprovalMetadata={() => threadMetadata.refetch()}
-                  waitingForInputRunIds={waitingForInputRunIds}
-                  onSubmitApproval={handleSubmitApproval}
-                  canRegenerate={
-                    !isNewThread &&
-                    !isMock &&
-                    env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" &&
-                    !isUploading &&
-                    !thread.isLoading &&
-                    !hasPendingApproval
-                  }
-                  onRegenerateMessage={handleRegenerate}
-                  canEdit={editBase && !hasGoal}
-                  editLockedByGoal={editBase && hasGoal}
-                  onEditAndRegenerateMessage={handleEditAndRegenerate}
-                  onSubmitHumanInput={
-                    isMock || env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"
-                      ? undefined
-                      : handleSubmitHumanInput
-                  }
-                  canBranch={
-                    !isNewThread &&
-                    !isMock &&
-                    env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" &&
-                    !isUploading &&
-                    !thread.isLoading &&
-                    !branchThread.isPending &&
-                    !hasPendingApproval
-                  }
-                  onBranchTurn={handleBranchTurn}
-                />
+                {isWelcomeMode && !hasGoal && !hasTodos ? (
+                  <Welcome onStartTask={handleWelcomeTask} />
+                ) : (
+                  <MessageList
+                    activeRunId={activeRunId}
+                    activeRunStartedAt={activeRunStartedAt}
+                    archiveDownloadsEnabled={
+                      isNewThread || isMock || threadMetadata.data != null
+                    }
+                    className="size-full pt-[46px]"
+                    testId="main-message-list"
+                    threadId={threadId}
+                    thread={thread}
+                    scheduledTaskEvents={scheduledTaskEvents.data}
+                    enableConversationOutline
+                    paddingBottom={MESSAGE_LIST_DEFAULT_PADDING_BOTTOM}
+                    hasMoreHistory={hasMoreHistory}
+                    loadMoreHistory={loadMoreHistory}
+                    isHistoryLoading={isHistoryLoading}
+                    tokenUsageInlineMode="off"
+                    approvalRequests={approvalRequests}
+                    approvalMetadataLoading={
+                      hasPendingApproval && approvalRequests.length === 0
+                    }
+                    approvalMetadataError={
+                      hasPendingApproval &&
+                      approvalRequests.length === 0 &&
+                      threadMetadata.isError
+                    }
+                    onReloadApprovalMetadata={() => threadMetadata.refetch()}
+                    waitingForInputRunIds={waitingForInputRunIds}
+                    onSubmitApproval={handleSubmitApproval}
+                    canRegenerate={
+                      !isNewThread &&
+                      !isMock &&
+                      env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" &&
+                      !isUploading &&
+                      !thread.isLoading &&
+                      !hasPendingApproval
+                    }
+                    onRegenerateMessage={handleRegenerate}
+                    canEdit={editBase && !hasGoal}
+                    editLockedByGoal={editBase && hasGoal}
+                    onEditAndRegenerateMessage={handleEditAndRegenerate}
+                    onSubmitHumanInput={
+                      isMock || env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"
+                        ? undefined
+                        : handleSubmitHumanInput
+                    }
+                    canBranch={
+                      !isNewThread &&
+                      !isMock &&
+                      env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" &&
+                      !isUploading &&
+                      !thread.isLoading &&
+                      !branchThread.isPending &&
+                      !hasPendingApproval
+                    }
+                    onBranchTurn={handleBranchTurn}
+                  />
+                )}
               </div>
               <div
                 className={cn(
-                  "right-0 bottom-0 left-0 z-30 flex justify-center px-3 sm:px-4",
-                  isWelcomeMode ? "absolute" : "relative shrink-0 pb-4",
+                  "relative right-0 bottom-0 left-0 z-30 flex shrink-0 justify-center px-4 pt-2 pb-5",
                 )}
               >
-                <div
-                  className={cn(
-                    "relative w-full",
-                    isWelcomeMode &&
-                      "-translate-y-[calc(50vh-48px)] sm:-translate-y-[calc(50vh-96px)]",
-                    isWelcomeMode
-                      ? "max-w-(--container-width-sm)"
-                      : "max-w-(--container-width-md)",
-                  )}
-                >
+                <div className={cn("relative w-full", "max-w-[820px]")}>
                   {(hasGoal || goalOutcome !== null || hasTodos) && (
-                    <div
-                      className={cn(
-                        "right-0 left-0 z-0",
-                        isWelcomeMode ? "absolute -top-4" : "relative",
-                      )}
-                    >
+                    <div className={cn("right-0 left-0 z-0", "relative")}>
                       <div
                         className={cn(
                           "right-0 bottom-0 left-0 flex flex-col",
-                          isWelcomeMode ? "absolute" : "relative",
+                          "relative",
                         )}
                       >
                         <GoalStatus
@@ -808,10 +692,7 @@ export default function ChatPage() {
                         canCancel={canStopStreaming}
                       />
                       <InputBox
-                        className={cn(
-                          "bg-background/5 w-full",
-                          isWelcomeMode && "-translate-y-2 sm:-translate-y-4",
-                        )}
+                        className="w-full"
                         isWelcomeMode={isWelcomeMode}
                         threadId={threadId}
                         projectId={projectParam ?? affiliatedProjectId}
@@ -839,11 +720,6 @@ export default function ChatPage() {
                               : "ready"
                         }
                         context={settings.context}
-                        extraHeader={
-                          isWelcomeMode &&
-                          !hasGoal &&
-                          !hasTodos && <Welcome mode={settings.context.mode} />
-                        }
                         disabled={
                           isMock ||
                           env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
@@ -897,26 +773,5 @@ export default function ChatPage() {
         </ChatBox>
       </SidecarProvider>
     </ThreadContext.Provider>
-  );
-}
-
-/**
- * Small chip in the chat header linking to the thread's project. Hidden
- * while the project lookup is pending or when it fails (e.g. the project
- * was deleted) — an unresolvable affiliation degrades silently.
- */
-function ProjectAffiliationBadge({ projectId }: { projectId: string }) {
-  const { data: project } = useProject(projectId);
-  if (!project) {
-    return null;
-  }
-  return (
-    <Link
-      href={`/workspace/projects/${encodeURIComponent(project.id)}`}
-      className="text-muted-foreground hover:text-foreground inline-flex max-w-40 shrink-0 items-center gap-1 truncate rounded-full border px-2 py-0.5 text-xs font-normal transition-colors"
-    >
-      <Folder className="size-3 shrink-0" />
-      <span className="truncate">{project.name}</span>
-    </Link>
   );
 }

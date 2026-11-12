@@ -37,4 +37,26 @@ describe("interaction-only bundle boundaries", () => {
     );
     expect(chatBox.match(/dynamic\(/g)?.length).toBeGreaterThanOrEqual(4);
   });
+
+  it("keeps result-area navigation visible while an artifact is previewed", () => {
+    const chatBox = read("src/components/workspace/chats/chat-box.tsx");
+
+    expect(chatBox).toContain("{t.common.resultArea}");
+    expect(chatBox).toContain("{t.common.resultArtifacts}");
+    expect(chatBox).not.toContain(
+      'if (renderedRightPanel === "artifacts" && selectedArtifact)',
+    );
+    expect(chatBox).toMatch(
+      /renderedRightPanel === "artifacts"[\s\S]*?selectedArtifact \?[\s\S]*?<ArtifactFileDetail/,
+    );
+    expect(chatBox).toContain("aria-label={t.common.close}");
+    expect(chatBox).toContain("setArtifactsOpen(false);");
+
+    const detail = read(
+      "src/components/workspace/artifacts/artifact-file-detail.tsx",
+    );
+    expect(detail).toContain("icon={ArrowLeftIcon}");
+    expect(detail).toContain("label={t.common.backToArtifactList}");
+    expect(detail).toContain("returnToList();");
+  });
 });

@@ -25,7 +25,18 @@ CSRF_COOKIE_NAME = "csrf_token"
 CSRF_HEADER_NAME = "X-CSRF-Token"
 CSRF_TOKEN_LENGTH = 64  # bytes
 _CSRF_STATE_CHANGING_METHODS: frozenset[str] = frozenset({"POST", "PUT", "DELETE", "PATCH"})
-_CSRF_EXEMPT_EXACT_PATHS: frozenset[str] = frozenset({"/api/v1/auth/me"})
+_CSRF_EXEMPT_EXACT_PATHS: frozenset[str] = frozenset(
+    {
+        "/api/v1/auth/me",
+        # Server-to-server provisioning: authenticated by the shared
+        # auth.external_user.api_key and never by a browser cookie, so there is
+        # no double-submit pair to check (same reasoning as the signed webhooks
+        # below). Deliberately NOT in _AUTH_EXEMPT_PATHS — that set also triggers
+        # the cross-site Origin check and CSRF-cookie issuance, neither of which
+        # applies to a key-authenticated machine caller.
+        "/api/v1/auth/external/provision",
+    }
+)
 
 
 def is_secure_request(request: Request) -> bool:

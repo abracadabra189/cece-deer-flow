@@ -1,5 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { DownloadIcon, LoaderIcon, PackageIcon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  DownloadIcon,
+  LoaderIcon,
+  PackageIcon,
+} from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
@@ -69,38 +74,6 @@ export function ArtifactFileList({
     [selectArtifact, setOpen],
   );
 
-  const handleInstallSkill = useCallback(
-    async (e: React.MouseEvent, filepath: string) => {
-      e.stopPropagation();
-      e.preventDefault();
-
-      if (installingFile) return;
-
-      setInstallingFile(filepath);
-      try {
-        const result = await installSkill({
-          thread_id: threadId,
-          path: filepath,
-        });
-        if (result.success) {
-          toast.success(result.message);
-        } else {
-          toast.error(result.message || "Failed to install skill");
-        }
-      } catch (error) {
-        console.error("Failed to install skill:", error);
-        if (error instanceof SkillRequestError && error.isAdminRequired) {
-          toast.error(t.settings.skills.installAdminRequired);
-        } else {
-          toast.error("Failed to install skill");
-        }
-      } finally {
-        setInstallingFile(null);
-      }
-    },
-    [threadId, installingFile, t],
-  );
-
   const handleDownloadArchive = useCallback(async () => {
     if (!runId || downloadingArchive) return;
 
@@ -130,6 +103,37 @@ export function ArtifactFileList({
       setDownloadingArchive(false);
     }
   }, [downloadingArchive, runId, t, threadId]);
+
+  const handleInstallSkill = useCallback(
+    async (event: React.MouseEvent, filepath: string) => {
+      event.stopPropagation();
+      event.preventDefault();
+      if (installingFile) return;
+
+      setInstallingFile(filepath);
+      try {
+        const result = await installSkill({
+          thread_id: threadId,
+          path: filepath,
+        });
+        if (result.success) {
+          toast.success(result.message);
+        } else {
+          toast.error(result.message ?? "Failed to install skill");
+        }
+      } catch (error) {
+        console.error("Failed to install skill:", error);
+        toast.error(
+          error instanceof SkillRequestError && error.isAdminRequired
+            ? t.settings.skills.installAdminRequired
+            : "Failed to install skill",
+        );
+      } finally {
+        setInstallingFile(null);
+      }
+    },
+    [installingFile, t.settings.skills.installAdminRequired, threadId],
+  );
 
   const canDownloadArchive =
     archiveDownloadsEnabled &&
@@ -163,25 +167,30 @@ export function ArtifactFileList({
         {files.map((file) => (
           <Card
             key={file}
-            className="relative cursor-pointer p-3"
+            data-testid="result-artifact-row"
+            className="group border-border bg-card hover:border-ring/50 hover:bg-accent/50 relative flex-row items-center gap-3 rounded-lg p-3 shadow-none transition-colors"
             onClick={() => handleClick(file)}
           >
-            <CardHeader className="grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 pr-2 pl-1">
-              <CardTitle className="relative min-w-0 pl-8 leading-tight [overflow-wrap:anywhere] break-words">
-                <div className="min-w-0">{getFileName(file)}</div>
-                <div className="absolute top-2 -left-0.5">
-                  {getFileIcon(file, "size-6")}
-                </div>
-              </CardTitle>
-              <CardDescription className="min-w-0 pl-8 text-xs">
-                {getFileExtensionDisplayName(file)} file
-              </CardDescription>
-              <CardAction className="row-span-1 self-center">
+            <CardHeader className="flex min-w-0 flex-1 flex-row items-center gap-3 p-0">
+              <div className="bg-secondary text-foreground flex size-9 shrink-0 items-center justify-center rounded-md [&_svg]:size-5">
+                {getFileIcon(file)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <CardTitle className="truncate text-sm font-semibold">
+                  {getFileName(file)}
+                </CardTitle>
+                <CardDescription className="mt-0.5 truncate text-xs">
+                  {getFileExtensionDisplayName(file)}
+                </CardDescription>
+              </div>
+              <CardAction className="flex shrink-0 items-center gap-1 self-center">
                 {file.endsWith(".skill") && isAdmin && (
                   <Button
+                    aria-label={t.common.install}
+                    size="icon-sm"
                     variant="ghost"
                     disabled={installingFile === file}
-                    onClick={(e) => handleInstallSkill(e, file)}
+                    onClick={(event) => void handleInstallSkill(event, file)}
                   >
                     {installingFile === file ? (
                       <LoaderIcon className="size-4 animate-spin" />
@@ -191,8 +200,9 @@ export function ArtifactFileList({
                     {t.common.install}
                   </Button>
                 )}
-                <Button variant="ghost" asChild>
+                <Button size="icon-sm" variant="ghost" asChild>
                   <a
+                    aria-label={`${t.common.download} ${getFileName(file)}`}
                     href={urlOfArtifact({
                       filepath: file,
                       threadId: threadId,
@@ -203,9 +213,9 @@ export function ArtifactFileList({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <DownloadIcon className="size-4" />
-                    {t.common.download}
                   </a>
                 </Button>
+                <ChevronRightIcon className="text-muted-foreground size-4 transition-transform group-hover:translate-x-0.5" />
               </CardAction>
             </CardHeader>
           </Card>

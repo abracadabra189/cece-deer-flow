@@ -22,6 +22,7 @@ const mocks = rs.hoisted(() => ({
   patchMutate: rs.fn(),
   patchPending: false,
   patchSuccess: false,
+  headerBreadcrumbs: undefined as boolean | undefined,
 }));
 
 rs.mock("next/navigation", () => ({
@@ -75,7 +76,10 @@ rs.mock("@/components/workspace/workspace-container", () => ({
   WorkspaceContainer: ({ children }: PropsWithChildren) => (
     <div>{children}</div>
   ),
-  WorkspaceHeader: () => <div />,
+  WorkspaceHeader: ({ breadcrumbs }: { breadcrumbs?: boolean }) => {
+    mocks.headerBreadcrumbs = breadcrumbs;
+    return <div />;
+  },
   WorkspaceBody: ({ children }: PropsWithChildren) => <div>{children}</div>,
 }));
 rs.mock("@/components/workspace/projects/project-documents-section", () => ({
@@ -114,11 +118,20 @@ beforeEach(() => {
   mocks.projectsConfig = undefined;
   mocks.patchPending = false;
   mocks.patchSuccess = false;
+  mocks.headerBreadcrumbs = undefined;
 });
 
 afterEach(() => {
   cleanup();
   rs.clearAllMocks();
+});
+
+describe("ProjectPage workspace framing", () => {
+  it("removes the generic desktop breadcrumb from a task-group detail page", () => {
+    render(<ProjectPage />, { wrapper: Wrapper });
+
+    expect(mocks.headerBreadcrumbs).toBe(false);
+  });
 });
 
 describe("ProjectPage instructions limit", () => {

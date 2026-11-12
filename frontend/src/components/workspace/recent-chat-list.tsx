@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  Archive,
   Download,
   FileJson,
   FileText,
+  ListTodo,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -51,8 +51,6 @@ import { useAuth } from "@/core/auth/AuthProvider";
 import { hasPermission, PERMISSIONS } from "@/core/auth/permissions";
 import { writeTextToClipboard } from "@/core/clipboard";
 import { useI18n } from "@/core/i18n/hooks";
-import { useProjects } from "@/core/projects";
-import { useLocalSettings } from "@/core/settings";
 import { isStaticWebsiteOnly } from "@/core/static-mode";
 import { exportThread, type ThreadExportFormat } from "@/core/threads/export";
 import {
@@ -73,7 +71,6 @@ import {
   channelSourceOfThread,
   isThreadPinned,
   pathOfThread,
-  projectIdOfThread,
   titleOfThread,
 } from "@/core/threads/utils";
 import { env } from "@/env";
@@ -87,7 +84,6 @@ import {
 } from "./thread-channel-source";
 import { useThreadDeleteDialog } from "./thread-delete-dialog";
 import { VirtualThreadList } from "./thread-list-virtualizer";
-import { useThreadArchiveAction } from "./use-thread-archive-action";
 
 /**
  * A single thread row in the sidebar: link + hover action menu (pin, rename,
@@ -111,33 +107,17 @@ export function ThreadSidebarItem({
   const requestDelete = useThreadDeleteDialog();
   const { mutate: renameThread } = useRenameThread();
   const { mutate: updatePinnedThread } = usePinThread();
+  const { mutate: moveThreadToProject } = useMoveThreadToProject();
   // The move mutation is owned here (not inside `MoveToProjectMenu`) because
   // selecting a project closes the dropdown and unmounts the menu — a
   // per-mutate `onError` registered there would be dropped before a failed
   // request settles, failing silently. This row persists, so a hook-level
   // `onError` always fires. Same ownership-hoisting precedent as the
   // `NewProjectDialog` below.
-  const { mutate: moveThreadToProject } = useMoveThreadToProject({
-    onError: (error) => {
-      toast.error(
-        error instanceof Error && error.message
-          ? error.message
-          : t.projects.moveFailed,
-      );
-    },
-  });
-
-  const handleMoveProject = useCallback(
-    (projectId: string | null) => {
-      moveThreadToProject({ threadId: thread.thread_id, projectId });
-    },
-    [moveThreadToProject, thread.thread_id],
-  );
-  const archiveAction = useThreadArchiveAction();
 
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [newTaskGroupDialogOpen, setNewTaskGroupDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
-  const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const handleRenameSubmit = useCallback(() => {
@@ -176,6 +156,24 @@ export function ThreadSidebarItem({
       },
     );
   }, [t.chats.pinChatFailed, thread, updatePinnedThread]);
+
+  const handleMoveToTaskGroup = useCallback(
+    (projectId: string | null) => {
+      moveThreadToProject(
+        { threadId: thread.thread_id, projectId },
+        {
+          onError: (error) => {
+            toast.error(
+              error instanceof Error && error.message
+                ? error.message
+                : t.taskGroups.moveFailed,
+            );
+          },
+        },
+      );
+    },
+    [moveThreadToProject, t.taskGroups.moveFailed, thread.thread_id],
+  );
 
   const handleShare = useCallback(async () => {
     // Always use Vercel URL for sharing so others can access
@@ -304,7 +302,7 @@ export function ThreadSidebarItem({
             </SidebarMenuAction>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-48 rounded-lg"
+            className="w-48 rounded-lg border-[#dfe6f3] bg-white text-[#26324a] shadow-[0_8px_24px_rgb(20_32_64_/_0.12)] [&_[data-slot=dropdown-menu-item]:focus]:bg-[#eef3ff] [&_[data-slot=dropdown-menu-item]:focus]:text-[#2563eb] [&_[data-slot=dropdown-menu-sub-content]]:border-[#dfe6f3] [&_[data-slot=dropdown-menu-sub-content]]:bg-white [&_[data-slot=dropdown-menu-sub-content]]:text-[#26324a] [&_[data-slot=dropdown-menu-sub-trigger]:focus]:bg-[#eef3ff] [&_[data-slot=dropdown-menu-sub-trigger]:focus]:text-[#2563eb]"
             side={"right"}
             align={"start"}
           >
@@ -351,17 +349,11 @@ export function ThreadSidebarItem({
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuItem
-              disabled={archiveAction.isPending}
-              onSelect={() => archiveAction.setArchived(thread.thread_id, true)}
-            >
-              <Archive className="text-muted-foreground" />
-              <span>{t.chats.archiveChat}</span>
-            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <MoveToProjectMenu
               thread={thread}
-              onNewProject={() => setNewProjectDialogOpen(true)}
-              onMoveProject={handleMoveProject}
+              onNewProject={() => setNewTaskGroupDialogOpen(true)}
+              onMoveProject={handleMoveToTaskGroup}
             />
             {canDeleteThreads && (
               <>
@@ -408,12 +400,10 @@ export function ThreadSidebarItem({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* New Project Dialog (mounted outside the DropdownMenu so it survives
-          the menu closing when "New project…" is selected) */}
       <NewProjectDialog
         thread={thread}
-        open={newProjectDialogOpen}
-        onOpenChange={setNewProjectDialogOpen}
+        open={newTaskGroupDialogOpen}
+        onOpenChange={setNewTaskGroupDialogOpen}
       />
     </SidebarMenuItem>
   );
@@ -426,12 +416,6 @@ export function RecentChatList() {
     thread_id: string;
     agent_name?: string;
   }>();
-  const [settings] = useLocalSettings();
-  const groupByProject = settings.projectsDisplayMode === "grouped";
-  // Static-demo mode never renders project groups (ProjectsSection is hidden
-  // and project queries stay off), so a persisted "grouped" preference must
-  // behave as flat — otherwise assigned threads would vanish from this list.
-  const grouped = groupByProject && !isStaticWebsiteOnly();
   const {
     data: infiniteThreads,
     fetchNextPage,
@@ -441,38 +425,6 @@ export function RecentChatList() {
     archived:
       env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ? undefined : false,
   });
-  // Project discovery doubles as the exclusion oracle for grouped mode: an
-  // assigned thread may leave this flat list ONLY when its project group can
-  // actually render in `ProjectsSection`. Any query error (or not-yet-loaded
-  // data) yields `null` → exclude nothing (fail-visible), and a thread whose
-  // project id is unknown to both lists stays here too. TanStack dedupes
-  // these shared queries with `GroupedProjectList`.
-  // The discovery queries only feed that grouped-mode filter; in the default
-  // flat mode the results are read by nobody, so keep the two project round
-  // trips off the page load (`GroupedProjectList` fetches these same keys
-  // when grouped mode is on, and TanStack dedupes the observers).
-  const activeProjectsQuery = useProjects("active", { enabled: grouped });
-  const archivedProjectsQuery = useProjects("archived", { enabled: grouped });
-  const knownProjectIds = useMemo(() => {
-    const activeProjects = activeProjectsQuery.data;
-    const archivedProjects = archivedProjectsQuery.data;
-    if (
-      activeProjectsQuery.isError ||
-      archivedProjectsQuery.isError ||
-      !activeProjects ||
-      !archivedProjects
-    ) {
-      return null;
-    }
-    return new Set(
-      [...activeProjects, ...archivedProjects].map((project) => project.id),
-    );
-  }, [
-    activeProjectsQuery.data,
-    activeProjectsQuery.isError,
-    archivedProjectsQuery.data,
-    archivedProjectsQuery.isError,
-  ]);
   const threadListModel = useMemo(
     () => buildThreadListModel(infiniteThreads?.pages ?? []),
     [infiniteThreads?.pages],
@@ -492,20 +444,7 @@ export function RecentChatList() {
       ? [...threadListModel.displayedThreads, activeThread]
       : threadListModel.displayedThreads;
   }, [threadIdFromPath, threadListModel]);
-  // In grouped mode, project-assigned threads render under their project
-  // header in `ProjectsSection`; this list keeps only unassigned threads —
-  // plus any assigned thread whose project cannot render a group (unknown id,
-  // or project discovery failed/loading), so no chat silently vanishes.
-  const visibleThreads = useMemo(
-    () =>
-      grouped && knownProjectIds
-        ? displayedThreads.filter((thread) => {
-            const projectId = projectIdOfThread(thread);
-            return projectId === null || !knownProjectIds.has(projectId);
-          })
-        : displayedThreads,
-    [grouped, displayedThreads, knownProjectIds],
-  );
+  const visibleThreads = displayedThreads;
   const branchList = useMemo(() => {
     const entries = flattenThreadBranches(visibleThreads);
     return {
@@ -543,21 +482,14 @@ export function RecentChatList() {
   // can be empty while older pages (possibly holding unassigned threads) still
   // exist on the server. Keep the pagination controls mounted then; flat mode
   // keeps the original "empty list renders nothing" behavior.
-  if (
-    visibleThreads.length === 0 &&
-    !(grouped && hasNextPage && threadListModel.canLoadMore)
-  ) {
-    return null;
-  }
   return (
-    <SidebarGroup>
-      <SidebarGroupLabel>
-        {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true"
-          ? t.sidebar.recentChats
-          : t.sidebar.demoChats}
+    <SidebarGroup className="px-0 pt-0">
+      <SidebarGroupLabel className="h-[30px] gap-2 px-2.5 text-[13px] font-medium text-[#5a6478]">
+        <ListTodo className="size-4" />
+        全部任务
       </SidebarGroupLabel>
       <SidebarGroupContent className="group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">
-        <SidebarMenu>
+        <SidebarMenu className="pl-3">
           {/* Keep pagination at the old list boundary when this switches to virtual rows. */}
           <div
             className="flex w-full flex-col gap-1"

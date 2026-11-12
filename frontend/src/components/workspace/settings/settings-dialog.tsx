@@ -105,10 +105,15 @@ export type SettingsSection =
 
 type SettingsDialogProps = React.ComponentProps<typeof Dialog> & {
   defaultSection?: SettingsSection;
+  memoryOnly?: boolean;
 };
 
 export function SettingsDialog(props: SettingsDialogProps) {
-  const { defaultSection = "appearance", ...dialogProps } = props;
+  const {
+    defaultSection = "appearance",
+    memoryOnly = false,
+    ...dialogProps
+  } = props;
   const { t } = useI18n();
   const { user } = useAuth();
   const isAdmin = user?.system_role === "admin";
@@ -210,70 +215,84 @@ export function SettingsDialog(props: SettingsDialogProps) {
       onOpenChange={(open) => props.onOpenChange?.(open)}
     >
       <DialogContent
-        className="flex h-[75vh] max-h-[calc(100vh-2rem)] flex-col sm:max-w-5xl md:max-w-6xl"
+        className={cn(
+          "flex h-[75vh] max-h-[calc(100vh-2rem)] flex-col",
+          "cecemate-theme border-[#dfe6f3] bg-[#f7f9fd]",
+          memoryOnly ? "sm:max-w-4xl" : "sm:max-w-5xl md:max-w-6xl",
+        )}
         aria-describedby={undefined}
       >
         <DialogHeader className="gap-1">
-          <DialogTitle>{t.settings.title}</DialogTitle>
+          <DialogTitle>
+            {memoryOnly ? t.settings.sections.memory : t.settings.title}
+          </DialogTitle>
           <p className="text-muted-foreground text-sm">
             {t.settings.description}
           </p>
         </DialogHeader>
-        <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
-          <nav className="bg-sidebar min-h-0 overflow-y-auto rounded-lg border p-2">
-            <ul className="space-y-1 pr-1">
-              {sections.map(({ id, label, icon: Icon, enabled = true }) => {
-                const active = activeId === id;
-                return (
-                  <li key={id}>
-                    {enabled ? (
-                      <button
-                        type="button"
-                        onClick={() => setActiveSection(id)}
-                        className={cn(
-                          "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                          active
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
-                      >
-                        <Icon className="size-4" />
-                        <span>{label}</span>
-                      </button>
-                    ) : (
-                      <Tooltip content={t.sidebar.agentsDisabledTooltip}>
-                        <span className="block cursor-not-allowed">
-                          <button
-                            type="button"
-                            disabled
-                            aria-disabled="true"
-                            className="text-muted-foreground flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium opacity-50"
-                          >
-                            <Icon className="size-4" />
-                            <span>{label}</span>
-                          </button>
-                        </span>
-                      </Tooltip>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-          <ScrollArea className="h-full min-h-0 rounded-lg border">
-            <div className="space-y-8 p-6">
-              {activeId === "models" && <ModelSettingsPage />}
-              {activeId === "users" && <UserSettingsPage />}
-              {activeId === "account" && <AccountSettingsPage />}
-              {activeId === "appearance" && <AppearanceSettingsPage />}
-              {activeId === "memory" && <MemorySettingsPage />}
-              {activeId === "subagents" && <SubagentSettingsPage />}
-              {activeId === "notification" && <NotificationSettingsPage />}
-              {activeId === "channels" && <ChannelsSettingsPage />}
-              {activeId === "about" && <AboutSettingsPage />}
+        {memoryOnly ? (
+          <ScrollArea className="min-h-0 flex-1 rounded-lg border border-[#dfe6f3] bg-white">
+            <div className="space-y-8 bg-white p-6">
+              <MemorySettingsPage />
             </div>
           </ScrollArea>
-        </div>
+        ) : (
+          <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+            <nav className="bg-sidebar min-h-0 overflow-y-auto rounded-lg border p-2">
+              <ul className="space-y-1 pr-1">
+                {sections.map(({ id, label, icon: Icon, enabled = true }) => {
+                  const active = activeId === id;
+                  return (
+                    <li key={id}>
+                      {enabled ? (
+                        <button
+                          type="button"
+                          onClick={() => setActiveSection(id)}
+                          className={cn(
+                            "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                            active
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          <Icon className="size-4" />
+                          <span>{label}</span>
+                        </button>
+                      ) : (
+                        <Tooltip content={t.sidebar.agentsDisabledTooltip}>
+                          <span className="block cursor-not-allowed">
+                            <button
+                              type="button"
+                              disabled
+                              aria-disabled="true"
+                              className="text-muted-foreground flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium opacity-50"
+                            >
+                              <Icon className="size-4" />
+                              <span>{label}</span>
+                            </button>
+                          </span>
+                        </Tooltip>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+            <ScrollArea className="h-full min-h-0 rounded-lg border">
+              <div className="space-y-8 p-6">
+                {activeId === "models" && <ModelSettingsPage />}
+                {activeId === "users" && <UserSettingsPage />}
+                {activeId === "account" && <AccountSettingsPage />}
+                {activeId === "appearance" && <AppearanceSettingsPage />}
+                {activeId === "memory" && <MemorySettingsPage />}
+                {activeId === "subagents" && <SubagentSettingsPage />}
+                {activeId === "notification" && <NotificationSettingsPage />}
+                {activeId === "channels" && <ChannelsSettingsPage />}
+                {activeId === "about" && <AboutSettingsPage />}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
