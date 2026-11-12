@@ -168,7 +168,9 @@ land that user in the UI already signed in. Gated by `auth.external_user.enabled
 (404 while disabled) and authenticated by a shared key — see the trust boundary
 in [AUTH_DESIGN.md](AUTH_DESIGN.md#外部用户系统接入手机号开通) and the
 integration guide (flow, configuration, checklist) in
-`docs/EXTERNAL_USER_INTEGRATION.md`.
+`docs/EXTERNAL_USER_INTEGRATION.md`. The partner-facing specification (request and
+response fields, captured error bodies, redirect semantics, self-test checklist,
+FAQ) is `docs/EXTERNAL_USER_API.md`.
 
 ```
 POST /api/v1/auth/external/provision
@@ -198,6 +200,8 @@ Response `200`:
   "access_token": "<session JWT>",
   "expires_in": 604800,
   "login_ticket": "<one-time ticket>",
+  "base_url": "http://host:2026",
+  "url_path": "/api/v1/auth/external/login?ticket=…&next=/workspace/chats",
   "login_url": "http://host:2026/api/v1/auth/external/login?ticket=…&next=…"
 }
 ```
@@ -211,7 +215,12 @@ Response `200`:
   the `access_token` cookie — an `Authorization: Bearer <jwt>` header is *not*
   accepted (that slot belongs to `dfp_` PATs). Use it to seed a cookie in a
   webview/native client, or use `login_url` for browsers.
-- `login_url` is the browser entry point: send the user there.
+- `login_url` is the browser entry point: send the user there. It is also
+  returned pre-split as `base_url` (the proxy-aware public origin of this
+  Gateway) plus `url_path` (the login path with its query), so a caller whose
+  users reach DeerFlow through a different ingress can re-base the path instead
+  of string-editing a full URL. `login_url == base_url + url_path`; the `next`
+  value inside `url_path` keeps its literal slashes.
 
 ```
 GET /api/v1/auth/external/login?ticket=<login_ticket>&next=<optional>

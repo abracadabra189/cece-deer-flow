@@ -78,8 +78,10 @@ class ExternalProvisionResponse(BaseModel):
     token_type: str = "Bearer"
     access_token: str = Field(description="Session JWT. Use it as the access_token cookie value; the Gateway does not accept it as an Authorization bearer.")
     expires_in: int = Field(description="access_token lifetime in seconds")
-    login_ticket: str = Field(description="One-time ticket, already embedded in login_url")
-    login_url: str = Field(description="Send the browser here to land signed in")
+    login_ticket: str = Field(description="One-time ticket, already embedded in url_path / login_url")
+    base_url: str = Field(description="Proxy-aware public origin of this Gateway, e.g. http://host:2026. Swap it when the browser reaches DeerFlow through a different ingress.")
+    url_path: str = Field(description="Login path plus query (ticket and optional next), relative to base_url")
+    login_url: str = Field(description="Convenience form of base_url + url_path: send the browser here to land signed in")
 
 
 def _live_config() -> ExternalUserAuthConfig:
@@ -175,9 +177,14 @@ async def provision_external_user(request: Request, body: ExternalProvisionReque
     access_token = create_access_token(user_id, expires_delta=expiry, token_version=user.token_version)
     ticket = create_external_login_ticket(user_id, ttl_seconds=config.ticket_ttl_seconds, next_path=next_path)
 
-    login_url = f"{_public_origin(request)}/api/v1/auth/external/login?ticket={urllib.parse.quote(ticket)}"
+    # Split so a caller that reaches DeerFlow through its own ingress (a different
+    # host, a reverse proxy, an app-scheme handler) can re-base the path instead of
+    # string-editing a full URL. `login_url` stays for callers that just redirect.
+    base_url = _public_origin(request)
+    url_path = f"/api/v1/auth/external/login?ticket={urllib.parse.quote(ticket)}"
     if next_path:
-        login_url += f"&next={urllib.parse.quote(next_path)}"
+        url_path += f"&next={urllib.parse.quote(next_path)}"
+    login_url = f"{base_url}{url_path}"
 
     if username:
         await _store_username(user_id, username)
@@ -199,6 +206,8 @@ async def provision_external_user(request: Request, body: ExternalProvisionReque
         access_token=access_token,
         expires_in=int(expiry.total_seconds()),
         login_ticket=ticket,
+        base_url=base_url,
+        url_path=url_path,
         login_url=login_url,
     )
 
