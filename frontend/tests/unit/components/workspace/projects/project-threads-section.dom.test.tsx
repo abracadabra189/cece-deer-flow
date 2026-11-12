@@ -49,11 +49,29 @@ function Wrapper({ children }: PropsWithChildren) {
   return <I18nProvider initialLocale="en-US">{children}</I18nProvider>;
 }
 
+function ChineseWrapper({ children }: PropsWithChildren) {
+  return <I18nProvider initialLocale="zh-CN">{children}</I18nProvider>;
+}
+
 afterEach(() => {
   cleanup();
+  document.cookie = "locale=; Max-Age=0; path=/";
 });
 
 describe("ProjectThreadsSection", () => {
+  it("labels the task-group list as tasks in Chinese", () => {
+    document.cookie = "locale=zh-CN; path=/";
+    const { getByRole } = render(
+      <ChineseWrapper>
+        <ProjectThreadsSection
+          query={makeQuery([makeThread("t-1", "任务一")])}
+        />
+      </ChineseWrapper>,
+    );
+
+    expect(getByRole("heading", { name: "任务" })).toBeDefined();
+  });
+
   it("renders prototype-style task cards with the real task title and update time", () => {
     const { container } = render(
       <Wrapper>
