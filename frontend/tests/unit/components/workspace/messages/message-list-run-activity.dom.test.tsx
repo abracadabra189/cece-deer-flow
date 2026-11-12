@@ -154,16 +154,16 @@ describe("MessageList live run timer", () => {
     expect(activity()).toContain("5s");
   });
 
-  it("resets the activity timer when a newer active run replaces an older one", () => {
+  it("keeps the local timer when an active run id arrives after streaming starts", () => {
     const { rerender } = render(
       view({
         isLoading: true,
-        activeRunId: "run-old",
-        activeRunStartedAt: NOW - 10 * 60_000,
+        activeRunStartedAt: null,
       }),
     );
-
-    expect(activity()).toContain("10m");
+    act(() => {
+      rs.advanceTimersByTime(5_000);
+    });
 
     rerender(
       view({
@@ -172,40 +172,16 @@ describe("MessageList live run timer", () => {
         activeRunStartedAt: NOW,
       }),
     );
-
-    expect(activity()).toContain("0s");
+    expect(activity()).toContain("5s");
   });
 
-  it("resets the activity timer when the visible thread changes while loading", () => {
-    const { rerender } = render(
-      view({
-        threadId: "thread-old",
-        isLoading: true,
-        activeRunId: "run-old",
-        activeRunStartedAt: NOW - 10 * 60_000,
-      }),
-    );
-
-    expect(activity()).toContain("10m");
-
-    rerender(
-      view({
-        threadId: "thread-new",
-        isLoading: true,
-        activeRunStartedAt: null,
-      }),
-    );
-
-    expect(activity()).toContain("0s");
-  });
-
-  it("records the completed duration from the corrected start", () => {
+  it("does not add a separate hover-only duration block after completion", () => {
     const { rerender } = render(
       view({ isLoading: true, activeRunStartedAt: NOW - 42_000 }),
     );
 
     rerender(view({ isLoading: false, activeRunStartedAt: null }));
 
-    expect(screen.getByTestId("run-duration").textContent).toContain("42s");
+    expect(screen.queryByTestId("run-duration")).toBeNull();
   });
 });

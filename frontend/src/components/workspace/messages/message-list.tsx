@@ -130,7 +130,7 @@ import {
   MessageTokenUsageDebugList,
   MessageTokenUsageList,
 } from "./message-token-usage";
-import { RunActivity, RunDuration, RunDurationLabel } from "./run-duration";
+import { RunActivity, RunDurationLabel } from "./run-duration";
 import { ScheduledRunPrompt } from "./scheduled-run-prompt";
 import { ScheduledTaskCard } from "./scheduled-task-card";
 import { ScheduledTaskEventLine } from "./scheduled-task-event-line";
@@ -523,77 +523,40 @@ export function MessageList({
   const browserView = useMaybeBrowserView();
   const pushBrowserFrame = browserView?.pushFrame;
   const messageCount = messages.length;
-  // Match test224: start locally, then replace it with the authoritative
-  // active-run start when the server identifies a run observed mid-flight.
+  // Start from mount or the loading edge, then move back to the active run's
+  // server start once known: a run observed mid-flight began before this view.
   const [turnStartTime, setTurnStartTime] = useState<number | null>(() =>
     thread.isLoading ? Date.now() : null,
   );
   const turnStartTimeRef = useRef(turnStartTime);
-  const timedRunIdRef = useRef<string | undefined>(undefined);
-  const previousThreadIdRef = useRef(threadId);
-  const [clientDurationsByGroupId, setClientDurationsByGroupId] = useState<
-    ReadonlyMap<string, number>
-  >(() => new Map());
   const prevIsLoading = useRef(thread.isLoading);
 
   useEffect(() => {
-    const threadChanged = previousThreadIdRef.current !== threadId;
-    previousThreadIdRef.current = threadId;
-
-    if (threadChanged) {
-      const nextStartTime = thread.isLoading ? Date.now() : null;
-      timedRunIdRef.current = undefined;
-      turnStartTimeRef.current = nextStartTime;
-      setTurnStartTime(nextStartTime);
-    } else if (thread.isLoading && !prevIsLoading.current) {
+    if (thread.isLoading && !prevIsLoading.current) {
       const now = Date.now();
       turnStartTimeRef.current = now;
       setTurnStartTime(now);
     } else if (!thread.isLoading && prevIsLoading.current) {
-      const startTime = turnStartTimeRef.current;
-      const lastAssistantGroup = [...groupedMessages]
-        .reverse()
-        .find((group) => group.type !== "human" && group.id);
-      if (startTime !== null && lastAssistantGroup?.id && !thread.error) {
-        const duration = Math.max(
-          0,
-          Math.floor((Date.now() - startTime) / 1000),
-        );
-        const key = `${threadId}:${lastAssistantGroup.id}`;
-        setClientDurationsByGroupId((current) => {
-          const next = new Map(current);
-          next.set(key, duration);
-          return next;
-        });
-      }
       turnStartTimeRef.current = null;
-      timedRunIdRef.current = undefined;
       setTurnStartTime(null);
     }
     prevIsLoading.current = thread.isLoading;
-  }, [groupedMessages, thread.error, thread.isLoading, threadId]);
+  }, [thread.isLoading]);
 
   useEffect(() => {
     const startTime = turnStartTimeRef.current;
-    if (!thread.isLoading || startTime === null) {
-      return;
-    }
-
-    if (activeRunId && timedRunIdRef.current !== activeRunId) {
-      const nextStartTime = activeRunStartedAt ?? Date.now();
-      timedRunIdRef.current = activeRunId;
-      turnStartTimeRef.current = nextStartTime;
-      setTurnStartTime(nextStartTime);
-      return;
-    }
-
-    if (activeRunStartedAt === null || activeRunStartedAt >= startTime) {
+    if (
+      !thread.isLoading ||
+      startTime === null ||
+      activeRunStartedAt === null ||
+      activeRunStartedAt >= startTime
+    ) {
       return;
     }
 
     turnStartTimeRef.current = activeRunStartedAt;
     setTurnStartTime(activeRunStartedAt);
-  }, [activeRunId, activeRunStartedAt, thread.isLoading]);
+  }, [activeRunStartedAt, thread.isLoading]);
 
   useEffect(() => {
     // Only the primary chat surface drives the shared browser panel. The
@@ -719,24 +682,6 @@ export function MessageList({
     () => getSkillUsageByGroupIndex(groupedMessages),
     [groupedMessages],
   );
-  useEffect(() => {
-    setClientDurationsByGroupId((current) => {
-      let next: Map<string, number> | undefined;
-      runDurationDisplaysByGroupIndex.forEach((displays, groupIndex) => {
-        const groupId = groupedMessages[groupIndex]?.id;
-        if (displays.length === 0 || !groupId) {
-          return;
-        }
-        const key = `${threadId}:${groupId}`;
-        if (!current.has(key)) {
-          return;
-        }
-        next ??= new Map(current);
-        next.delete(key);
-      });
-      return next ?? current;
-    });
-  }, [groupedMessages, runDurationDisplaysByGroupIndex, threadId]);
   const tokenDebugSteps = useMemo(
     () =>
       tokenUsageInlineMode === "step_debug"
@@ -1270,53 +1215,23 @@ export function MessageList({
     return <MessageListSkeleton />;
   }
 
-  const getGroupRunDurations = (
-    group: (typeof groupedMessages)[number],
-    groupIndex: number,
-  ): RunDurationDisplay[] => {
-    const persistedDisplays = runDurationDisplaysByGroupIndex[groupIndex] ?? [];
-    const clientDuration =
-      !thread.error && group.id
-        ? clientDurationsByGroupId.get(`${threadId}:${group.id}`)
-        : undefined;
-    return persistedDisplays.length > 0
-      ? persistedDisplays
-      : clientDuration !== undefined
-        ? [
-            {
-              runId: `client:${group.id}`,
-              durationSeconds: clientDuration,
-            },
-          ]
-        : [];
-  };
+  const getGroupRunDurations = (groupIndex: number): RunDurationDisplay[] =>
+    runDurationDisplaysByGroupIndex[groupIndex] ?? [];
 
   const withRunDuration = (
     group: (typeof groupedMessages)[number],
     groupIndex: number,
     content: ReactNode,
-    inlineDurationRunIds: string[] = [],
   ) => {
-    const groupIsLoading = thread.isLoading && groupIndex === lastGroupIndex;
-    const displays = (
-      groupIsLoading ? [] : getGroupRunDurations(group, groupIndex)
-    ).filter((display) => !inlineDurationRunIds.includes(display.runId));
-    if (!content && displays.length === 0) {
+    if (!content) {
       return null;
     }
 
     return (
       <div
         key={`duration-group:${group.id ?? groupIndex}`}
-        className="group/run-duration flex w-full flex-col gap-2"
+        className="flex w-full flex-col gap-2"
       >
-        {displays.map((display) => (
-          <RunDuration
-            key={display.runId}
-            durationSeconds={display.durationSeconds}
-            revealOnHover
-          />
-        ))}
         {content}
       </div>
     );
@@ -1371,7 +1286,7 @@ export function MessageList({
               const reasoningDurations = new Map<Message, RunDurationDisplay>();
               const displays = groupIsLoading
                 ? []
-                : getGroupRunDurations(group, groupIndex);
+                : getGroupRunDurations(groupIndex);
               if (displays.length > 0) {
                 let reasoningTargets = reasoningTargetsCache.current.get(group);
                 if (!reasoningTargets) {
@@ -1387,10 +1302,6 @@ export function MessageList({
                   if (target) reasoningDurations.set(target, display);
                 }
               }
-              const inlineDurationRunIds = [...reasoningDurations.values()].map(
-                (display) => display.runId,
-              );
-
               if (group.type === "human" && group.scheduledOrigin) {
                 // A scheduled launch: the run block replaces the launched
                 // prompt; it is the task's, so it has no edit or copy actions.
@@ -1775,7 +1686,6 @@ export function MessageList({
                       debugMessageIds: subagentDebugMessageIds,
                     })}
                   </div>,
-                  inlineDurationRunIds,
                 );
               }
               return withRunDuration(
@@ -1809,7 +1719,6 @@ export function MessageList({
                     inlineDebug: false,
                   })}
                 </div>,
-                inlineDurationRunIds,
               );
             }}
           />
