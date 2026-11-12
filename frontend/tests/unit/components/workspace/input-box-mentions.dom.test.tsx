@@ -525,6 +525,27 @@ describe("unified composer mentions", () => {
     ).toBeTruthy();
   });
 
+  it("hides integration skills from the composer picker", () => {
+    skillCatalog.push({
+      ...skillCatalog[0]!,
+      name: "auto-company-research",
+      description: "Generated skill",
+      category: "integrations",
+    });
+
+    renderComposer("hidden-integration-skill");
+    fireEvent.click(screen.getByTestId("mention-button"));
+
+    expect(
+      screen.queryByRole("option", {
+        name: "auto-company-research Generated skill",
+      }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("option", { name: "research Research a topic" }),
+    ).toBeTruthy();
+  });
+
   it("offers only builtin commands after a leading slash", () => {
     const { container } = renderComposer("builtin-slash-menu");
     enterMention(container, "/");
