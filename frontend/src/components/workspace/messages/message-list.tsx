@@ -1457,7 +1457,6 @@ export function MessageList({
                       </p>
                     ) : null}
                   </div>,
-                  [...displays.map((display) => display.runId)],
                 );
               } else if (group.type === "assistant:clarification") {
                 const message = group.messages[0];

@@ -836,6 +836,7 @@ export function InputBox({
     () =>
       agentScopedSkills.filter(
         (skill) =>
+          skill.category !== "legacy" &&
           parseSlashSkillReference(`/${skill.name}`)?.name === skill.name,
       ),
     [agentScopedSkills],

@@ -506,6 +506,25 @@ describe("unified composer mentions", () => {
     }
   });
 
+  it("hides legacy skills from the composer picker", () => {
+    skillCatalog.push({
+      ...skillCatalog[0]!,
+      name: "legacy-research",
+      description: "Legacy skill",
+      category: "legacy",
+    });
+
+    renderComposer("hidden-legacy-skill");
+    fireEvent.click(screen.getByTestId("mention-button"));
+
+    expect(
+      screen.queryByRole("option", { name: "legacy-research Legacy skill" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("option", { name: "research Research a topic" }),
+    ).toBeTruthy();
+  });
+
   it("offers only builtin commands after a leading slash", () => {
     const { container } = renderComposer("builtin-slash-menu");
     enterMention(container, "/");

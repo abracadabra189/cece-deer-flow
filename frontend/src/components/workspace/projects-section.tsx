@@ -258,7 +258,7 @@ export function ProjectsSection() {
   }
 
   return (
-    <SidebarGroup className="mt-1 border-t border-[#e7ebf3] px-0 pt-1">
+    <SidebarGroup className="mt-1 px-0 pt-1">
       <SidebarGroupLabel className="h-[30px] justify-between px-2.5 text-[13px] font-medium text-[#5a6478]">
         <span>{t.taskGroups.title}</span>
         <span className="flex items-center gap-0.5">
