@@ -773,7 +773,7 @@ export const zhCN: Translations = {
     deleteFailed: "删除项目失败",
     switchToGrouped: "按项目分组对话",
     switchToFlat: "显示平铺对话列表",
-    threads: "对话",
+    threads: "任务",
     threadsLoadFailed: "无法加载项目对话",
     untitled: "未命名",
     settings: "设置",

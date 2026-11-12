@@ -518,6 +518,12 @@ export default function ChatPage() {
       ),
     [thread.messages],
   );
+  const handleWelcomeTask = useCallback(
+    async (prompt: string) => {
+      await handleSubmit({ text: prompt, files: [] });
+    },
+    [handleSubmit],
+  );
   const affiliatedProjectId =
     !isNewThread && !isMock && threadMetadata.data
       ? projectIdOfThread(threadMetadata.data)
@@ -563,7 +569,7 @@ export default function ChatPage() {
             <main className="flex min-h-0 max-w-full grow flex-col">
               <div className="flex min-h-0 flex-1 justify-center">
                 {isWelcomeMode && !hasGoal && !hasTodos ? (
-                  <Welcome />
+                  <Welcome onStartTask={handleWelcomeTask} />
                 ) : (
                   <MessageList
                     activeRunId={activeRunId}
