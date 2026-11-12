@@ -42,7 +42,7 @@ export function WorkspaceNavChatList() {
           <CeceMateBetaItem icon={BlocksIcon} label="MCP 服务" />
         </SidebarMenu>
       </SidebarGroup>
-      <SidebarGroup className="mt-1 border-t border-[#e7ebf3] px-0 pt-1 pb-0">
+      <SidebarGroup className="border-y border-[#e7ebf3] px-0 py-1">
         <SidebarMenu>
           <CeceMateBetaItem icon={FilesIcon} label="文件库" />
         </SidebarMenu>

@@ -442,7 +442,7 @@ export function ArtifactFileDetail({
   return (
     <Artifact
       className={cn(
-        "overflow-hidden rounded-2xl border-[#dfe6f3] bg-white shadow-[0_10px_30px_rgb(44_70_128_/_0.08)]",
+        "overflow-hidden rounded-none border-[#dfe6f3] bg-white shadow-none",
         className,
       )}
     >
