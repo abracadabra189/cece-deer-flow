@@ -90,10 +90,14 @@ const MESSAGES = [
 ] as Message[];
 
 function view({
+  threadId = "thread-1",
   isLoading,
+  activeRunId,
   activeRunStartedAt,
 }: {
+  threadId?: string;
   isLoading: boolean;
+  activeRunId?: string;
   activeRunStartedAt?: number | null;
 }) {
   return (
@@ -101,7 +105,8 @@ function view({
       value={{ locale: "en-US", setLocale: () => undefined, t: enUS }}
     >
       <MessageList
-        threadId="thread-1"
+        threadId={threadId}
+        activeRunId={activeRunId}
         activeRunStartedAt={activeRunStartedAt}
         thread={
           {
@@ -125,7 +130,7 @@ describe("MessageList live run timer", () => {
   it("counts from the run's server start when mounted mid-run", () => {
     render(view({ isLoading: true, activeRunStartedAt: NOW - 42_000 }));
 
-    expect(activity()).toContain("(42s)");
+    expect(activity()).toContain("42s");
   });
 
   it("keeps counting the same run when it becomes active in this view again", () => {
@@ -133,10 +138,10 @@ describe("MessageList live run timer", () => {
 
     rerender(view({ isLoading: true, activeRunStartedAt: NOW - 95_000 }));
 
-    expect(activity()).toContain("(1m 35s)");
+    expect(activity()).toContain("1m 35s");
   });
 
-  it("does not move a run started in this view forward to its server start", () => {
+  it("updates the client-side elapsed timer", () => {
     const { rerender } = render(view({ isLoading: false }));
     rerender(view({ isLoading: true }));
     act(() => {
@@ -146,16 +151,37 @@ describe("MessageList live run timer", () => {
     // The server records the run slightly after the browser submitted it.
     rerender(view({ isLoading: true, activeRunStartedAt: NOW + 400 }));
 
-    expect(activity()).toContain("(5s)");
+    expect(activity()).toContain("5s");
   });
 
-  it("records the completed duration from the corrected start", () => {
+  it("keeps the local timer when an active run id arrives after streaming starts", () => {
+    const { rerender } = render(
+      view({
+        isLoading: true,
+        activeRunStartedAt: null,
+      }),
+    );
+    act(() => {
+      rs.advanceTimersByTime(5_000);
+    });
+
+    rerender(
+      view({
+        isLoading: true,
+        activeRunId: "run-new",
+        activeRunStartedAt: NOW,
+      }),
+    );
+    expect(activity()).toContain("5s");
+  });
+
+  it("does not add a separate hover-only duration block after completion", () => {
     const { rerender } = render(
       view({ isLoading: true, activeRunStartedAt: NOW - 42_000 }),
     );
 
     rerender(view({ isLoading: false, activeRunStartedAt: null }));
 
-    expect(screen.getByTestId("run-duration").textContent).toContain("42s");
+    expect(screen.queryByTestId("run-duration")).toBeNull();
   });
 });

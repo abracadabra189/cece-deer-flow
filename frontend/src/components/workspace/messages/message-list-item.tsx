@@ -262,10 +262,12 @@ export function MessageListItem({
         <MessageToolbar
           className={cn(
             isHuman
-              ? "absolute right-0 -bottom-9 left-0 justify-end"
+              ? "mt-1 w-full justify-end rounded-md px-0.5"
               : "absolute right-0 bottom-0 left-0",
             // focus-within: a keyboard user tabbing to a button sees it.
             "z-20 opacity-0 transition-opacity delay-200 duration-300 group-hover/conversation-message:opacity-100 focus-within:opacity-100",
+            isHuman &&
+              "[&_button:focus-visible]:bg-[#edf3ff] [&_button:hover]:bg-[#edf3ff] [&_button:hover]:text-[#2563eb]",
           )}
           data-testid="message-toolbar"
         >

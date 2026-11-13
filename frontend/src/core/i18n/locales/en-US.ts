@@ -264,6 +264,8 @@ export const enUS: Translations = {
     share: "Share",
     openInNewWindow: "Open in new window",
     close: "Close",
+    back: "Back",
+    backToArtifactList: "Back to results artifact list",
     more: "More",
     search: "Search",
     loadMore: "Load more",
@@ -271,6 +273,8 @@ export const enUS: Translations = {
     download: "Download",
     thinking: "Thinking",
     artifacts: "Artifacts",
+    resultArea: "Results",
+    resultArtifacts: "Artifacts",
     public: "Public",
     custom: "Custom",
     notAvailableInDemoMode: "Not available in demo mode",
@@ -297,6 +301,8 @@ export const enUS: Translations = {
       "Rerunning restores conversation state only. Files, memory, and external actions are not undone.",
     branch: "Branch conversation",
     showArtifacts: "Show artifacts of this conversation",
+    showResultArea: "Show results of this conversation",
+    collapseResultArea: "Collapse results area",
     browser: "Browser",
     showBrowser: "Open browser panel",
   },
@@ -748,6 +754,15 @@ export const enUS: Translations = {
     agents: "Agents",
     scheduledTasks: "Scheduled tasks",
     agentsDisabledTooltip: "Feature not enabled",
+  },
+  taskGroups: {
+    title: "Task groups",
+    newTaskGroup: "New task group",
+    namePlaceholder: "Task group name",
+    moveToTaskGroup: "Move to task group",
+    removeFromTaskGroup: "Remove from task group",
+    createFailed: "Failed to create task group",
+    moveFailed: "Failed to move task",
   },
 
   // Knowledge scope for custom-agent chat
@@ -1852,7 +1867,7 @@ export const enUS: Translations = {
 
   // Page titles (document title)
   pages: {
-    appName: "CECE",
+    appName: "CeCeMate",
     chats: "Chats",
     newChat: "New chat",
     untitled: "Untitled",
@@ -2017,6 +2032,7 @@ export const enUS: Translations = {
     input: "Input",
     output: "Output",
     total: "Total",
+    unit: "tokens",
     view: "Display",
     unavailable:
       "No token usage yet. Usage appears only after a successful model response when the provider returns usage_metadata.",

@@ -54,6 +54,10 @@ coverage.xml
 coverage/
 .deer-flow/
 .claude/
+# Per-deployment runtime roots (Postgres data, DEER_FLOW_HOME, generated .env/config
+# copies) created when a deploy baseline is run from this checkout, e.g.
+# deploy/cece-harness-dev172/runtime/. Never commit a database or a runtime home.
+deploy/*/runtime/
 skills/custom/*
 logs/
 log/

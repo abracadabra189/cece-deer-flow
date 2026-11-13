@@ -9,7 +9,7 @@ cp deploy/cece-harness-dev172/config.example.yaml config.yaml
 cp deploy/cece-harness-dev172/extensions_config.example.json extensions_config.json
 ```
 
-Populate `.env` with the values referenced by the templates, including `DASHSCOPE_API_KEY`, `DATABASE_URL`, and `HYDC_API_KEY`. `HYDC_API_KEY` is injected into sandbox containers only for the CECE HYDC Data Skill; do not put it in a prompt, a command-line argument, or a tracked file. The CECE MCP authorization variables remain documented in the extensions template but are not needed while those MCP servers are disabled.
+Populate `.env` with the values referenced by the templates, including `DASHSCOPE_API_KEY`, `DATABASE_URL`, `HYDC_API_KEY`, and `EXTERNAL_USER_API_KEY_DEV172`. `HYDC_API_KEY` is injected into sandbox containers only for the CECE HYDC Data Skill; do not put it in a prompt, a command-line argument, or a tracked file. `EXTERNAL_USER_API_KEY_DEV172` guards the external user-provisioning endpoint described below — treat it as an admin credential. The CECE MCP authorization variables remain documented in the extensions template but are not needed while those MCP servers are disabled.
 
 After changing `.env`, recreate the Gateway so its container receives the new environment. Use the isolated dev172 Compose file at `docker/docker-compose.cece-harness-dev172.yaml`; do not use the test224 Compose file.
 
@@ -19,6 +19,35 @@ docker compose --env-file .env -p cece-harness-dev172 \
   -f docker/docker-compose.dood.yaml \
   up -d --no-deps --force-recreate gateway
 ```
+
+## External user-system integration (`auth.external_user`)
+
+This baseline enables account-based provisioning so CECE's existing user system can send users in without a second registration. Two endpoints, both public in the auth middleware and self-authenticating:
+
+```bash
+# Server-to-server: resolve-or-register by external account name, returns credentials.
+# <PORT> is the nginx ingress from .env (default 2026; the local runtime in
+# deploy/cece-harness-dev172/runtime/.env uses 2027 to avoid the deer-flow stack).
+curl -sS -X POST http://<host>:<PORT>/api/v1/auth/external/provision \
+  -H "X-External-User-Key: $EXTERNAL_USER_API_KEY_DEV172" \
+  -H 'Content-Type: application/json; charset=utf-8' \
+  -d '{"account":"zhang.san","phone":"+8613800138000","username":"张三","next":"/workspace/chats"}'
+# → { user_id, created, phone, username, email, system_role, access_token, expires_in,
+#     login_ticket, base_url, url_path, login_url }
+```
+
+`account` is the required identity key and may be Chinese, numeric, or an email address; `phone` is optional contact data and never part of the identity. Accounts provisioned before `account` existed stay reachable by passing the old phone number as `account` (a phone-shaped account is canonicalized with the phone rules).
+
+Hand `login_url` to the browser: `GET /api/v1/auth/external/login?ticket=…` spends the ticket once, sets the `access_token` / `deerflow_session_persistent` / `csrf_token` cookies, and 302s to `/auth/callback?next=…`, so the user lands signed in with no frontend change. Any failure (missing, forged, expired, replayed ticket, or a disabled account) redirects to `/login?error=external_login_failed` without setting a cookie.
+
+Operator notes for this environment:
+
+- The key is `EXTERNAL_USER_API_KEY_DEV172`, deliberately **not** the `EXTERNAL_USER_API_KEY` other environments use, so one leak cannot open both. It is worth an account for *any* account name: keep it in `.env`, expose the endpoint only on the trusted network, and rotate by changing the value and recreating the Gateway.
+- Accounts are linked as `(oauth_provider=external-phone, oauth_id=<canonical account>)` with a derived `users.email` under `users.deerflow.internal` (readable local part for ASCII-safe accounts, `u`+SHA-256 prefix otherwise) and **no password**, so password login stays impossible for them and the external system owns their authentication. `account` / `username` / `phone` are stored as the `external_account` / `external_username` / `external_phone` user preferences.
+- A derived email already owned by an unrelated local account answers `409` rather than being seized; a disabled account answers `403`.
+- `auth.external_user.*` is hot-reloadable, but the key lives in `.env`, so rotating it requires `--force-recreate gateway`.
+- Ticket single-use is durable (`external_login_tickets`, migration `0053`), so this environment runs `GATEWAY_WORKERS=2` safely: 30 concurrent redemptions of one ticket grant exactly one session. Do **not** set `DEER_FLOW_*` shell variables when recreating this stack — Compose interpolation prefers the shell over `--env-file`, which would mount the repository-root config instead of this baseline.
+- Full flow, field tables and the integration checklist: `docs/EXTERNAL_USER_INTEGRATION.md`; HTTP contract: `backend/docs/API.md#external-user-provisioning`.
 
 ## Automatic skill synthesis (`auto_skill`)
 

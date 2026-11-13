@@ -382,6 +382,69 @@ IM worker 通过 Gateway 内部 HTTP 调用 agent runtime，并携带：
 
 与 Internal Auth 直接 HTTP 相比，IM 路径多了 **connect-code 绑定** 与 **`users` 表关联**，外部身份可追溯、可撤销。配置与运维见 [IM_CHANNEL_CONNECTIONS.md](IM_CHANNEL_CONNECTIONS.md)。
 
+### 外部用户系统接入（手机号开通）
+
+平台已有自己的用户体系时，不需要用户在 DeerFlow 再注册一次：外部后端用**账户名**换取
+DeerFlow 会话。开关是 `auth.external_user.enabled`（关闭时两个端点都返回 404）。
+
+```
+外部用户系统                          浏览器
+────────────────────                 ────────────────────────────
+POST /api/v1/auth/external/provision
+  { account, phone?, username? }
+                       ──►  查/建账号（users 表）
+                       ◄──  { user_id, access_token, login_ticket,
+                              base_url, url_path, login_url }
+把 login_url 交给用户 ─────►  GET /api/v1/auth/external/login?ticket=…
+                              校验并消费一次性票据 → 下发会话 Cookie
+                              302 → /auth/callback?next=…（已登录）
+```
+
+**信任边界（最重要的一条）**：`provision` 只认共享密钥
+`auth.external_user.api_key`（`X-External-User-Key` 头，或 `Authorization: Bearer`）。
+持有该密钥就等于能为**任意账户名**取得账号，因此它等同管理员凭据：只放在 `.env`
+（`api_key: $EXTERNAL_USER_API_KEY`）、只在内网或 TLS 之后暴露、轮换即改环境变量。
+`enabled: true` 而密钥缺失或短于 16 字符时，配置加载直接失败，端点不可能裸奔。
+与 Internal Auth 的区别：Internal Auth 的 `Owner-User-Id` 指向**已存在**的用户，
+本接口会**创建**用户，所以它的密钥必须按更高密级管理。
+
+**身份映射**复用既有外部身份列，不加表结构：
+
+| 字段 | 取值 |
+|---|---|
+| `users.oauth_provider` | `auth.external_user.provider_id`（默认 `external-phone`，历史名称，改它会让已开通账号失联） |
+| `users.oauth_id` | **归一化后的 `account`**（身份键）。NFKC + 去空白 + 折叠连续空格 + casefold；手机号形态的 account 走手机号归一化，因此以手机号开通的历史账号仍能被命中 |
+| `users.email` | 由 account 派生的保留地址：ASCII 安全账户保留可读局部段（`zhang.san@…`、`8613800138000@…`），中文/邮箱/超长账户取 `u` + SHA-256 前 24 位。列非空、唯一且需是合法邮箱格式，而外部账户名可能是中文或另一个域的邮箱 |
+| `users.password_hash` | `NULL` —— 该账号无法走密码登录，认证权归外部系统 |
+| `user_preferences.external_account` | 外部账户名的原始形态（保留大小写，供审计/展示） |
+| `user_preferences.external_username` | 显示名（`username`，缺省回退为 `account`），每次调用刷新 |
+| `user_preferences.external_phone` | 选填的手机号，仅联系信息，**不参与身份判定** |
+
+`(oauth_provider, oauth_id)` 上有唯一偏索引，所以同一 account 的并发开通会收敛到同一行：
+落败方的 INSERT 抛 `ValueError`，改为重读而不是 500 或重复建号。派生邮箱已被**其他**账号
+占用时返回 409——外部开通绝不抢占既有本地账号，与 OIDC 的规则一致。邮箱形态的 account
+**不会**被直接用作 `users.email`（哈希派生），否则会与平台上真实使用该邮箱的本地/OIDC 账号冲突。接入第二套外部系统时
+必须同时换 `provider_id` 和 `email_domain`，否则同一手机号会撞上同一派生邮箱。
+
+**票据与会话**：`login_ticket` 用 `AUTH_JWT_SECRET` 签名，声明里是 `uid` 而不是 `sub`，
+因此它永远无法被当成会话 JWT 重放（`TokenPayload` 要求 `sub`，会判为 MALFORMED）。
+默认存活 120 秒。**单次消费由数据库保证**：兑换即向 `external_login_tickets` 执行一次
+`INSERT … ON CONFLICT (jti) DO NOTHING`，`jti` 主键使多个 Gateway worker／多副本对
+"已用过"达成一致（进程内缓存做不到这点——每个进程都会各放行一次）；过期行在同一事务内
+按批清扫。无法写入消费记录（无数据库、存储异常）时**拒绝票据**，绝不退化为进程内判定。
+票据消费成功后下发的就是普通会话 Cookie，后续请求与密码登录用户完全同权、同 CSRF、同 PAT 规则。
+
+**运维**：改 `auth.external_user.*` 属于热重载字段（下一轮装配生效）；改 `.env` 里的
+密钥必须重建容器（`env_file` 只在创建时读取）。日志里搜 `External provisioning`
+可看到每次开通/命中（记 `user_id` 与角色，不记手机号），搜 `Rejected an external
+provisioning call` 可看到密钥校验失败。停用某用户走既有的账号禁用（`disabled`），
+票据兑换与开通都会拒绝它。
+
+契约与字段说明见 [API.md](API.md#external-user-provisioning)；接入流程、配置清单与
+对接注意事项见 `docs/EXTERNAL_USER_INTEGRATION.md`；实现：
+`app/gateway/routers/external_users.py`、`app/gateway/auth/external_provisioning.py`、
+`app/gateway/auth/external_ticket.py`；测试：`tests/test_external_user_auth.py`。
+
 ## LangGraph-compatible 认证
 
 Gateway 内嵌 runtime 路径由 `AuthMiddleware` 和 `CSRFMiddleware` 保护。

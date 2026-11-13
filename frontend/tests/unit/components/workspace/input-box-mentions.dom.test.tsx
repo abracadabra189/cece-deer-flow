@@ -506,6 +506,46 @@ describe("unified composer mentions", () => {
     }
   });
 
+  it("hides legacy skills from the composer picker", () => {
+    skillCatalog.push({
+      ...skillCatalog[0]!,
+      name: "legacy-research",
+      description: "Legacy skill",
+      category: "legacy",
+    });
+
+    renderComposer("hidden-legacy-skill");
+    fireEvent.click(screen.getByTestId("mention-button"));
+
+    expect(
+      screen.queryByRole("option", { name: "legacy-research Legacy skill" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("option", { name: "research Research a topic" }),
+    ).toBeTruthy();
+  });
+
+  it("hides integration skills from the composer picker", () => {
+    skillCatalog.push({
+      ...skillCatalog[0]!,
+      name: "auto-company-research",
+      description: "Generated skill",
+      category: "integrations",
+    });
+
+    renderComposer("hidden-integration-skill");
+    fireEvent.click(screen.getByTestId("mention-button"));
+
+    expect(
+      screen.queryByRole("option", {
+        name: "auto-company-research Generated skill",
+      }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("option", { name: "research Research a topic" }),
+    ).toBeTruthy();
+  });
+
   it("offers only builtin commands after a leading slash", () => {
     const { container } = renderComposer("builtin-slash-menu");
     enterMention(container, "/");
@@ -630,29 +670,13 @@ describe("unified composer mentions", () => {
     enterMention(container, "@");
     expect(screen.queryByRole("option", { name: "Writer brief" })).toBeNull();
   });
-  it("the attachment button opens the file input directly", () => {
-    const { container } = renderComposer();
-    const fileInput =
-      container.querySelector<HTMLInputElement>('input[type="file"]')!;
+  it("the attachment button opens the native file chooser instead of the reference picker", () => {
+    renderComposer();
+    const fileInput = screen.getByLabelText("Upload files");
     const click = rs.spyOn(fileInput, "click");
     fireEvent.click(screen.getByTestId("add-attachments-button"));
     expect(click).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId("mention-picker")).toBeNull();
-  });
-  it("the mention button keeps the reference picker and its upload action", () => {
-    const { container } = renderComposer();
-    const fileInput =
-      container.querySelector<HTMLInputElement>('input[type="file"]')!;
-    const click = rs.spyOn(fileInput, "click");
-    fireEvent.click(screen.getByTestId("mention-button"));
-    expect(click).not.toHaveBeenCalled();
-    expect(screen.getByTestId("mention-picker")).toBeTruthy();
-    expect(
-      screen.getByRole("option", { name: "research Research a topic" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("option", { name: "Upload a file" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("option", { name: "Upload a file" }));
-    expect(click).toHaveBeenCalledTimes(1);
   });
   it("does not select upload automatically for an unknown query", () => {
     const { container } = renderComposer();
@@ -866,7 +890,7 @@ describe("reference review regressions", () => {
     await waitFor(() =>
       expect(screen.getByTestId("inline-skill-reference")).toBeTruthy(),
     );
-    fireEvent.click(screen.getByTestId("mention-button"));
+    enterMention(container, "@report");
     fireEvent.click(screen.getByRole("option", { name: "report.pdf" }));
     await waitFor(() => expect(attach).toHaveBeenCalled());
     expect(screen.getByRole("textbox").getAttribute("contenteditable")).toBe(
@@ -901,9 +925,8 @@ it("the picker search exposes its active option while selected state remains ind
   expect(search.getAttribute("aria-activedescendant")).toBe(research.id);
   expect(research.getAttribute("aria-selected")).toBe("false");
   fireEvent.keyDown(search, { key: "ArrowDown" });
-  expect(search.getAttribute("aria-activedescendant")).toBe(
-    screen.getByRole("option", { name: "report.pdf" }).id,
-  );
+  expect(screen.queryByRole("option", { name: "report.pdf" })).toBeNull();
+  expect(search.getAttribute("aria-activedescendant")).toBe(research.id);
   expect(research.getAttribute("aria-selected")).toBe("false");
 });
 
@@ -1000,12 +1023,15 @@ describe("reference discovery failures and polish round trips", () => {
     ).toBe("writer");
   });
 
-  it("offers capability retry from the picker without a selected conversation", async () => {
+  it("offers capability retry from typed @ references without a selected conversation", async () => {
     capability.enabled = false;
     capability.isSuccess = false;
     capability.error = new Error("503 temporary");
-    renderComposer("picker-cap-error");
-    fireEvent.click(screen.getByTestId("mention-button"));
+    const { container } = renderComposer("picker-cap-error");
+    enterMention(container, "@");
+    await waitFor(() =>
+      expect(screen.getByTestId("mention-picker")).toBeTruthy(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(capability.refetch).toHaveBeenCalledTimes(1);
   });

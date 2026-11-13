@@ -10,18 +10,13 @@ import {
 } from "@/components/ui/sidebar";
 import { useThreadActivity } from "@/core/threads/activity";
 
-import { WorkspaceChannelsList } from "./channels/workspace-channels-list";
-import { PluginNavigation } from "./plugin-navigation";
 import { ProjectsSection } from "./projects-section";
 import { RecentChatList } from "./recent-chat-list";
 import { ThreadDeleteDialogProvider } from "./thread-delete-dialog";
 import { WorkspaceHeader } from "./workspace-header";
 import { WorkspaceNavChatList } from "./workspace-nav-chat-list";
 import { WorkspaceNavMenu } from "./workspace-nav-menu";
-import {
-  WorkspaceSidebarFrame,
-  useWorkspaceSidebarExpanded,
-} from "./workspace-sidebar-frame";
+import { WorkspaceSidebarFrame } from "./workspace-sidebar-frame";
 
 export function WorkspaceSidebar({
   ...props
@@ -32,7 +27,12 @@ export function WorkspaceSidebar({
   useThreadActivity();
   return (
     <ThreadDeleteDialogProvider>
-      <WorkspaceSidebarFrame variant="sidebar" collapsible="icon" {...props}>
+      <WorkspaceSidebarFrame
+        variant="sidebar"
+        collapsible="icon"
+        className="border-[#e7ebf3] [--sidebar-width:248px]"
+        {...props}
+      >
         <WorkspaceSidebarContents />
       </WorkspaceSidebarFrame>
     </ThreadDeleteDialogProvider>
@@ -40,28 +40,28 @@ export function WorkspaceSidebar({
 }
 
 function WorkspaceSidebarContents() {
-  const isSidebarOpen = useWorkspaceSidebarExpanded();
   const { isMobile } = useSidebar();
   return (
     <>
-      <SidebarHeader className="py-0">
+      <SidebarHeader className="gap-0 p-0">
         <WorkspaceHeader />
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="gap-0 overflow-hidden px-2 pt-0">
         <WorkspaceNavChatList />
-        <PluginNavigation />
-        <WorkspaceChannelsList />
-        {isSidebarOpen && (
-          <>
-            <ProjectsSection />
-            <RecentChatList />
-          </>
-        )}
+        <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
+          <ProjectsSection />
+          <RecentChatList />
+        </div>
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="border-sidebar-border border-t p-2">
         <WorkspaceNavMenu />
       </SidebarFooter>
-      {!isMobile && <SidebarRail />}
+      {!isMobile && (
+        <SidebarRail
+          className="cursor-default hover:after:bg-transparent"
+          title=""
+        />
+      )}
     </>
   );
 }

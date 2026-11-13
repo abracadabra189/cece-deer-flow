@@ -3,7 +3,7 @@
   "mcpInterceptors": [],
   "mcpServers": {
     "enterprise": {
-      "enabled": true,
+      "enabled": false,
       "type": "http",
       "url": "http://172.20.28.224:18907/cece-mcp-servers/enterprise/stream",
       "headers": { "Authorization": "$CECE_MCP_ENTERPRISE_AUTHORIZATION" },
@@ -13,7 +13,7 @@
       "routing": { "mode": "prefer", "priority": 100, "keywords": ["enterprise", "company", "business", "企业", "公司", "上市公司", "企业画像", "企业报告", "发展前景", "经营", "业绩", "财务", "竞争力", "主营业务", "股东", "高管", "招投标", "投资"] }
     },
     "entity_resolve": {
-      "enabled": true,
+      "enabled": false,
       "type": "http",
       "url": "http://172.20.28.224:18906/cece-mcp-servers/NER/stream",
       "headers": { "Authorization": "$CECE_MCP_ENTITY_RESOLVE_AUTHORIZATION" },
@@ -23,7 +23,7 @@
       "routing": { "mode": "prefer", "priority": 95, "keywords": ["entity", "主体", "实体", "企业名称", "公司名称", "上市公司", "证券代码", "简称", "人名", "企业", "行业", "区域"] }
     },
     "pevc": {
-      "enabled": true,
+      "enabled": false,
       "type": "http",
       "url": "http://172.20.28.224:18910/cece-mcp-servers/PEVC/stream",
       "headers": { "Authorization": "$CECE_MCP_PEVC_AUTHORIZATION" },
@@ -33,7 +33,7 @@
       "routing": { "mode": "prefer", "priority": 90, "keywords": ["financing", "fund", "investment", "融资", "创投", "基金", "私募", "风投", "融资事件", "投资机构", "估值"] }
     },
     "person": {
-      "enabled": true,
+      "enabled": false,
       "type": "http",
       "url": "http://172.20.28.224:18911/cece-mcp-servers/person/stream",
       "headers": { "Authorization": "$CECE_MCP_PERSON_AUTHORIZATION" },
@@ -43,7 +43,7 @@
       "routing": { "mode": "prefer", "priority": 90, "keywords": ["person", "人物", "人物画像", "高管", "企业家", "简历", "任职", "履历"] }
     },
     "industry": {
-      "enabled": true,
+      "enabled": false,
       "type": "http",
       "url": "http://172.20.28.224:18908/cece-mcp-servers/industry/stream",
       "headers": { "Authorization": "$CECE_MCP_INDUSTRY_AUTHORIZATION" },

@@ -222,6 +222,8 @@ export interface Translations {
     share: string;
     openInNewWindow: string;
     close: string;
+    back: string;
+    backToArtifactList: string;
     more: string;
     search: string;
     loadMore: string;
@@ -229,6 +231,8 @@ export interface Translations {
     download: string;
     thinking: string;
     artifacts: string;
+    resultArea: string;
+    resultArtifacts: string;
     public: string;
     custom: string;
     notAvailableInDemoMode: string;
@@ -254,6 +258,8 @@ export interface Translations {
     editRerunWarning: string;
     branch: string;
     showArtifacts: string;
+    showResultArea: string;
+    collapseResultArea: string;
     browser: string;
     showBrowser: string;
   };
@@ -608,6 +614,15 @@ export interface Translations {
     scheduledTasks: string;
     agentsDisabledTooltip: string;
     channels: string;
+  };
+  taskGroups: {
+    title: string;
+    newTaskGroup: string;
+    namePlaceholder: string;
+    moveToTaskGroup: string;
+    removeFromTaskGroup: string;
+    createFailed: string;
+    moveFailed: string;
   };
   // Sidebar projects section
   projects: {
@@ -1714,6 +1729,7 @@ export interface Translations {
     input: string;
     output: string;
     total: string;
+    unit: string;
     view: string;
     unavailable: string;
     unavailableShort: string;

@@ -130,7 +130,7 @@ import {
   MessageTokenUsageDebugList,
   MessageTokenUsageList,
 } from "./message-token-usage";
-import { RunActivity, RunDuration } from "./run-duration";
+import { RunActivity, RunDurationLabel } from "./run-duration";
 import { ScheduledRunPrompt } from "./scheduled-run-prompt";
 import { ScheduledTaskCard } from "./scheduled-task-card";
 import { ScheduledTaskEventLine } from "./scheduled-task-event-line";
@@ -529,9 +529,6 @@ export function MessageList({
     thread.isLoading ? Date.now() : null,
   );
   const turnStartTimeRef = useRef(turnStartTime);
-  const [clientDurationsByGroupId, setClientDurationsByGroupId] = useState<
-    ReadonlyMap<string, number>
-  >(() => new Map());
   const prevIsLoading = useRef(thread.isLoading);
 
   useEffect(() => {
@@ -540,27 +537,11 @@ export function MessageList({
       turnStartTimeRef.current = now;
       setTurnStartTime(now);
     } else if (!thread.isLoading && prevIsLoading.current) {
-      const startTime = turnStartTimeRef.current;
-      const lastAssistantGroup = [...groupedMessages]
-        .reverse()
-        .find((group) => group.type !== "human" && group.id);
-      if (startTime !== null && lastAssistantGroup?.id && !thread.error) {
-        const duration = Math.max(
-          0,
-          Math.floor((Date.now() - startTime) / 1000),
-        );
-        const key = `${threadId}:${lastAssistantGroup.id}`;
-        setClientDurationsByGroupId((current) => {
-          const next = new Map(current);
-          next.set(key, duration);
-          return next;
-        });
-      }
       turnStartTimeRef.current = null;
       setTurnStartTime(null);
     }
     prevIsLoading.current = thread.isLoading;
-  }, [groupedMessages, thread.error, thread.isLoading, threadId]);
+  }, [thread.isLoading]);
 
   useEffect(() => {
     const startTime = turnStartTimeRef.current;
@@ -572,6 +553,7 @@ export function MessageList({
     ) {
       return;
     }
+
     turnStartTimeRef.current = activeRunStartedAt;
     setTurnStartTime(activeRunStartedAt);
   }, [activeRunStartedAt, thread.isLoading]);
@@ -700,24 +682,6 @@ export function MessageList({
     () => getSkillUsageByGroupIndex(groupedMessages),
     [groupedMessages],
   );
-  useEffect(() => {
-    setClientDurationsByGroupId((current) => {
-      let next: Map<string, number> | undefined;
-      runDurationDisplaysByGroupIndex.forEach((displays, groupIndex) => {
-        const groupId = groupedMessages[groupIndex]?.id;
-        if (displays.length === 0 || !groupId) {
-          return;
-        }
-        const key = `${threadId}:${groupId}`;
-        if (!current.has(key)) {
-          return;
-        }
-        next ??= new Map(current);
-        next.delete(key);
-      });
-      return next ?? current;
-    });
-  }, [groupedMessages, runDurationDisplaysByGroupIndex, threadId]);
   const tokenDebugSteps = useMemo(
     () =>
       tokenUsageInlineMode === "step_debug"
@@ -1046,6 +1010,8 @@ export function MessageList({
       isStreaming: boolean,
       enableBranchForTurn: boolean,
       enableRegenerateForTurn: boolean,
+      durationDisplays: RunDurationDisplay[] = [],
+      tokenUsage?: ReactNode,
       skills?: SkillUsage[],
     ) => {
       const clipboardData = getAssistantTurnCopyData(messages, { isStreaming });
@@ -1145,6 +1111,21 @@ export function MessageList({
                 </Button>
               </Tooltip>
             )}
+          {!isStreaming && (durationDisplays.length > 0 || tokenUsage) && (
+            <div className="text-muted-foreground ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px]">
+              {durationDisplays.length > 0 && (
+                <span className="inline-flex items-center whitespace-nowrap">
+                  {durationDisplays.map((display) => (
+                    <RunDurationLabel
+                      key={display.runId}
+                      durationSeconds={display.durationSeconds}
+                    />
+                  ))}
+                </span>
+              )}
+              {tokenUsage}
+            </div>
+          )}
         </div>
       );
     },
@@ -1174,10 +1155,12 @@ export function MessageList({
       turnUsageMessages?: Message[] | null;
       inlineDebug?: boolean;
       debugMessageIds?: string[];
+      className?: string;
     }) => {
       if (tokenUsageInlineMode === "per_turn") {
         return (
           <MessageTokenUsageList
+            className={className}
             enabled={true}
             isLoading={thread.isLoading}
             messages={turnUsageMessages ?? []}
@@ -1195,6 +1178,7 @@ export function MessageList({
         );
         return (
           <MessageTokenUsageDebugList
+            className={className}
             enabled={true}
             isLoading={thread.isLoading}
             steps={tokenDebugSteps.filter((step) =>
@@ -1207,6 +1191,7 @@ export function MessageList({
       return null;
     },
     [
+      className,
       showTokenDebugSummaries,
       thread.isLoading,
       tokenDebugSteps,
@@ -1230,37 +1215,15 @@ export function MessageList({
     return <MessageListSkeleton />;
   }
 
-  const getGroupRunDurations = (
-    group: (typeof groupedMessages)[number],
-    groupIndex: number,
-  ): RunDurationDisplay[] => {
-    const persistedDisplays = runDurationDisplaysByGroupIndex[groupIndex] ?? [];
-    const clientDuration =
-      !thread.error && group.id
-        ? clientDurationsByGroupId.get(`${threadId}:${group.id}`)
-        : undefined;
-    return persistedDisplays.length > 0
-      ? persistedDisplays
-      : clientDuration !== undefined
-        ? [
-            {
-              runId: `client:${group.id}`,
-              durationSeconds: clientDuration,
-            },
-          ]
-        : [];
-  };
+  const getGroupRunDurations = (groupIndex: number): RunDurationDisplay[] =>
+    runDurationDisplaysByGroupIndex[groupIndex] ?? [];
 
   const withRunDuration = (
     group: (typeof groupedMessages)[number],
     groupIndex: number,
     content: ReactNode,
-    inlineDurationRunIds: string[] = [],
   ) => {
-    const displays = getGroupRunDurations(group, groupIndex).filter(
-      (display) => !inlineDurationRunIds.includes(display.runId),
-    );
-    if (!content && displays.length === 0) {
+    if (!content) {
       return null;
     }
 
@@ -1269,12 +1232,6 @@ export function MessageList({
         key={`duration-group:${group.id ?? groupIndex}`}
         className="flex w-full flex-col gap-2"
       >
-        {displays.map((display) => (
-          <RunDuration
-            key={display.runId}
-            durationSeconds={display.durationSeconds}
-          />
-        ))}
         {content}
       </div>
     );
@@ -1329,7 +1286,7 @@ export function MessageList({
               const reasoningDurations = new Map<Message, RunDurationDisplay>();
               const displays = groupIsLoading
                 ? []
-                : getGroupRunDurations(group, groupIndex);
+                : getGroupRunDurations(groupIndex);
               if (displays.length > 0) {
                 let reasoningTargets = reasoningTargetsCache.current.get(group);
                 if (!reasoningTargets) {
@@ -1345,10 +1302,6 @@ export function MessageList({
                   if (target) reasoningDurations.set(target, display);
                 }
               }
-              const inlineDurationRunIds = [...reasoningDurations.values()].map(
-                (display) => display.runId,
-              );
-
               if (group.type === "human" && group.scheduledOrigin) {
                 // A scheduled launch: the run block replaces the launched
                 // prompt; it is the task's, so it has no edit or copy actions.
@@ -1397,7 +1350,9 @@ export function MessageList({
                               : undefined
                           }
                           durationSeconds={
-                            reasoningDurations.get(msg)?.durationSeconds
+                            group.type === "assistant"
+                              ? undefined
+                              : reasoningDurations.get(msg)?.durationSeconds
                           }
                           showCopyButton={group.type !== "assistant"}
                           showWorkspaceChanges={workspaceChangeAnchorGroupIndices.has(
@@ -1456,10 +1411,6 @@ export function MessageList({
                         </div>
                       );
                     })}
-                    {renderTokenUsage({
-                      messages: group.messages,
-                      turnUsageMessages,
-                    })}
                     {group.type === "assistant" &&
                       renderAssistantActions(
                         group.messages,
@@ -1476,6 +1427,19 @@ export function MessageList({
                             typeof message.run_id === "string" &&
                             waitingForInputRunIds.has(message.run_id),
                         ) && group.id === latestAssistantGroupId,
+                        displays,
+                        <MessageTokenUsageList
+                          className="mt-0 border-t-0 pt-0"
+                          enabled={true}
+                          isLoading={
+                            groupIsLoading ||
+                            isAssistantMessageGroupStreaming(
+                              group.messages,
+                              streamingMessages,
+                            )
+                          }
+                          messages={group.messages}
+                        />,
                         sidecarSurface
                           ? undefined
                           : skillUsageByGroupIndex.get(groupIndex),
@@ -1493,7 +1457,6 @@ export function MessageList({
                       </p>
                     ) : null}
                   </div>,
-                  inlineDurationRunIds,
                 );
               } else if (group.type === "assistant:clarification") {
                 const message = group.messages[0];
@@ -1722,7 +1685,6 @@ export function MessageList({
                       debugMessageIds: subagentDebugMessageIds,
                     })}
                   </div>,
-                  inlineDurationRunIds,
                 );
               }
               return withRunDuration(
@@ -1756,7 +1718,6 @@ export function MessageList({
                     inlineDebug: false,
                   })}
                 </div>,
-                inlineDurationRunIds,
               );
             }}
           />
