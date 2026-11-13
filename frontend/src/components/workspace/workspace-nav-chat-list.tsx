@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  BlocksIcon,
-  BotIcon,
-  CalendarClock,
-  FilesIcon,
-  SparklesIcon,
-} from "lucide-react";
+import { SparklesIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -16,7 +10,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { CeceMateBetaItem } from "@/components/workspace/cecemate/cecemate-beta-item";
 
 export function WorkspaceNavChatList() {
   const pathname = usePathname();
@@ -25,7 +18,6 @@ export function WorkspaceNavChatList() {
     <>
       <SidebarGroup className="px-0 pt-0 pb-2">
         <SidebarMenu>
-          <CeceMateBetaItem icon={CalendarClock} label="定时任务" />
           <SidebarMenuItem>
             <SidebarMenuButton
               isActive={pathname.startsWith("/workspace/skills")}
@@ -38,13 +30,6 @@ export function WorkspaceNavChatList() {
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          <CeceMateBetaItem icon={BotIcon} label="专家" />
-          <CeceMateBetaItem icon={BlocksIcon} label="MCP 服务" />
-        </SidebarMenu>
-      </SidebarGroup>
-      <SidebarGroup className="border-y border-[#e7ebf3] px-0 py-1">
-        <SidebarMenu>
-          <CeceMateBetaItem icon={FilesIcon} label="文件库" />
         </SidebarMenu>
       </SidebarGroup>
     </>

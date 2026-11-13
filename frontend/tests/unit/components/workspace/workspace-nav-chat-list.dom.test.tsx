@@ -27,22 +27,15 @@ rs.mock("@/core/agents", () => ({
 
 afterEach(cleanup);
 
-test("presents CeCeMate navigation with only the skills route and inert Beta entries", () => {
+test("presents only the skills route in the CeCeMate navigation", () => {
   render(
     <SidebarProvider>
       <WorkspaceNavChatList />
     </SidebarProvider>,
   );
 
-  for (const label of [
-    "定时任务 Beta",
-    "专家 Beta",
-    "MCP 服务 Beta",
-    "文件库 Beta",
-  ]) {
-    const button = screen.getByRole("button", { name: label });
-    expect(button.getAttribute("aria-disabled")).toBe("true");
-    expect(button.querySelector("a")).toBeNull();
+  for (const label of ["定时任务", "专家", "MCP 服务", "文件库"]) {
+    expect(screen.queryByText(label, { exact: false })).toBeNull();
   }
 
   expect(screen.getByRole("link", { name: "技能" }).getAttribute("href")).toBe(
