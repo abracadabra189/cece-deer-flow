@@ -152,7 +152,7 @@ async def test_external_provision_reads_config_off_the_loop(client: httpx.AsyncC
     """Both the enabled flag and the key come from the file: a wrong key is 401, not 404."""
     response = await client.post(
         "/api/v1/auth/external/provision",
-        json={"phone": "+8613800138000"},
+        json={"account": "anchor-account", "phone": "+8613800138000"},
         headers={"X-External-User-Key": "not-the-configured-key"},
     )
 

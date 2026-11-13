@@ -1,6 +1,7 @@
-# 外部用户系统接入（手机号开通 + 免密登录）
+# 外部用户系统接入（账户开通 + 免密登录）
 
 > 面向：需要把 DeerFlow 嵌进已有用户体系的平台方 / 运维。
+> **给接入方（外部系统开发者）的接口说明文档：[`docs/EXTERNAL_USER_API.md`](EXTERNAL_USER_API.md)**（含请求/响应字段、错误码、真实报文示例、联调自测清单、FAQ）。
 > 对应实现：`backend/app/gateway/routers/external_users.py`、
 > `backend/app/gateway/auth/external_provisioning.py`、
 > `backend/app/gateway/auth/external_ticket.py`、
@@ -12,11 +13,15 @@
 
 ## 1. 这个功能解决什么
 
-已有用户体系里的人**不该在 DeerFlow 再注册一次**。外部后端拿着「手机号 + 用户名」调用一个接口：
+已有用户体系里的人**不该在 DeerFlow 再注册一次**。外部后端拿着「账户名（必填）+ 手机号（选填）+ 用户名（选填）」调用一个接口：
 
-- 手机号**已注册** → 直接返回该用户的识别 token；
-- 手机号**未注册** → 立刻用手机号建号，再返回 token；
+- 该 `account` **已开通** → 直接返回该用户的识别 token；
+- 该 `account` **未开通** → 立刻建号，再返回 token；
 - 拿到的 token 可以把用户**直接送进已登录状态**的 DeerFlow 界面（浏览器无需再登录）。
+
+`account` 是接入方账户系统里的账户名，可以是中文、数字或邮箱；它是**唯一的身份键**。
+`phone` 只是联系信息，不参与身份判定（历史上以手机号开通的账号，把该手机号原样作为
+`account` 传入即可命中，见 3.2）。
 
 DeerFlow 侧不校验密码、不发短信——**认证权完全归外部系统**，DeerFlow 只信任调用方出示的共享密钥。
 
@@ -29,23 +34,26 @@ DeerFlow 侧不校验密码、不发短信——**认证权完全归外部系统
 ──────────────────────                ──────────────────────              ──────────────
 ① POST /api/v1/auth/external/provision
    X-External-User-Key: <api_key>
-   { "phone": "+8613800138000",
+   { "account": "zhang.san",
+     "phone": "+8613800138000",
      "username": "张三",
      "next": "/workspace/chats" }
                         ──────────►  校验密钥（常量时间比较）
-                                     规范化手机号（去分隔符 / NFKC）
-                                     按 (provider_id, phone) 查 users
+                                     规范化 account（NFKC / 去空白 / casefold；
+                                       手机号形态走手机号归一化）
+                                     按 (provider_id, canonical account) 查 users
                                        ├─ 命中 → 复用该账号（created=false）
                                        └─ 未命中 → 建号：
-                                            email = {phone}@{email_domain}
+                                            email = 由 account 派生（保留域）
                                             oauth_provider = provider_id
-                                            oauth_id = phone
+                                            oauth_id = canonical account
                                             password_hash = NULL（无法密码登录）
-                                     写 user_preferences.external_username
+                                     写 user_preferences：external_account /
+                                       external_username / external_phone
                                      签发：access_token（会话 JWT）
                                           login_ticket（一次性票据，默认 120s）
-                    ◄──────────────  返回 user_id / access_token /
-                                     login_ticket / login_url
+                    ◄──────────────  返回 user_id / access_token / login_ticket /
+                                     base_url / url_path / login_url
 ② 把 login_url 交给浏览器（302 跳转或前端 window.location）
                                                     ─────────────────────►
                                      ③ GET /api/v1/auth/external/login?ticket=…
@@ -87,16 +95,20 @@ DeerFlow 侧不校验密码、不发短信——**认证权完全归外部系统
 
 | `users` 字段 | 取值 | 说明 |
 |---|---|---|
-| `oauth_provider` | `auth.external_user.provider_id`（默认 `external-phone`） | 多套外部系统用不同 provider_id 区分 |
-| `oauth_id` | 规范化后的手机号 | **身份键**；与 provider 组成唯一偏索引 |
-| `email` | `{phone}@{email_domain}`（去掉 `+`） | 列非空且唯一，手机号用户没有邮箱，故派生一个**保留域**地址；它只是存储键，不是收件地址 |
+| `oauth_provider` | `auth.external_user.provider_id`（默认 `external-phone`，历史名称） | 多套外部系统用不同 provider_id 区分；改它会让已开通账号失联 |
+| `oauth_id` | **规范化后的 `account`** | **身份键**；与 provider 组成唯一偏索引。NFKC + 去首尾空白 + 折叠连续空格 + casefold；手机号形态的 account 按手机号规则归一（保留 `+`），因此以手机号开通的历史账号仍可命中 |
+| `email` | 由 account 派生的保留域地址 | ASCII 安全账户保留可读局部段（`zhang.san@…`、`8613800138000@…`）；中文/含 `@`/超长账户取 `u` + SHA-256 前 24 位。列非空且唯一、且需是合法邮箱格式，而外部账户名可能是中文或另一个域的邮箱；哈希派生也避免与真实邮箱账号冲突。它只是存储键，不是收件地址 |
 | `password_hash` | `NULL` | 该账号无法走密码登录，认证权在外部系统 |
-| `system_role` | `default_role`（默认 `user`）；命中 `admin_phones` 则 `admin` | |
+| `system_role` | `default_role`（默认 `user`）；命中 `admin_phones`（账户名或手机号均可）则 `admin` | |
 | `disabled` | 沿用平台账号禁用 | 禁用后开通返回 403、票据兑换直接拒绝 |
 
-外部传入的**用户名**存在 `user_preferences.external_username`（每次调用刷新），不进 `users` 表。
+外部传入的字段存在 `user_preferences`（不进 `users` 表）：`external_account`（账户名原始形态，保留大小写）、
+`external_username`（显示名，缺省回退为 account，每次调用刷新）、`external_phone`（选填手机号，仅联系信息）。
 
-并发安全：`(oauth_provider, oauth_id)` 的唯一偏索引保证同一手机号的并发开通收敛到同一行——
+`phone` **不参与身份判定**：同一手机号配不同 `account` 会得到两个不同用户；换 `account` 等于新账号，
+平台不提供账户改名/合并流程。
+
+并发安全：`(oauth_provider, oauth_id)` 的唯一偏索引保证同一 account 的并发开通收敛到同一行——
 落败方 INSERT 抛 `ValueError`，代码改为重读并返回胜者，不会出现重复账号或 500。
 
 防抢占：若派生邮箱已被**别的**账号占用（例如有人用同名邮箱本地注册过），返回 `409`，
@@ -134,14 +146,14 @@ DeerFlow 侧不校验密码、不发短信——**认证权完全归外部系统
 
 | 风险 | 处置 |
 |---|---|
-| 密钥即「任意手机号的账号」 | 等同管理员凭据：只放 `.env`（`api_key: $EXTERNAL_USER_API_KEY`）、只在内网或 TLS 后暴露、轮换即改环境变量；启用而密钥缺失/短于 16 字符时**配置加载失败**，端点不可能裸奔 |
-| 密钥被猜 | 常量时间比较；失败只回一句 `Invalid API key`（401），不区分「未启用/密钥错」，不构成 oracle；失败会记 WARNING（含来源 IP，不含手机号） |
+| 密钥即「任意账户的账号」 | 等同管理员凭据：只放 `.env`（`api_key: $EXTERNAL_USER_API_KEY`）、只在内网或 TLS 后暴露、轮换即改环境变量；启用而密钥缺失/短于 16 字符时**配置加载失败**，端点不可能裸奔 |
+| 密钥被猜 | 常量时间比较；失败只回一句 `Invalid API key`（401），不区分「未启用/密钥错」，不构成 oracle；失败会记 WARNING（含来源 IP，不含账户名） |
 | 票据被重放 | 单次消费 + 短 TTL + 失败统一跳转 |
 | 票据当会话用 | 声明不含 `sub`，解码即 MALFORMED |
 | 开放重定向 | `next` 走平台既有 `validate_next_param`（只允许相对路径，拒绝 `//`、绝对 URL、反斜杠、控制字符） |
-| 手机号/用户名注入 | 手机号强校验 `^\+?[0-9]{5,20}$`；用户名 ≤100 字符且拒绝控制字符与双向格式字符（U+202A–202E、U+2066–2069 等）；派生邮箱经 JSON 转义写入 frontmatter 类字段的路径不复用，用户名只进 JSON 列 |
+| 账户名/手机号/用户名注入 | 三者统一 NFKC 归一并拒绝控制字符与双向格式字符（U+202A–202E、U+2066–2069 等）；`account` ≤128 字符、`username` ≤100 字符；`phone` 强校验 `^\+?[0-9]{5,20}$`；账户名只写入 `users.oauth_id` 与 JSON 偏好列，派生邮箱经哈希/白名单字符集构造，均不进 frontmatter 类可伪造结构 |
 | CSRF | provision 豁免双提交（机器调用无 Cookie），但**没有**加入 `_AUTH_EXEMPT_PATHS`，因此不会触发 Origin 检查、也不会给机器调用下发 CSRF Cookie |
-| 隐私 | 日志记 `user_id`/角色/是否新建，**不记手机号**；手机号只落在 `users.oauth_id` 与派生邮箱里 |
+| 隐私 | 日志记 `user_id`/角色/是否新建，**不记 account、手机号或用户名**；这些值只落在 `users.oauth_id`、派生邮箱与用户偏好里 |
 
 ---
 
@@ -196,8 +208,9 @@ POST /api/v1/auth/external/provision
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `phone` | string | 是 | 身份键。5–20 位数字，可带前导 `+`；空格、`-`、`.`、`()` 会被剔除，全角数字自动归一 |
-| `username` | string | 否 | 显示名，≤100 字符；每次调用刷新到 `external_username` 偏好 |
+| `account` | string | **是** | 身份键 = 接入方账户系统里的账户名。可为中文、数字或邮箱；≤128 字符，禁止控制/双向格式字符。归一化规则见 3.2 |
+| `phone` | string | 否 | 联系信息，**不参与身份判定**。5–20 位数字，可带前导 `+`；空格、`-`、`.`、`()` 会被剔除，全角数字自动归一。存入 `external_phone` 偏好 |
+| `username` | string | 否 | 显示名，≤100 字符；**缺省回退为 `account`**；每次调用刷新到 `external_username` 偏好 |
 | `next` | string | 否 | 登录后落地的相对路径，例如 `/workspace/chats` |
 
 **响应 200**
@@ -205,16 +218,18 @@ POST /api/v1/auth/external/provision
 | 字段 | 说明 |
 |---|---|
 | `user_id` | DeerFlow 用户 UUID（后续排障、审计的主键） |
-| `phone` | 规范化后的手机号 |
-| `username` | 回显（未传则为 `null`） |
-| `email` | 派生的保留域地址，例如 `8613800138000@users.deerflow.internal`；**不是邮箱**，不要发信 |
+| `phone` | 规范化后的手机号；未传则为 `null` |
+| `username` | 显示名回显：传了用其值，否则等于 `account` |
+| `email` | 由 account 派生的保留域地址（ASCII 账户可读、其他为 `u`+哈希）；**不是邮箱**，不要发信 |
 | `system_role` | `user` / `admin` |
-| `created` | `true` 表示本次调用完成了注册；再次调用同一手机号为 `false` |
+| `created` | `true` 表示本次调用完成了注册；再次调用同一 `account` 为 `false` |
 | `token_type` | 固定 `Bearer` |
 | `access_token` | 会话 JWT。**只能作为 `access_token` Cookie 使用**（见 3.4） |
 | `expires_in` | `access_token` 有效期（秒），默认 604800 |
-| `login_ticket` | 一次性票据（已包含在 `login_url` 里，一般不用单独处理） |
-| `login_url` | **交给浏览器**即可免密登录的完整 URL |
+| `login_ticket` | 一次性票据（已包含在 `url_path` / `login_url` 里，一般不用单独处理） |
+| `base_url` | 本次请求解析出的 Gateway 公网源，如 `http://localhost:2026`（不含结尾斜杠）。接入方经自有域名/反向代理进入时，用它做替换基准 |
+| `url_path` | 登录路径与查询串（含 `ticket` 与可选 `next`），相对于 `base_url`；`next` 保持站内相对路径原样，不做百分号编码 |
+| `login_url` | `base_url + url_path` 的拼接结果，**交给浏览器**即可免密登录 |
 
 **curl 示例**
 
@@ -222,7 +237,13 @@ POST /api/v1/auth/external/provision
 curl -sS -X POST http://localhost:2026/api/v1/auth/external/provision \
   -H "X-External-User-Key: $EXTERNAL_USER_API_KEY" \
   -H 'Content-Type: application/json; charset=utf-8' \
-  -d '{"phone":"+8613800138000","username":"张三","next":"/workspace/chats"}'
+  -d '{"account":"zhang.san","phone":"+8613800138000","username":"张三","next":"/workspace/chats"}'
+
+# 最小请求：只给必填的 account（中文账户名同样可用）
+curl -sS -X POST http://localhost:2026/api/v1/auth/external/provision \
+  -H "X-External-User-Key: $EXTERNAL_USER_API_KEY" \
+  -H 'Content-Type: application/json; charset=utf-8' \
+  -d '{"account":"张三"}'
 ```
 
 **错误码**
@@ -233,7 +254,7 @@ curl -sS -X POST http://localhost:2026/api/v1/auth/external/provision \
 | `403` | 该账号被平台禁用 | 走管理员恢复，不要重复重试 |
 | `404` | `auth.external_user.enabled` 为 false | 开关没开或配置没生效 |
 | `409` | 派生邮箱已被无关账号占用 | 换 `email_domain`，或人工处理那条历史数据 |
-| `422` | 手机号或用户名不合法 | 按上表规则修正 |
+| `422` | `account` 缺失/为空/超长/含非法字符，或 `phone`、`username` 不合法 | 按上表规则修正 |
 
 ### 4.3 浏览器免密登录
 
@@ -273,15 +294,15 @@ GET /api/v1/auth/external/login?ticket=<login_ticket>&next=<可选>
 |---|---|---|
 | `enabled` | `false` | 总开关；关闭时两个端点都 404 |
 | `api_key` | `null` | 共享密钥，支持 `$ENV`；启用时必填且 ≥16 字符 |
-| `provider_id` | `external-phone` | 写入 `users.oauth_provider`；hyphen-case，≤32 字符 |
+| `provider_id` | `external-phone` | 写入 `users.oauth_provider`；hyphen-case，≤32 字符。**历史名称**，改动会让已开通账号失联 |
 | `email_domain` | `users.deerflow.internal` | 派生邮箱的保留域，必须是带点主机名；**不要**用真实收件域 |
 | `default_role` | `user` | 新账号角色 |
-| `admin_phones` | `[]` | 这些手机号开通为 `admin`（比较前先归一化） |
+| `admin_phones` | `[]` | 开通为 `admin` 的名单；按与 `account` 相同的规则归一化后比较，因此**账户名和手机号都可以写**（字段名沿用历史） |
 | `ticket_ttl_seconds` | `120` | 一次性票据有效期，允许 10–900 |
 | `session_expiry_minutes` | `null` | 会话 JWT 有效期覆盖；`null` = 跟随 `token_expiry_days`（7 天） |
 | `frontend_base_url` | `null` | 跨域部署时的前端源；`null` = 同源（走 nginx 即可） |
 
-多套外部系统并存：每套一个 `provider_id` **且**一个独立 `email_domain`（否则同一手机号会撞同一个派生邮箱而 409）。
+多套外部系统并存：每套一个 `provider_id` **且**一个独立 `email_domain`（否则同一 account 会撞同一个派生邮箱而 409）。
 
 ---
 
@@ -331,8 +352,12 @@ dev172（Postgres + Redis，`GATEWAY_WORKERS=2`，两个 uvicorn 进程 PID 12/1
 2. **返回的 JWT 不能当 `Authorization: Bearer` 用**。这是平台既有设计（该位置属于 PAT），
    本功能没有放宽它，以免扩大 CSRF 豁免面。
 3. **用户名只是偏好项**，目前不参与界面展示逻辑；若要在 UI 显示，需要前端读取该偏好。
-4. **没有手机号变更/合并流程**。手机号是身份键，改号等于新账号；需要迁移时走人工数据处理。
-5. **没有限流**。端点由密钥保护，若担心密钥泄漏后的批量建号，可在网关/反向代理层加 IP 限流，
+4. **没有账户改名/合并流程**。`account` 是身份键，换 account 等于新账号（数据不迁移）；
+   手机号只是联系信息，改号不影响身份。确需迁移时走人工数据处理。
+5. **`account` 大小写不敏感**（casefold 后作为身份）。若接入方的账户系统确实区分大小写，
+   需在对接前与平台方确认，否则 `Alice` 与 `alice` 会被视为同一人。
+6. **没有限流**。端点由密钥保护，若担心密钥泄漏后的批量建号，可在网关/反向代理层加 IP 限流，
    或后续把平台的登录限流存储复用到该端点。
-6. **派生邮箱占用唯一索引**。若历史上有人用 `{phone}@{email_domain}` 注册过本地账号，开通会 409，
-   需要人工处理（改 `email_domain` 或清理该账号）。
+7. **派生邮箱占用唯一索引**。若历史上有人用同一派生地址注册过本地账号，开通会 409，
+   需要人工处理（改 `email_domain` 或清理该账号）。邮箱形态的 `account` 一律哈希派生，
+   因此不会与真实邮箱账号相撞。

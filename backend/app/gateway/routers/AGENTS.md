@@ -123,8 +123,10 @@ External user-system provisioning (`/api/v1/auth/external`, gated by
 `auth.external_user.enabled`, 404 when off) reads config the same off-loop way and
 is public in `AuthMiddleware` while self-authenticating, like the signed webhooks:
 `POST /provision` accepts only the shared `api_key` (`X-External-User-Key` or
-Bearer) and resolves-or-registers an account by phone, linked as
-`(oauth_provider=provider_id, oauth_id=phone)` with a derived reserved
+Bearer) and resolves-or-registers an account by its external **account name**
+(required; CJK, numeric or an email address — canonicalized, with a phone-shaped
+account normalized as a phone so pre-`account` identities still resolve), linked as
+`(oauth_provider=provider_id, oauth_id=<canonical account>)` with a derived reserved
 `users.email` and no password — an unrelated owner of that email is a 409, never a
 takeover. It is CSRF-exempt (a key-authenticated machine caller has no
 double-submit pair) and deliberately absent from `_AUTH_EXEMPT_PATHS`, which would

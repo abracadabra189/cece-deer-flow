@@ -1,19 +1,26 @@
-"""External user-system integration: phone-based provisioning and ticket login.
+"""External user-system integration: account-based provisioning and ticket login.
 
 Two endpoints, one flow::
 
     operator's user system            browser
     ────────────────────────          ─────────────────────────────
     POST /api/v1/auth/external/provision
-      { phone, username }  ──►  resolve-or-create the account
-                            ◄──  { user_id, access_token, login_ticket, login_url }
+      { account, phone?, username? }
+                         ──►  resolve-or-create the account
+                         ◄──  { user_id, access_token, login_ticket,
+                                base_url, url_path, login_url }
     hand `login_url` to the user ──►  GET /api/v1/auth/external/login?ticket=…
                                       sets access_token + csrf_token cookies
                                       302 → /auth/callback?next=…  (already signed in)
 
+``account`` is the identity key and may be Chinese, numeric, or an email address;
+``phone`` is optional contact data. See
+:mod:`app.gateway.auth.external_provisioning` for the canonicalization and the
+derived-email rules.
+
 ``provision`` is server-to-server and authenticated **only** by the shared
-``auth.external_user.api_key``; that key is worth an account for any phone
-number, so it is an admin-grade secret (see
+``auth.external_user.api_key``; that key is worth an account for any account name,
+so it is an admin-grade secret (see
 :class:`deerflow.config.auth_config.ExternalUserAuthConfig`). ``login`` is public
 but consumes a short-lived signed ticket whose single use is recorded in the
 application database, so holding an unspent ticket is what authorizes it — the
@@ -35,7 +42,13 @@ from pydantic import BaseModel, Field
 from starlette.responses import RedirectResponse
 
 from app.gateway.auth.config import get_auth_config
-from app.gateway.auth.external_provisioning import get_or_provision_external_user, normalize_phone, normalize_username
+from app.gateway.auth.external_provisioning import (
+    canonical_account,
+    get_or_provision_external_user,
+    normalize_account,
+    normalize_phone,
+    normalize_username,
+)
 from app.gateway.auth.external_ticket import consume_external_login_ticket, create_external_login_ticket
 from app.gateway.auth.jwt import create_access_token
 from app.gateway.auth.session_cookie import set_session_cookie
@@ -54,6 +67,9 @@ router = APIRouter(prefix="/api/v1/auth/external", tags=["auth-external"])
 EXTERNAL_USER_KEY_HEADER = "X-External-User-Key"
 #: Preference key holding the display name supplied by the external system.
 EXTERNAL_USERNAME_PREFERENCE_KEY = "external_username"
+#: Preference keys holding the external account name and the optional phone.
+EXTERNAL_ACCOUNT_PREFERENCE_KEY = "external_account"
+EXTERNAL_PHONE_PREFERENCE_KEY = "external_phone"
 #: Where a browser lands after a failed ticket redemption.
 _LOGIN_ERROR_PATH = "/login?error=external_login_failed"
 
@@ -61,8 +77,9 @@ _LOGIN_ERROR_PATH = "/login?error=external_login_failed"
 class ExternalProvisionRequest(BaseModel):
     """Provisioning call from the operator's user system."""
 
-    phone: str = Field(description="The user's phone number; the identity key")
-    username: str | None = Field(default=None, description="Display name to store alongside the account")
+    account: str = Field(description="Account name in the external user system; the identity key. May be Chinese, numeric, or an email address.")
+    phone: str | None = Field(default=None, description="Optional contact phone; recorded but not part of the identity")
+    username: str | None = Field(default=None, description="Display name; falls back to account when omitted")
     next: str | None = Field(default=None, description="Optional relative path the browser lands on after login")
 
 
@@ -70,7 +87,7 @@ class ExternalProvisionResponse(BaseModel):
     """Credentials for one provisioned user."""
 
     user_id: str
-    phone: str
+    phone: str | None = Field(default=None, description="The normalized phone from this call, or null when none was supplied")
     username: str | None = None
     email: str = Field(description="The reserved synthetic address derived from the phone; a storage key, not a mailbox")
     system_role: str
@@ -135,12 +152,14 @@ def _public_origin(request: Request) -> str:
     return origin.rstrip("/")
 
 
-async def _store_username(user_id: str, username: str) -> None:
-    """Persist the external display name; best effort, never fatal.
+async def _store_profile(user_id: str, values: dict[str, str]) -> None:
+    """Persist the external account profile; best effort, never fatal.
 
     The account is already usable without it, and a preferences write must not
     turn a successful provision into a 500.
     """
+    if not values:
+        return
 
     def _write() -> None:
         from deerflow.persistence.engine import get_session_factory
@@ -153,23 +172,27 @@ async def _store_username(user_id: str, username: str) -> None:
 
     try:
         repository = await asyncio.to_thread(_write)
-        await repository.patch(user_id, {EXTERNAL_USERNAME_PREFERENCE_KEY: username})
+        await repository.patch(user_id, values)
     except Exception:
-        logger.warning("Could not store the external display name for user %s", user_id, exc_info=True)
+        logger.warning("Could not store the external account profile for user %s", user_id, exc_info=True)
 
 
 @router.post("/provision", response_model=ExternalProvisionResponse)
 async def provision_external_user(request: Request, body: ExternalProvisionRequest) -> ExternalProvisionResponse:
-    """Resolve or register the account for a phone number and return its credentials."""
+    """Resolve or register the account for an external account name and return its credentials."""
     config = await _config()
     _require_enabled(config)
     _verify_api_key(request, config)
 
+    # `account` is the identity: its display form is what humans see, its canonical
+    # form is what the unique index stores. `phone` is optional contact data.
+    account = normalize_account(body.account)
+    identity = canonical_account(body.account)
     phone = normalize_phone(body.phone)
-    username = normalize_username(body.username)
+    username = normalize_username(body.username) or account
     next_path = validate_next_param(body.next)
 
-    result = await get_or_provision_external_user(phone=phone, config=config, local_provider=get_local_provider())
+    result = await get_or_provision_external_user(identity=identity, phone=phone, config=config, local_provider=get_local_provider())
     user = result["user"]
     user_id = str(user.id)
 
@@ -186,8 +209,10 @@ async def provision_external_user(request: Request, body: ExternalProvisionReque
         url_path += f"&next={urllib.parse.quote(next_path)}"
     login_url = f"{base_url}{url_path}"
 
-    if username:
-        await _store_username(user_id, username)
+    profile = {EXTERNAL_ACCOUNT_PREFERENCE_KEY: account, EXTERNAL_USERNAME_PREFERENCE_KEY: username}
+    if phone:
+        profile[EXTERNAL_PHONE_PREFERENCE_KEY] = phone
+    await _store_profile(user_id, profile)
 
     logger.info(
         "External provisioning %s user_id=%s role=%s (created=%s)",
@@ -198,7 +223,7 @@ async def provision_external_user(request: Request, body: ExternalProvisionReque
     )
     return ExternalProvisionResponse(
         user_id=user_id,
-        phone=phone,
+        phone=phone or None,
         username=username or None,
         email=user.email,
         system_role=user.system_role,
