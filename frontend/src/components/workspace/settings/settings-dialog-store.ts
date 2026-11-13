@@ -9,16 +9,11 @@ type Listener = () => void;
 type SettingsDialogState = {
   open: boolean;
   section: SettingsSection;
-  memoryOnly: boolean;
 };
 
 const listeners = new Set<Listener>();
 
-let state: SettingsDialogState = {
-  open: false,
-  section: "appearance",
-  memoryOnly: false,
-};
+let state: SettingsDialogState = { open: false, section: "appearance" };
 
 function emitChange() {
   for (const listener of listeners) {
@@ -27,11 +22,7 @@ function emitChange() {
 }
 
 function setState(next: SettingsDialogState) {
-  if (
-    next.open === state.open &&
-    next.section === state.section &&
-    next.memoryOnly === state.memoryOnly
-  ) {
+  if (next.open === state.open && next.section === state.section) {
     return;
   }
   state = next;
@@ -52,26 +43,18 @@ export function getSettingsDialogSnapshot(): SettingsDialogState {
 const SERVER_SNAPSHOT: SettingsDialogState = {
   open: false,
   section: "appearance",
-  memoryOnly: false,
 };
 
 function getServerSnapshot(): SettingsDialogState {
   return SERVER_SNAPSHOT;
 }
 
-export function openSettingsDialog(
-  section: SettingsSection,
-  options?: { memoryOnly?: boolean },
-) {
-  setState({
-    open: true,
-    section,
-    memoryOnly: section === "memory" && options?.memoryOnly === true,
-  });
+export function openSettingsDialog(section: SettingsSection) {
+  setState({ open: true, section });
 }
 
 export function setSettingsDialogOpen(open: boolean) {
-  setState({ open, section: state.section, memoryOnly: state.memoryOnly });
+  setState({ open, section: state.section });
 }
 
 /**
@@ -89,12 +72,9 @@ export function useSettingsDialog() {
     getServerSnapshot,
   );
 
-  const open = useCallback(
-    (section: SettingsSection, options?: { memoryOnly?: boolean }) => {
-      openSettingsDialog(section, options);
-    },
-    [],
-  );
+  const open = useCallback((section: SettingsSection) => {
+    openSettingsDialog(section);
+  }, []);
 
   const setOpen = useCallback((next: boolean) => {
     setSettingsDialogOpen(next);
@@ -103,7 +83,6 @@ export function useSettingsDialog() {
   return {
     open: snapshot.open,
     section: snapshot.section,
-    memoryOnly: snapshot.memoryOnly,
     openSettings: open,
     setSettingsOpen: setOpen,
   };

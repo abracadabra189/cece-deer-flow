@@ -251,8 +251,6 @@ export const zhCN: Translations = {
     share: "分享",
     openInNewWindow: "在新窗口打开",
     close: "关闭",
-    back: "返回",
-    backToArtifactList: "返回结果区产物列表",
     more: "更多",
     search: "搜索",
     loadMore: "加载更多",
@@ -260,8 +258,6 @@ export const zhCN: Translations = {
     download: "下载",
     thinking: "思考",
     artifacts: "文件",
-    resultArea: "结果区",
-    resultArtifacts: "产物",
     public: "公共",
     custom: "自定义",
     notAvailableInDemoMode: "在演示模式下不可用",
@@ -288,8 +284,6 @@ export const zhCN: Translations = {
       "重新运行只恢复对话状态，不会撤销文件、Memory 或外部操作。",
     branch: "分叉",
     showArtifacts: "查看此对话的文件",
-    showResultArea: "查看此对话的结果区",
-    collapseResultArea: "收起结果区",
     browser: "浏览器",
     showBrowser: "打开浏览器面板",
   },
@@ -712,15 +706,6 @@ export const zhCN: Translations = {
     scheduledTasks: "定时任务",
     agentsDisabledTooltip: "功能未启用",
   },
-  taskGroups: {
-    title: "分组任务",
-    newTaskGroup: "新建分组",
-    namePlaceholder: "分组名称",
-    moveToTaskGroup: "移动到分组",
-    removeFromTaskGroup: "移出分组",
-    createFailed: "创建分组失败",
-    moveFailed: "移动任务失败",
-  },
 
   // 自定义智能体聊天中的知识库范围
   knowledge: {
@@ -780,7 +765,7 @@ export const zhCN: Translations = {
     deleteFailed: "删除项目失败",
     switchToGrouped: "按项目分组对话",
     switchToFlat: "显示平铺对话列表",
-    threads: "任务",
+    threads: "对话",
     threadsLoadFailed: "无法加载项目对话",
     untitled: "未命名",
     settings: "设置",
@@ -1767,7 +1752,7 @@ export const zhCN: Translations = {
 
   // Page titles (document title)
   pages: {
-    appName: "CeCeMate",
+    appName: "CECE",
     chats: "对话",
     newChat: "新对话",
     untitled: "未命名",
@@ -1919,7 +1904,6 @@ export const zhCN: Translations = {
     input: "输入",
     output: "输出",
     total: "总计",
-    unit: "tokens",
     view: "显示方式",
     unavailable:
       "暂无 Token 用量。只有模型成功返回且供应商提供 usage_metadata 时才会显示。",

@@ -91,7 +91,7 @@ export default function ProjectPage() {
 
   return (
     <WorkspaceContainer>
-      <WorkspaceHeader breadcrumbs={false} />
+      <WorkspaceHeader />
       <WorkspaceBody>
         <ScrollArea className="size-full">
           <div className="mx-auto flex w-full max-w-(--container-width-md) flex-col gap-8 p-6 pt-8">

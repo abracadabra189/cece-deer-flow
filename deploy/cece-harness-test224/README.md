@@ -9,7 +9,7 @@ cp deploy/cece-harness-test224/config.example.yaml config.yaml
 cp deploy/cece-harness-test224/extensions_config.example.json extensions_config.json
 ```
 
-Populate `.env` with the values referenced by the templates, including `DASHSCOPE_API_KEY`, `DATABASE_URL`, `HYDC_API_KEY`, and `EXTERNAL_USER_API_KEY`. Business data in this environment is obtained through the HYDC skill; the CECE business MCP servers and Qwen Enhanced Search remain disabled. MCP authorization variables may remain in `.env` for a future rollback, but are not required while those servers are disabled.
+Populate `.env` with the values referenced by the templates, including `DASHSCOPE_API_KEY`, `DATABASE_URL`, and the enabled CECE MCP authorization variables. Each `Authorization` variable contains the complete header value, including any `Bearer ` prefix.
 
 After changing `.env`, recreate the Gateway so its container receives the new environment:
 

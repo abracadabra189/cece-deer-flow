@@ -25,7 +25,6 @@ type StreamOptions = {
 
 const apiMockState = rs.hoisted(() => ({
   listRuns: rs.fn(async () => [] as Run[]),
-  cancel: rs.fn(async (_threadId: string, _runId: string) => undefined),
 }));
 
 const streamMockState = rs.hoisted(() => ({
@@ -36,7 +35,7 @@ const streamMockState = rs.hoisted(() => ({
 
 rs.mock("@/core/api", () => ({
   getAPIClient: () => ({
-    runs: { list: apiMockState.listRuns, cancel: apiMockState.cancel },
+    runs: { list: apiMockState.listRuns },
   }),
 }));
 
@@ -129,8 +128,6 @@ beforeEach(() => {
   rs.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   window.sessionStorage.clear();
   apiMockState.listRuns.mockReset();
-  apiMockState.cancel.mockReset();
-  apiMockState.cancel.mockResolvedValue(undefined);
   apiMockState.listRuns.mockResolvedValue([ACTIVE_RUN]);
   streamMockState.isLoading = false;
   streamMockState.joinStream.mockReset();
@@ -151,21 +148,6 @@ beforeEach(() => {
 afterEach(() => {
   rs.useRealTimers();
   rs.unstubAllGlobals();
-});
-
-test("one stop cancels a streaming run and prevents stale data from rejoining it", async () => {
-  streamMockState.isLoading = true;
-  const { result, rerender, unmount } = renderThread();
-  await flushFrames();
-  await act(async () => {
-    await result.current.thread.stop();
-  });
-  expect(apiMockState.cancel).toHaveBeenCalledWith("thread-1", "run-active");
-  streamMockState.isLoading = false;
-  rerender({ activeThreadId: "thread-1" });
-  await flushFrames();
-  expect(streamMockState.joinStream).not.toHaveBeenCalled();
-  unmount();
 });
 
 test("joins the newest active run when a reopened tab has no reconnect pointer", async () => {

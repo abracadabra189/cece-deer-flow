@@ -29,14 +29,13 @@ const SettingsDialog = dynamic(
  * its own dialog.
  */
 export function SettingsDialogHost() {
-  const { open, section, memoryOnly } = useSettingsDialog();
+  const { open, section } = useSettingsDialog();
   if (!open) return null;
   return (
     <SettingsDialog
       open={open}
       onOpenChange={setSettingsDialogOpen}
       defaultSection={section}
-      memoryOnly={memoryOnly}
     />
   );
 }

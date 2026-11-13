@@ -27,17 +27,18 @@ function TokenUsageSummary({
         className,
       )}
     >
-      <span>
-        {t.tokenUsage.input}: {formatTokenCount(inputTokens ?? 0)}{" "}
-        {t.tokenUsage.unit}
+      <span className="inline-flex items-center gap-1 font-medium">
+        <CoinsIcon className="size-3" />
+        {t.tokenUsage.label}
       </span>
       <span>
-        {t.tokenUsage.output}: {formatTokenCount(outputTokens ?? 0)}{" "}
-        {t.tokenUsage.unit}
+        {t.tokenUsage.input}: {formatTokenCount(inputTokens ?? 0)}
+      </span>
+      <span>
+        {t.tokenUsage.output}: {formatTokenCount(outputTokens ?? 0)}
       </span>
       <span className="font-medium">
-        {t.tokenUsage.total}: {formatTokenCount(totalTokens ?? 0)}{" "}
-        {t.tokenUsage.unit}
+        {t.tokenUsage.total}: {formatTokenCount(totalTokens ?? 0)}
       </span>
     </div>
   );
@@ -46,7 +47,7 @@ function TokenUsageSummary({
 export function MessageTokenUsageList({
   className,
   enabled = false,
-  isLoading = false,
+  isLoading: _isLoading = false,
   messages,
 }: {
   className?: string;
@@ -55,10 +56,6 @@ export function MessageTokenUsageList({
   messages: Message[];
 }) {
   if (!enabled) {
-    return null;
-  }
-
-  if (isLoading) {
     return null;
   }
 

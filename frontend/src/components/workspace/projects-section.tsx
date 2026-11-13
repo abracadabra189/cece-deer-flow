@@ -1,6 +1,14 @@
 "use client";
 
-import { Archive, ChevronRight, Folder, Plus, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ChevronRight,
+  Folder,
+  FolderTree,
+  List,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -31,6 +39,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useI18n } from "@/core/i18n/hooks";
 import { useCreateProject, useProjects, type Project } from "@/core/projects";
+import { useLocalSettings } from "@/core/settings";
 import { isStaticWebsiteOnly } from "@/core/static-mode";
 import { useInfiniteThreads } from "@/core/threads/hooks";
 import { flattenThreadBranches } from "@/core/threads/thread-branch-tree";
@@ -223,6 +232,8 @@ function GroupedProjectList() {
 
 export function ProjectsSection() {
   const { t } = useI18n();
+  const [settings, setSettings] = useLocalSettings();
+  const groupByProject = settings.projectsDisplayMode === "grouped";
   const { mutate: createProject, isPending: isCreating } = useCreateProject();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -244,30 +255,54 @@ export function ProjectsSection() {
           toast.error(
             error instanceof Error && error.message
               ? error.message
-              : t.taskGroups.createFailed,
+              : t.projects.createFailed,
           );
         },
       },
     );
-  }, [createProject, createName, isCreating, t.taskGroups.createFailed]);
+  }, [createProject, createName, isCreating, t.projects.createFailed]);
 
   // Static-demo mode has no Gateway and no projects: hide the whole section
-  // (New task group button and groups are all dead actions).
+  // (New project button, grouped toggle, and groups are all dead actions).
   if (isStaticWebsiteOnly()) {
     return null;
   }
 
   return (
-    <SidebarGroup className="mt-1 px-0 pt-1">
-      <SidebarGroupLabel className="h-[30px] justify-between px-2.5 text-[13px] font-medium text-[#5a6478]">
-        <span>{t.taskGroups.title}</span>
+    <SidebarGroup>
+      <SidebarGroupLabel className="justify-between pr-1">
+        <span>{t.projects.title}</span>
         <span className="flex items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon"
             className="size-5 [&>svg]:size-3.5"
-            title={t.taskGroups.newTaskGroup}
-            aria-label={t.taskGroups.newTaskGroup}
+            title={
+              groupByProject
+                ? t.projects.switchToFlat
+                : t.projects.switchToGrouped
+            }
+            aria-label={
+              groupByProject
+                ? t.projects.switchToFlat
+                : t.projects.switchToGrouped
+            }
+            onClick={() =>
+              setSettings(
+                "projectsDisplayMode",
+                groupByProject ? "flat" : "grouped",
+              )
+            }
+            data-testid="projects-display-mode-toggle"
+          >
+            {groupByProject ? <FolderTree /> : <List />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-5 [&>svg]:size-3.5"
+            title={t.projects.newProject}
+            aria-label={t.projects.newProject}
             onClick={() => setCreateDialogOpen(true)}
             data-testid="projects-new-project-button"
           >
@@ -288,21 +323,23 @@ export function ProjectsSection() {
           </Button>
         </span>
       </SidebarGroupLabel>
-      <SidebarGroupContent className="group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">
-        <GroupedProjectList />
-      </SidebarGroupContent>
+      {groupByProject && (
+        <SidebarGroupContent className="group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">
+          <GroupedProjectList />
+        </SidebarGroupContent>
+      )}
 
       {/* New project dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>{t.taskGroups.newTaskGroup}</DialogTitle>
+            <DialogTitle>{t.projects.newProject}</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <Input
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
-              placeholder={t.taskGroups.namePlaceholder}
+              placeholder={t.projects.namePlaceholder}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !isIMEComposing(e)) {
                   e.preventDefault();

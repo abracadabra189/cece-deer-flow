@@ -18,10 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function WorkspaceLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  // The CeCeMate workspace is deliberately Chinese-only. Keep resolving the
-  // request locale for the route boundary's existing SSR contract, but do not
-  // let browser or saved account preferences produce a mixed-language UI.
-  await detectLocaleServer();
+  const locale = await detectLocaleServer();
   const result = await getServerSideUser();
 
   let content: React.ReactNode;
@@ -63,5 +60,5 @@ export default async function WorkspaceLayout({
       assertNever(result);
   }
 
-  return <I18nProvider initialLocale="zh-CN">{content}</I18nProvider>;
+  return <I18nProvider initialLocale={locale}>{content}</I18nProvider>;
 }

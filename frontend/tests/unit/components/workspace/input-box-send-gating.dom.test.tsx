@@ -150,16 +150,6 @@ function mockCommandRequests(events: string[] = []) {
   return fetchMock;
 }
 
-describe("InputBox compact composer layout", () => {
-  it("uses the compact shell padding for an empty composer", () => {
-    const { container } = renderComposer({ onSubmit: rs.fn() });
-
-    const composer = container.querySelector(".cecemate-composer");
-    expect(composer).not.toBeNull();
-    expect(composer?.className).toContain("p-[8px_12px_6px]");
-  });
-});
-
 describe("InputBox send gating (runs:create)", () => {
   it.each([false, true])(
     "rejects goal-set before thread preparation or goal writes (welcome=%s)",

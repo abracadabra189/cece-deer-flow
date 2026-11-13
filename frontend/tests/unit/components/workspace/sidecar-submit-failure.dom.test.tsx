@@ -162,17 +162,6 @@ afterEach(() => {
 });
 
 describe("SidecarPanel keeps the draft when a send fails", () => {
-  it("always uses fast mode and does not render a mode selector", async () => {
-    render(renderPanel("sidecar-1"));
-
-    await waitFor(() =>
-      expect(mocks.streamOptions).toMatchObject({
-        context: { mode: "flash" },
-      }),
-    );
-    expect(screen.queryByText("Flash")).toBeNull();
-  });
-
   it("forwards restored interrupts and initial metadata loading to the stream", async () => {
     const interrupts = { task: [{ value: { kind: "hitl_approval" } }] };
     mocks.threadMetadata.data = { interrupts };

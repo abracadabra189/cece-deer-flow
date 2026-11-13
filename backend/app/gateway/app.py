@@ -31,7 +31,6 @@ from app.gateway.routers import (
     channel_connections,
     channels,
     console,
-    external_users,
     features,
     feedback,
     github_webhooks,
@@ -1456,10 +1455,6 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Auth API is mounted at /api/v1/auth
     app.include_router(auth.router)
-    # External user-system integration is mounted at /api/v1/auth/external: its
-    # own API key (provision) and one-time ticket (login) are the credentials,
-    # so both routes sit outside the session-cookie gate.
-    app.include_router(external_users.router)
     app.include_router(user_preferences.router)
     app.include_router(im_notification_preferences.router)
 

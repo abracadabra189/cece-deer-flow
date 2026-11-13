@@ -41,11 +41,6 @@ _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
     "/openapi.json",
     "/api/v1/auth/oauth/",
     "/api/v1/auth/callback/",
-    # External user-system integration: both routes carry their own credential
-    # (the shared provisioning API key, or a short-lived single-use login
-    # ticket), never a session cookie — the same "public path, self-authenticating
-    # handler" shape as the signature-verified webhooks below.
-    "/api/v1/auth/external/",
     # Inbound webhooks authenticate themselves via provider-specific signatures
     # (e.g. GitHub's X-Hub-Signature-256), not session cookies.
     "/api/webhooks/",

@@ -3506,42 +3506,6 @@ run_ownership:
 #   retry_backoff: 0.5                   # base seconds of exponential backoff
 
 # ============================================================================
-# Authentication Configuration
-# ============================================================================
-# `auth.local` (email/password) and `auth.oidc` (SSO) keep safe defaults and are
-# documented in backend/docs/AUTH_DESIGN.md. The block below covers the third
-# surface: delegating account provisioning to an existing external user system.
-#
-# auth:
-#   external_user:
-#     enabled: true
-#     # Shared secret every provisioning call must present. It is worth an
-#     # account for ANY phone number, so treat it as an admin credential: keep it
-#     # in .env, expose the endpoint only on a trusted network or behind TLS, and
-#     # rotate it by changing the environment value. Enabling without a key of at
-#     # least 16 characters fails config load, so the route can never come up open.
-#     api_key: $EXTERNAL_USER_API_KEY
-#     # users.oauth_provider value stored on phone-provisioned accounts. Change it
-#     # only to keep two external user systems apart — each then needs its own
-#     # email_domain, because the derived email must stay unique.
-#     provider_id: external-phone
-#     # users.email is NOT NULL and unique but a phone user has none, so a reserved
-#     # synthetic address is derived: {phone}@{email_domain}. It is a storage key,
-#     # not a mailbox; never point it at a domain you send mail to.
-#     email_domain: users.deerflow.internal
-#     default_role: user
-#     admin_phones: []              # these phones are provisioned as admin
-#     ticket_ttl_seconds: 120       # one-time browser login ticket lifetime
-#     session_expiry_minutes: null  # null = the JWT default (token_expiry_days)
-#     frontend_base_url: null       # post-login redirect base; null = same origin
-#
-# Flow: POST /api/v1/auth/external/provision {"phone", "username"} with the key in
-# X-External-User-Key returns { user_id, access_token, login_ticket, login_url }.
-# Send the browser to login_url — it redeems the ticket once, sets the session
-# cookies and lands on /auth/callback already signed in.
-# Contract: backend/docs/API.md#external-user-provisioning.
-
-# ============================================================================
 # Authorization Configuration
 # ============================================================================
 # Fine-grained resource authorization (RBAC and beyond). Disabled by default;

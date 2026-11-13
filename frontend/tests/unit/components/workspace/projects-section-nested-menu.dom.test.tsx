@@ -126,14 +126,6 @@ afterEach(() => {
 });
 
 describe("ProjectsSection grouped-mode nested menus", () => {
-  it("presents existing projects as task groups", () => {
-    renderGroupedSection();
-
-    expect(screen.getByText("Task groups")).toBeTruthy();
-    expect(screen.getByText("Active project")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "New task group" })).toBeTruthy();
-  });
-
   // happy-dom has no layout engine, so the regression is pinned at the class
   // level: `SidebarMenu` defaults to `w-full`, and an indented (`ml-4`) menu
   // that keeps it is 16px wider than its container — the absolutely

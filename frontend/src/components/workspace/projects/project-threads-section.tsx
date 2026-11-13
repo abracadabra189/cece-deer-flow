@@ -1,6 +1,5 @@
 "use client";
 
-import { ChevronRight, MessageSquare } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +8,7 @@ import { useI18n } from "@/core/i18n/hooks";
 import { type ProjectThreadsQueryResult } from "@/core/projects";
 import { pathOfThread } from "@/core/threads/utils";
 import { formatTimeAgo } from "@/core/utils/datetime";
+import { cn } from "@/lib/utils";
 
 export function ProjectThreadsSection({
   query,
@@ -18,24 +18,17 @@ export function ProjectThreadsSection({
   const { t } = useI18n();
   const threads = query.data?.pages.flatMap((page) => page) ?? [];
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <h2 className="text-lg font-semibold tracking-tight">
-          {t.projects.threads}
-        </h2>
-        {threads.length > 0 && (
-          <span className="text-muted-foreground text-xs tabular-nums">
-            {threads.length}
-          </span>
-        )}
-      </div>
-      <div>
+    <section className="flex flex-col gap-2">
+      <h2 className="text-muted-foreground text-sm font-medium">
+        {t.projects.threads}
+      </h2>
+      <div className="rounded-lg border">
         {query.isError ? (
-          <div className="text-muted-foreground rounded-xl border border-dashed p-5 text-sm">
+          <div className="text-muted-foreground p-4 text-sm">
             {t.projects.threadsLoadFailed}
           </div>
         ) : threads.length === 0 && !query.isLoading ? (
-          <div className="text-muted-foreground flex flex-col gap-1 rounded-xl border border-dashed p-5 text-sm">
+          <div className="text-muted-foreground flex flex-col gap-1 p-4 text-sm">
             <p>{t.projects.empty}</p>
           </div>
         ) : (
@@ -44,38 +37,34 @@ export function ProjectThreadsSection({
           // grows unbounded DOM (same windowing the sidebar and
           // /workspace/chats use).
           <VirtualThreadList
-            estimateSize={72}
+            estimateSize={56}
             items={threads}
             scrollParentSelector='[data-slot="scroll-area-viewport"]'
-            renderItem={(thread) => (
+            renderItem={(thread, index) => (
               <Link
                 key={thread.thread_id}
                 href={pathOfThread({
                   thread_id: thread.thread_id,
                   metadata: thread.metadata,
                 })}
-                data-testid="project-task-row"
-                className="group bg-card hover:border-primary/35 focus-visible:ring-ring mb-2 flex min-w-0 items-center gap-3 rounded-xl border px-4 py-3 shadow-sm transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-md focus-visible:ring-2 focus-visible:outline-none"
               >
-                <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-[10px]">
-                  <MessageSquare className="size-4" aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">
+                <div
+                  className={cn(
+                    "hover:bg-muted/50 flex min-w-0 items-center gap-2 p-4 transition-colors",
+                    index !== threads.length - 1 && "border-b",
+                  )}
+                >
+                  <div className="min-w-0 flex-1 truncate">
                     {thread.display_name?.trim()
                       ? thread.display_name
                       : t.projects.untitled}
-                  </span>
+                  </div>
                   {thread.updated_at && (
-                    <span className="text-muted-foreground mt-1 block text-xs">
+                    <div className="text-muted-foreground shrink-0 text-sm">
                       {formatTimeAgo(thread.updated_at)}
-                    </span>
+                    </div>
                   )}
-                </span>
-                <ChevronRight
-                  className="text-muted-foreground size-4 shrink-0 transition-transform group-hover:translate-x-0.5"
-                  aria-hidden="true"
-                />
+                </div>
               </Link>
             )}
           />

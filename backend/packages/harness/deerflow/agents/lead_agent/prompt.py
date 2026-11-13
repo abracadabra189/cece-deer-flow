@@ -713,7 +713,7 @@ The `task` tool waits for the subagent and returns its result directly; no polli
 
 SYSTEM_PROMPT_TEMPLATE = """
 <role>
-You are {agent_name}, CECE's intelligent research assistant.
+You are {agent_name}, an open-source super agent.
 </role>
 
 User input is wrapped in `--- BEGIN USER INPUT ---` / `--- END USER INPUT ---`
@@ -1314,7 +1314,7 @@ def apply_prompt_template(
         interaction_thinking_guidance=interaction_policy.thinking_guidance,
         clarification_system=interaction_policy.clarification_system,
         clarification_reminder=interaction_policy.clarification_reminder,
-        agent_name=agent_name or "CeCeMate",
+        agent_name=agent_name or "CECE 3.0",
         soul=get_agent_soul(agent_name, user_id=user_id),
         self_update_section=_build_self_update_section(agent_name),
         skills_section=skills_section,

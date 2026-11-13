@@ -2214,7 +2214,6 @@ export function useThreadStream({
   // onCreated fires only for runs this hook submitted. A failed submit stays
   // with the submit flow; only SDK reconnects are handed to recovery.
   const submittedRunIdRef = useRef<string | null>(null);
-  const stoppingRunIdRef = useRef<string | null>(null);
 
   // Keep listeners ref updated with latest callbacks
   useEffect(() => {
@@ -2794,7 +2793,6 @@ export function useThreadStream({
       !resolvedThreadId ||
       !resolvedRunId ||
       completedRunIdsRef.current.has(resolvedRunId) ||
-      stoppingRunIdRef.current === resolvedRunId ||
       rejoin.inFlight ||
       rejoin.retryTimer !== null ||
       rejoin.settled ||
@@ -2842,32 +2840,16 @@ export function useThreadStream({
   );
 
   const stopThread = useCallback(async () => {
-    if (stoppingRunIdRef.current) return;
     settlePendingApproval(false);
     const stoppedThreadId =
       threadIdRef.current ?? displayThreadId ?? threadId ?? null;
     const pendingReplay = pendingPreparedReplayRef.current;
-    const runId =
-      (stoppedThreadId ? readReconnectRun(stoppedThreadId) : null) ??
-      knownActiveRunId;
     await stopThreadAndInvalidateCaches(
       queryClient,
-      async () => {
-        if (!runId || !stoppedThreadId || isMock) {
-          await thread.stop();
-          return;
-        }
-        stoppingRunIdRef.current = runId;
-        try {
-          await getAPIClient(isMock).runs.cancel(stoppedThreadId, runId);
-          completedRunIdsRef.current.add(runId);
-          // Avoid the SDK issuing a second, unawaited cancellation request.
-          clearReconnectRun(stoppedThreadId, runId);
-          await thread.stop();
-        } finally {
-          stoppingRunIdRef.current = null;
-        }
-      },
+      () =>
+        !thread.isLoading && knownActiveRunId && stoppedThreadId
+          ? getAPIClient(isMock).runs.cancel(stoppedThreadId, knownActiveRunId)
+          : thread.stop(),
       stoppedThreadId,
       isMock,
     );

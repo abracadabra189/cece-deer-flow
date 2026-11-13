@@ -154,12 +154,7 @@ describe("InputBox staged project attachments", () => {
     const { container } = renderComposer({ onSubmit });
 
     // The staged chip is applied from session storage on mount.
-    const chip = await screen.findByTestId("project-attachment-chip");
-    // Attachments live in their own composer row, so they never compete with
-    // the editable area or the action bar for horizontal space.
-    expect(screen.getByTestId("composer-attachment-tray").contains(chip)).toBe(
-      true,
-    );
+    await screen.findByTestId("project-attachment-chip");
     fireEvent.click(getSubmitButton(container));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));

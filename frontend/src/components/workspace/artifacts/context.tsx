@@ -25,7 +25,6 @@ export interface ArtifactsContextType {
   autoSelect: boolean;
   select: (artifact: string, autoSelect?: boolean) => void;
   deselect: () => void;
-  returnToList: () => void;
 
   open: boolean;
   autoOpen: boolean;
@@ -151,11 +150,6 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
     setOpen(false);
   }, []);
 
-  const returnToList = useCallback(() => {
-    setSelectedArtifact(null);
-    setAutoSelect(true);
-  }, []);
-
   const value: ArtifactsContextType = {
     artifacts,
     setArtifacts,
@@ -174,7 +168,6 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
     selectedArtifact,
     select,
     deselect,
-    returnToList,
 
     drafts,
     setDrafts,
