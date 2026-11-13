@@ -86,3 +86,4 @@ When you add or rename a field, update `config.example.yaml` and raise its
 - **`auto_skill` is post-run skill synthesis.** It is hot-reloadable and publishes
   managed skills globally under `{base_dir}/integrations/skills/auto-skill/`; see
   [skills/AGENTS.md](../skills/AGENTS.md#auto-skill-synthesis-skillsauto).
+
