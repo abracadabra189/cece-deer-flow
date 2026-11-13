@@ -39,6 +39,7 @@ models:
     display_name: DeepSeek V4.1 Flash
     use: langchain_openai:ChatOpenAI
     model: deepseek-v4.1-flash-1017
+    supports_vision: true
     max_tokens: 32768
     context_window: 1000000
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1

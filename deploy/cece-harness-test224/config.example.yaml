@@ -39,6 +39,7 @@ models:
     display_name: DeepSeek V4.1 Flash
     use: langchain_openai:ChatOpenAI
     model: deepseek-v4.1-flash-1017
+    supports_vision: true
     max_tokens: 32768
     context_window: 1000000
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
@@ -82,31 +83,10 @@ models:
     when_thinking_disabled: null
 
   - <<: *cece_model_defaults
-    name: kimi-k3
-    display_name: Kimi K3
-    model: kimi-k3
-    max_tokens: 32768
-    when_thinking_enabled: null
-    when_thinking_disabled: null
-    reasoning:
-      thinking: required
-      dialect: openai_extra_body
-      history: preserve
-
-  - <<: *cece_model_defaults
     name: zhipu-glm-5.3-flash
     display_name: GLM-5.3-Flash
     model: ZHIPU/GLM-5.3-Flash
     max_tokens: 16384
-    reasoning: null
-    when_thinking_enabled: null
-    when_thinking_disabled: null
-
-  - <<: *cece_model_defaults
-    name: zhipu-glm-5.3
-    display_name: GLM-5.3
-    model: ZHIPU/GLM-5.3
-    max_tokens: 32768
     reasoning: null
     when_thinking_enabled: null
     when_thinking_disabled: null
