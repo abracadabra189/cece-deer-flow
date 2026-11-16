@@ -1034,10 +1034,7 @@ def get_skills_prompt_section(
     skill_evolution_section = _build_skill_evolution_section(skill_evolution_enabled)
     auto_skill_prefix = _resolve_auto_skill_prefix(app_config)
 
-    # ── Deferred discovery path — the caller supplies the visible names ──────
-    # Learned skills are resolved to (name, description) so the priority block can
-    # be matched on meaning, not on an English slug; everything else stays
-    # name-only and is fetched through ``describe_skill``.
+    # ── Deferred discovery path — storage not needed (caller supplies names) ─
     if skill_names is not None:
         from deerflow.skills.describe import get_skill_index_prompt_section
 
@@ -1074,7 +1071,10 @@ def get_skills_prompt_section(
 
 def get_agent_soul(agent_name: str | None, *, user_id: str | None = None) -> str:
     # Append SOUL.md (agent personality) if present
-    soul = load_agent_soul(agent_name, user_id=user_id)
+    return _format_agent_soul(load_agent_soul(agent_name, user_id=user_id))
+
+
+def _format_agent_soul(soul: str | None) -> str:
     if soul:
         # SOUL.md is agent-editable (setup_agent / update_agent persist it) and is
         # rendered into the <soul> block of the lead-agent system prompt. Escape it
@@ -1204,6 +1204,7 @@ def apply_prompt_template(
     max_total_subagents: int | None = None,
     *,
     agent_name: str | None = None,
+    agent_soul: str | None = None,
     available_skills: set[str] | None = None,
     app_config: AppConfig | None = None,
     deferred_names: frozenset[str] = frozenset(),
