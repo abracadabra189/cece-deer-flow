@@ -31,6 +31,7 @@ from app.gateway.routers import (
     channel_connections,
     channels,
     console,
+    external_users,
     features,
     feedback,
     github_webhooks,
@@ -1461,6 +1462,9 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
 
     # Auth API is mounted at /api/v1/auth
     app.include_router(auth.router)
+    # These routes authenticate their own server-to-server request or one-time
+    # ticket; auth middleware explicitly allows this narrowly scoped prefix.
+    app.include_router(external_users.router)
     app.include_router(user_preferences.router)
     app.include_router(im_notification_preferences.router)
 
