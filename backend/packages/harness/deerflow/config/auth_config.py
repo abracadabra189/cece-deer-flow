@@ -19,6 +19,10 @@ _EXTERNAL_EMAIL_DOMAIN_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]*
 _EXTERNAL_ROLE_MAX_CHARS = 16
 #: ``users.email`` column width; the derived address must fit it.
 _EXTERNAL_EMAIL_MAX_CHARS = 320
+#: Longest readable local part the provisioning layer will derive from an account
+#: name before it falls back to a fixed-width hash (mirrors
+#: ``app.gateway.auth.external_provisioning._SAFE_LOCAL_PART_RE``).
+_EXTERNAL_MAX_LOCAL_PART_CHARS = 64
 #: Minimum shared-secret length: this key alone authorizes account creation.
 _EXTERNAL_API_KEY_MIN_CHARS = 16
 
@@ -161,12 +165,13 @@ class LocalAuthConfig(BaseModel):
 class ExternalUserAuthConfig(BaseModel):
     """Trusted server-to-server provisioning from an operator's existing user system.
 
-    ``POST /api/v1/auth/external/provision`` takes a phone number plus a display
-    name, resolves or creates the DeerFlow account, and returns credentials the
-    caller can use to land that user in the UI already signed in.
+    ``POST /api/v1/auth/external/provision`` takes the external **account name**
+    (required; may be Chinese, numeric, or an email address), an optional phone and
+    an optional display name, resolves or creates the DeerFlow account, and returns
+    credentials the caller can use to land that user in the UI already signed in.
 
     **Trust boundary.** The shared ``api_key`` is the *only* proof the caller
-    offers, and it is worth an account for any phone number: whoever holds it can
+    offers, and it is worth an account for any account name: whoever holds it can
     mint a session for anyone. Treat it like an admin credential — keep it in the
     environment (``api_key: $EXTERNAL_USER_API_KEY``), never in a tracked file,
     expose the endpoint only on a trusted network or behind TLS, and rotate it by
@@ -174,14 +179,14 @@ class ExternalUserAuthConfig(BaseModel):
     load so the endpoint can never come up unauthenticated.
 
     Identity mapping reuses the existing external-identity columns: the account is
-    linked as ``(oauth_provider=provider_id, oauth_id=phone)``, whose partial
-    unique index makes concurrent provisioning of one phone converge on one row.
-    ``users.email`` is NOT NULL and unique, so a reserved synthetic address
-    (``{phone}@{email_domain}``) is derived from the phone; it is a storage key,
-    never a deliverable address, and an unrelated account already owning it is a
-    409 rather than a silent takeover — the same rule the OIDC provisioning
-    follows. Accounts created here have no password, so password login stays
-    impossible for them.
+    linked as ``(oauth_provider=provider_id, oauth_id=<canonical account>)``, whose
+    partial unique index makes concurrent provisioning of one account converge on
+    one row. ``users.email`` is NOT NULL, unique and validated as an address, so a
+    reserved synthetic one is derived from the canonical account (readable when it
+    is already ASCII-safe, a stable hash otherwise); it is a storage key, never a
+    deliverable address, and an unrelated account already owning it is a 409 rather
+    than a silent takeover — the same rule the OIDC provisioning follows. Accounts
+    created here have no password, so password login stays impossible for them.
     """
 
     enabled: bool = Field(default=False, description="Expose the external provisioning + ticket-login endpoints")
@@ -191,16 +196,25 @@ class ExternalUserAuthConfig(BaseModel):
     )
     provider_id: str = Field(
         default="external-phone",
-        description=("Identity-provider label stored in users.oauth_provider for phone-provisioned accounts. hyphen-case, at most 32 characters. Change it only to keep several external user systems apart."),
+        description=(
+            "Identity-provider label stored in users.oauth_provider for externally provisioned accounts. "
+            "hyphen-case, at most 32 characters. The default is a historical name from when the phone number was "
+            "the identity key; keep it on an existing deployment or every already-provisioned account would be "
+            "re-created under a new identity. Change it only to keep several external user systems apart."
+        ),
     )
     email_domain: str = Field(
         default="users.deerflow.internal",
-        description="Reserved domain for the synthetic users.email derived from the phone number. Must not be a domain you send mail to.",
+        description="Reserved domain for the synthetic users.email derived from the canonical account name. Must not be a domain you send mail to.",
     )
     default_role: str = Field(default="user", description="System role granted to newly provisioned accounts")
     admin_phones: list[str] = Field(
         default_factory=list,
-        description="Phone numbers provisioned as admin instead of default_role (matched after normalization)",
+        description=(
+            "Accounts provisioned as admin instead of default_role. Entries are matched after the same "
+            "canonicalization as the request's account, so phone numbers and account names both work; the "
+            "name is kept for compatibility with deployments configured before account became the identity."
+        ),
     )
     ticket_ttl_seconds: int = Field(
         default=120,
@@ -280,9 +294,10 @@ class ExternalUserAuthConfig(BaseModel):
             raise ValueError("auth.external_user.api_key is required when auth.external_user.enabled is true (set it via $ENV_VAR)")
         if len(self.api_key) < _EXTERNAL_API_KEY_MIN_CHARS:
             raise ValueError(f"auth.external_user.api_key must be at least {_EXTERNAL_API_KEY_MIN_CHARS} characters")
-        # The derived address has to fit the column it is stored in.
-        longest_phone = max((len(phone) for phone in self.admin_phones), default=20)
-        if longest_phone + 1 + len(self.email_domain) > _EXTERNAL_EMAIL_MAX_CHARS:
+        # The derived address has to fit the column it is stored in. The readable
+        # local part is capped at 64 characters (anything longer, CJK, or an email
+        # address is hashed to a fixed 25-character local part instead).
+        if _EXTERNAL_MAX_LOCAL_PART_CHARS + 1 + len(self.email_domain) > _EXTERNAL_EMAIL_MAX_CHARS:
             raise ValueError("auth.external_user.email_domain is too long for the derived users.email column")
         return self
 
@@ -294,5 +309,5 @@ class AuthAppConfig(BaseModel):
     local: LocalAuthConfig = Field(default_factory=LocalAuthConfig, description="Built-in email/password authentication settings")
     external_user: ExternalUserAuthConfig = Field(
         default_factory=ExternalUserAuthConfig,
-        description="Trusted phone-based provisioning from an existing external user system",
+        description="Trusted account-based provisioning from an existing external user system",
     )

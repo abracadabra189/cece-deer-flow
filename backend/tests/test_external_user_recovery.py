@@ -34,6 +34,16 @@ def test_external_user_router_keeps_both_trusted_entrypoints() -> None:
     assert "/api/v1/auth/external/login" in paths
 
 
+def test_external_provisioning_uses_account_as_required_identity() -> None:
+    """The external-system contract matches test224: account is the identity."""
+    from app.gateway.routers.external_users import ExternalProvisionRequest
+
+    request = ExternalProvisionRequest(account="张三", phone=None, username="张三")
+
+    assert request.account == "张三"
+    assert request.phone is None
+
+
 @pytest.mark.asyncio
 async def test_bootstrap_upgrades_legacy_external_login_ticket_revision(tmp_path) -> None:
     """A deployed external-user database must rejoin the current migration head."""
