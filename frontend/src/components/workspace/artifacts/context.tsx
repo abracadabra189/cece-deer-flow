@@ -11,7 +11,6 @@ import {
   type SetStateAction,
 } from "react";
 
-import { useSidebar } from "@/components/ui/sidebar";
 import { useArtifactDrafts } from "@/core/artifacts/draft-context";
 import type { ArtifactDraftState } from "@/core/artifacts/editing";
 import { useAuth } from "@/core/auth/AuthProvider";
@@ -94,7 +93,6 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
   );
   const [autoOpen, setAutoOpen] = useState(true);
   const [editingPath, setEditingPath] = useState<string | null>(null);
-  const { setOpen: setSidebarOpen } = useSidebar();
   const pathname = usePathname();
   const { user } = useAuth();
   const { drafts, setDrafts } = useArtifactDrafts(
@@ -135,14 +133,11 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
   const select = useCallback(
     (artifact: string, autoSelect = false) => {
       setSelectedArtifact(artifact);
-      if (env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true") {
-        setSidebarOpen(false);
-      }
       if (!autoSelect) {
         setAutoSelect(false);
       }
     },
-    [setSidebarOpen, setSelectedArtifact, setAutoSelect],
+    [setSelectedArtifact, setAutoSelect],
   );
 
   const deselect = useCallback(() => {

@@ -21,9 +21,6 @@ export function CeceMateBrand() {
         <span className="block truncate text-sm font-bold tracking-[0.02em]">
           CeCeMate
         </span>
-        <span className="block truncate text-[10px] text-[#8a94a6]">
-          创投洞察 · 智能体工作台
-        </span>
       </span>
     </div>
   );

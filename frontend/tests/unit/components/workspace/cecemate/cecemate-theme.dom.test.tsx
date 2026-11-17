@@ -22,7 +22,7 @@ test("scopes the CeCeMate theme and presents the Chinese brand", () => {
     screen.getByTestId("cecemate-theme").classList.contains("cecemate-theme"),
   ).toBe(true);
   expect(screen.getByText("CeCeMate")).toBeDefined();
-  expect(screen.getByText("创投洞察 · 智能体工作台")).toBeDefined();
+  expect(screen.queryByText("创投洞察 · 智能体工作台")).toBeNull();
 
   const beta = screen.getByRole("button", { name: "MCP 服务 Beta" });
   expect(beta.getAttribute("aria-disabled")).toBe("true");

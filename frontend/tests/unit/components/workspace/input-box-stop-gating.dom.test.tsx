@@ -113,6 +113,25 @@ describe("InputBox stop gating (runs:cancel)", () => {
     expect((input as HTMLTextAreaElement).value).toBe("");
   });
 
+  it("sends the running input as a steer update when the user selects it", async () => {
+    const onBusySubmit = rs.fn();
+    renderComposer({ onStop: rs.fn(), onBusySubmit });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Send while working" }),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: /Steer/ }));
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Focus on risks" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send update" }));
+
+    await waitFor(() =>
+      expect(onBusySubmit).toHaveBeenCalledWith("Focus on risks", "steer"),
+    );
+  });
+
   it("does not expose input controls when creating Runs is denied", () => {
     renderComposer({
       onStop: rs.fn(),

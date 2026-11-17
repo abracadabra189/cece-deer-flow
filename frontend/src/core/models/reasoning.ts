@@ -126,7 +126,7 @@ export function getResolvedMode(
     }
     return mode ?? "pro";
   }
-  return mode ?? "pro";
+  return mode ?? "flash";
 }
 
 /** The effort a mode preset implies, mapped onto the model's contract. */
