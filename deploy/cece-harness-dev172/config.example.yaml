@@ -241,6 +241,14 @@ auth:
     session_expiry_minutes: null
     frontend_base_url: http://172.25.18.172:17178
 
+# Office 文件（Word、Excel、PowerPoint）在制品区的本地浏览器预览。
+# 扩展源码安装在 backend/extensions/sources/，需随 Gateway 镜像一同构建。
+plugins:
+  - use: deerflow_extension_office_preview:install
+    enabled: true
+    config:
+      enabled: true
+
 sandbox:
   use: deerflow.community.aio_sandbox:AioSandboxProvider
   image: cece-harness-sandbox:base-v1
