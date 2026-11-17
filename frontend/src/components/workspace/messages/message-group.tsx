@@ -29,7 +29,6 @@ import {
   ChainOfThoughtSearchResults,
   ChainOfThoughtStep,
 } from "@/components/ai-elements/chain-of-thought";
-import { CodeBlock } from "@/components/ai-elements/code-block";
 import { Button } from "@/components/ui/button";
 import {
   buildWriteFileArtifactURL,
@@ -1112,22 +1111,12 @@ function ToolCall({
         />
       );
     }
-    const command: string | undefined = (args as { command: string })?.command;
     return (
       <ChainOfThoughtStep
         key={id}
         label={resolveLabel(description)}
         icon={SquareTerminalIcon}
-      >
-        {command && (
-          <CodeBlock
-            className="mx-0 cursor-pointer border-none px-0"
-            showLineNumbers={false}
-            language="bash"
-            code={command}
-          />
-        )}
-      </ChainOfThoughtStep>
+      />
     );
   } else if (kind === "ask_clarification") {
     return (

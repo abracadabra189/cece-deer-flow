@@ -30,42 +30,9 @@ function Presentation({
   expanded: boolean | undefined;
   children: ReactNode;
 }) {
-  const { isMobile, setOpenMobile } = useSidebar();
   return (
     <ExpandedContext.Provider value={expanded}>
-      <div
-        className="contents"
-        onClickCapture={(event) => {
-          if (
-            !isMobile ||
-            event.defaultPrevented ||
-            !(event.target instanceof Element) ||
-            event.button !== 0 ||
-            event.metaKey ||
-            event.ctrlKey ||
-            event.shiftKey ||
-            event.altKey
-          )
-            return;
-          const link = event.target.closest<HTMLAnchorElement>("a[href]");
-          if (
-            !link ||
-            link.hasAttribute("download") ||
-            (link.target && link.target !== "_self")
-          )
-            return;
-          const destination = new URL(link.href, window.location.href);
-          if (
-            destination.origin === window.location.origin &&
-            destination.pathname !== window.location.pathname
-          ) {
-            // Release the focus trap before the destination mounts its input.
-            setOpenMobile(false);
-          }
-        }}
-      >
-        {children}
-      </div>
+      <div className="contents">{children}</div>
     </ExpandedContext.Provider>
   );
 }
@@ -115,15 +82,14 @@ export function WorkspaceSidebarFrame({
   style,
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
-  const { isMobile, open, openMobile, setOpenMobile } = useSidebar();
+  const { isMobile, open, openMobile } = useSidebar();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   const railRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     pathnameRef.current = pathname;
-    setOpenMobile(false);
-  }, [pathname, setOpenMobile]);
+  }, [pathname]);
 
   if (!isMobile || collapsible !== "icon" || open) {
     return (

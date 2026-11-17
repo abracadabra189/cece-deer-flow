@@ -60,7 +60,6 @@ import { pathOfThread } from "@/core/threads/utils";
 import { isIMEComposing } from "@/lib/ime";
 import { cn } from "@/lib/utils";
 
-import { WorkspaceChangeBadge } from "../changes";
 import { CitationSourcesPanel } from "../citations/citation-sources-panel";
 import { KnowledgeSourcesPanel } from "../citations/knowledge-source";
 import { ConversationReferenceChip } from "../conversation-references/conversation-reference-chip";
@@ -154,7 +153,6 @@ export function MessageListItem({
   artifactPaths = [],
   knowledgeSources = [],
   showCopyButton = true,
-  showWorkspaceChanges = false,
   durationSeconds,
   canEdit = false,
   editLockedByGoal = false,
@@ -170,6 +168,7 @@ export function MessageListItem({
   feedback?: FeedbackData | null;
   runId?: string;
   showCopyButton?: boolean;
+  /** @deprecated Completion summaries no longer expose workspace file changes. */
   showWorkspaceChanges?: boolean;
   durationSeconds?: number;
   canEdit?: boolean;
@@ -240,8 +239,6 @@ export function MessageListItem({
         threadId={threadId}
         artifactPaths={artifactPaths}
         knowledgeSources={knowledgeSources}
-        runId={runId}
-        showWorkspaceChanges={showWorkspaceChanges}
         durationSeconds={durationSeconds}
         editState={
           isHuman && isEditing
@@ -422,8 +419,6 @@ function MessageContent_({
   threadId,
   artifactPaths,
   knowledgeSources = [],
-  runId,
-  showWorkspaceChanges = false,
   durationSeconds,
   editState,
 }: {
@@ -433,7 +428,7 @@ function MessageContent_({
   threadId: string;
   artifactPaths: readonly string[];
   knowledgeSources?: readonly RetrievalSource[];
-  runId?: string;
+  /** @deprecated Completion summaries no longer expose workspace file changes. */
   showWorkspaceChanges?: boolean;
   durationSeconds?: number;
   editState?: {
@@ -666,13 +661,6 @@ function MessageContent_({
       </MessageArtifactPathsContext.Provider>
       <CitationSourcesPanel sources={citationSources} />
       <KnowledgeSourcesPanel content={contentToDisplay} />
-      {message.type === "ai" && showWorkspaceChanges && (
-        <WorkspaceChangeBadge
-          threadId={threadId}
-          runId={runId}
-          disabled={isLoading}
-        />
-      )}
     </AIElementMessageContent>
   );
 }

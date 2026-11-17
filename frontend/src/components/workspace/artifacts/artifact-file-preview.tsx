@@ -41,32 +41,43 @@ export function ArtifactPreviewError({
   isMock,
   message,
   downloadLabel,
+  onRetry,
+  retryLabel,
 }: {
   filepath: string;
   threadId: string;
   isMock?: boolean;
   message: string;
   downloadLabel: string;
+  onRetry?: () => void;
+  retryLabel?: string;
 }) {
   return (
     <div className="flex size-full items-center justify-center p-6">
       <div className="flex max-w-sm flex-col items-center gap-4 text-center">
         <p className="text-muted-foreground text-sm">{message}</p>
-        <Button asChild>
-          <a
-            href={urlOfArtifact({
-              filepath,
-              threadId,
-              download: true,
-              isMock,
-            })}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <DownloadIcon className="size-4" />
-            {downloadLabel}
-          </a>
-        </Button>
+        <div className="flex flex-wrap justify-center gap-2">
+          {onRetry ? (
+            <Button variant="outline" onClick={onRetry}>
+              {retryLabel ?? "Retry"}
+            </Button>
+          ) : null}
+          <Button asChild>
+            <a
+              href={urlOfArtifact({
+                filepath,
+                threadId,
+                download: true,
+                isMock,
+              })}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <DownloadIcon className="size-4" />
+              {downloadLabel}
+            </a>
+          </Button>
+        </div>
       </div>
     </div>
   );

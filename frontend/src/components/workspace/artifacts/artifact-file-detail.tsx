@@ -56,6 +56,7 @@ import {
 } from "@/core/artifacts/viewer";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { writeTextToClipboard } from "@/core/clipboard";
+import { useArtifactPreviewRenderer } from "@/core/extensions/artifact-previews";
 import { useI18n } from "@/core/i18n/hooks";
 import { findToolCallResult } from "@/core/messages/utils";
 import { installSkill, SkillRequestError } from "@/core/skills/api";
@@ -72,12 +73,12 @@ import { useThread } from "../messages/context";
 import { Tooltip } from "../tooltip";
 
 import {
-  ArtifactDownloadFallback,
   ArtifactFilePreview,
   ArtifactPreviewError,
   formatArtifactBytes,
 } from "./artifact-file-preview";
 import { useArtifacts } from "./context";
+import { PluginArtifactPreview } from "./plugin-artifact-preview";
 
 const WRITE_FILE_PREVIEW_REFRESH_INTERVAL_MS = 3000;
 
@@ -116,6 +117,7 @@ export function ArtifactFileDetail({
     [filepathFromProps, isWriteFile],
   );
   const filepath = parsedWriteFile?.path ?? filepathFromProps;
+  const { match: pluginPreview } = useArtifactPreviewRenderer(filepath);
   // Keep these local because ChatBox replaces context artifacts with thread state.
   const [openedPresentedFilepaths, setOpenedPresentedFilepaths] = useState<
     string[]
@@ -616,7 +618,12 @@ export function ArtifactFileDetail({
                 }
                 onClick={() => {
                   const w = window.open(
-                    resolveArtifactOpenURL({ filepath, threadId, isMock }),
+                    resolveArtifactOpenURL({
+                      filepath,
+                      threadId,
+                      isMock,
+                      hasPluginPreview: !!pluginPreview,
+                    }),
                     "_blank",
                     "noopener,noreferrer",
                   );
@@ -786,10 +793,11 @@ export function ArtifactFileDetail({
             />
           )}
           {!isCodeFile && !canPreviewInBrowser && (
-            <ArtifactDownloadFallback
+            <PluginArtifactPreview
               filepath={filepath}
               threadId={threadId}
               isMock={isMock}
+              isRunning={thread.isLoading}
             />
           )}
         </div>

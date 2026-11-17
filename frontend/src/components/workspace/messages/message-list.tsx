@@ -84,7 +84,6 @@ import {
   type MessageGroup as ThreadMessageGroup,
   type StreamMetadataSnapshot,
 } from "@/core/messages/utils";
-import { getWorkspaceChangeAnchorGroupIndices } from "@/core/messages/workspace-change-anchor";
 import {
   placeTaskEvents,
   type ScheduledTaskEvent,
@@ -672,10 +671,6 @@ export function MessageList({
   );
   const artifactArchiveCandidatesByGroupIndex = useMemo(
     () => getArtifactArchiveCandidatesByGroupIndex(groupedMessages),
-    [groupedMessages],
-  );
-  const workspaceChangeAnchorGroupIndices = useMemo(
-    () => getWorkspaceChangeAnchorGroupIndices(groupedMessages),
     [groupedMessages],
   );
   const skillUsageByGroupIndex = useMemo(
@@ -1355,9 +1350,6 @@ export function MessageList({
                               : reasoningDurations.get(msg)?.durationSeconds
                           }
                           showCopyButton={group.type !== "assistant"}
-                          showWorkspaceChanges={workspaceChangeAnchorGroupIndices.has(
-                            groupIndex,
-                          )}
                           canEdit={isLatestEditableHumanMessage && canEdit}
                           editLockedByGoal={
                             isLatestEditableHumanMessage && editLockedByGoal
