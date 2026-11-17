@@ -14,6 +14,7 @@ import yaml
 
 ALLOWED_FRONTMATTER_PROPERTIES = {
     "name",
+    "display_name",
     "description",
     "license",
     "allowed-tools",
@@ -25,6 +26,31 @@ ALLOWED_FRONTMATTER_PROPERTIES = {
     "version",
     "author",
 }
+
+DISPLAY_NAME_MAX_LENGTH = 100
+
+
+def parse_display_name(value: Any) -> str | None:
+    """Validate and normalize an optional user-facing skill name.
+
+    ``name`` remains the stable, machine-facing identifier. This field is only
+    for catalog and composer presentation, so it may contain localized text.
+    Keeping validation here ensures runtime loading and installation agree.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"display_name must be a string, got {type(value).__name__}")
+
+    display_name = value.strip()
+    if not display_name:
+        raise ValueError("display_name cannot be empty")
+    if "<" in display_name or ">" in display_name:
+        raise ValueError("display_name cannot contain angle brackets (< or >)")
+    if len(display_name) > DISPLAY_NAME_MAX_LENGTH:
+        raise ValueError(f"display_name is too long ({len(display_name)} characters). Maximum is {DISPLAY_NAME_MAX_LENGTH} characters.")
+    return display_name
+
 
 # `\ufeff` is the UTF-8 byte-order mark that Windows Notepad and PowerShell's
 # `Set-Content -Encoding UTF8` prepend to a saved file. It is consumed by the match, so

@@ -42,6 +42,7 @@ import {
   useUploadSkillArchive,
 } from "@/core/skills/hooks";
 import type { Skill } from "@/core/skills/type";
+import { isSkillVisible } from "@/core/skills/visibility";
 import { env } from "@/env";
 
 import { CapabilityCard, CapabilityIcon } from "./capability-card";
@@ -108,6 +109,7 @@ function SkillList({ skills, query }: { skills: Skill[]; query: string }) {
       skills.filter((skill) => {
         const presented = presentSkill(skill, locale);
         return (
+          isSkillVisible(skill) &&
           (filter === "all" || skill.category === filter) &&
           `${skill.name} ${skill.description} ${presented.title} ${presented.description}`
             .toLowerCase()

@@ -30,6 +30,26 @@ class TestValidateSkillFrontmatter:
         assert msg == "Skill is valid!"
         assert name == "my-skill"
 
+    def test_valid_display_name(self, tmp_path):
+        skill_dir = _write_skill(
+            tmp_path,
+            "---\nname: enterprise-risk-analysis\ndisplay_name: 企业风险分析\ndescription: A valid skill\n---\n\nBody\n",
+        )
+        valid, msg, name = _validate_skill_frontmatter(skill_dir)
+        assert valid is True
+        assert msg == "Skill is valid!"
+        assert name == "enterprise-risk-analysis"
+
+    def test_rejects_non_string_display_name(self, tmp_path):
+        skill_dir = _write_skill(
+            tmp_path,
+            "---\nname: enterprise-risk-analysis\ndisplay_name: 123\ndescription: A valid skill\n---\n\nBody\n",
+        )
+        valid, msg, name = _validate_skill_frontmatter(skill_dir)
+        assert valid is False
+        assert msg == "display_name must be a string, got int"
+        assert name is None
+
     def test_valid_with_all_allowed_fields(self, tmp_path):
         skill_dir = _write_skill(
             tmp_path,

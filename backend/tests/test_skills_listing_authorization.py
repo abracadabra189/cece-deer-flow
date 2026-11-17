@@ -42,7 +42,13 @@ def _user(**overrides):
     return SimpleNamespace(**values)
 
 
-def _skill(name: str, *, category: SkillCategory = SkillCategory.PUBLIC, enabled: bool = True) -> Skill:
+def _skill(
+    name: str,
+    *,
+    category: SkillCategory = SkillCategory.PUBLIC,
+    enabled: bool = True,
+    display_name: str | None = None,
+) -> Skill:
     """Build a minimal Skill with dummy paths; only name/category/enabled matter here."""
     return Skill(
         name=name,
@@ -53,6 +59,7 @@ def _skill(name: str, *, category: SkillCategory = SkillCategory.PUBLIC, enabled
         relative_path=Path(name),
         category=category,
         enabled=enabled,
+        display_name=display_name,
     )
 
 
@@ -159,6 +166,29 @@ def test_list_skills_disabled_returns_all(monkeypatch):
     names = [s["name"] for s in response.json()["skills"]]
     assert names == ["pdf-export", "web-research"]
     cached.assert_not_called()
+
+
+def test_list_skills_returns_display_name(monkeypatch):
+    """The catalog exposes an author-provided display name without changing its ID."""
+    storage = _FakeStorage([_skill("enterprise-risk-analysis", display_name="企业风险分析")])
+    _stub_user(monkeypatch, _user())
+    _stub_storage(monkeypatch, storage)
+
+    with TestClient(_make_skills_app(_make_app_config())) as client:
+        response = client.get("/api/skills")
+
+    assert response.status_code == 200
+    assert response.json()["skills"] == [
+        {
+            "name": "enterprise-risk-analysis",
+            "display_name": "企业风险分析",
+            "description": "Skill enterprise-risk-analysis",
+            "license": None,
+            "category": "public",
+            "enabled": True,
+            "editable": False,
+        }
+    ]
 
 
 def test_list_skills_anonymous_user_returns_all(monkeypatch):

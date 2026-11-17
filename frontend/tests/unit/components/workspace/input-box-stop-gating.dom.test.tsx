@@ -143,6 +143,16 @@ describe("InputBox stop gating (runs:cancel)", () => {
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Send update" })).toBeNull();
   });
+
+  it("shows the queue mode selector before the active run accepts inputs", () => {
+    renderComposer({ onStop: rs.fn() });
+
+    expect(
+      screen.getByRole("button", { name: "Send while working" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Send update" })).toBeNull();
+  });
+
   it("disables the stop affordance for a denied role and never fires onStop", () => {
     const onStop = rs.fn();
     const { container } = renderComposer({ canStopStreaming: false, onStop });

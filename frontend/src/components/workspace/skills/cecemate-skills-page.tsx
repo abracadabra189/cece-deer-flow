@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useSkills } from "@/core/skills/hooks";
 import type { Skill } from "@/core/skills/type";
+import { isSkillVisible } from "@/core/skills/visibility";
 import { cn } from "@/lib/utils";
 
 import { presentSkill } from "../capabilities/skill-presentation";
@@ -69,7 +70,10 @@ export function CeceMateSkillsPage() {
   const [category, setCategory] = useState(allCategories);
   const [selected, setSelected] = useState<Skill | null>(null);
   const catalogSkills = useMemo(
-    () => skills.filter((skill) => skill.category !== "integrations"),
+    () =>
+      skills.filter(
+        (skill) => skill.category !== "integrations" && isSkillVisible(skill),
+      ),
     [skills],
   );
   const categories = useMemo(

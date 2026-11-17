@@ -1,5 +1,6 @@
 ---
 name: deep-research
+display_name: 深度研究
 description: Use for substantial investigations needing current evidence, source comparison, or synthesis across several dimensions. Scale research to the question and requested depth.
 ---
 

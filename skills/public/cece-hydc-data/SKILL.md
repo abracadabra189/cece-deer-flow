@@ -1,5 +1,6 @@
 ---
 name: cece-hydc-data
+display_name: CECE 产业数据
 description: Use when a CECE user needs enterprise, industry, market, policy, announcement, financing, or regional facts from the HYDC data service.
 ---
 

@@ -6,7 +6,7 @@ Pure-logic validation of SKILL.md frontmatter — no FastAPI or HTTP dependencie
 import re
 from pathlib import Path
 
-from deerflow.skills.frontmatter import ALLOWED_FRONTMATTER_PROPERTIES, split_skill_markdown
+from deerflow.skills.frontmatter import ALLOWED_FRONTMATTER_PROPERTIES, parse_display_name, split_skill_markdown
 from deerflow.skills.parser import parse_allowed_tools
 from deerflow.skills.types import SKILL_MD_FILE
 
@@ -78,6 +78,11 @@ def validate_skill_frontmatter_text(content: str) -> tuple[bool, str, str | None
         return False, "Description cannot contain angle brackets (< or >)", None
     if len(description) > 1024:
         return False, f"Description is too long ({len(description)} characters). Maximum is 1024 characters.", None
+
+    try:
+        parse_display_name(frontmatter.get("display_name"))
+    except ValueError as e:
+        return False, str(e), None
 
     try:
         parse_allowed_tools(frontmatter.get("allowed-tools"), skill_md)

@@ -98,6 +98,7 @@ import {
 } from "@/core/sidecar";
 import { parseSlashSkillReference } from "@/core/skills";
 import { useSkills } from "@/core/skills/hooks";
+import { skillDisplayName } from "@/core/skills/visibility";
 import { DEFAULT_MAX_SUGGESTIONS } from "@/core/suggestions/api";
 import { useSuggestionsConfig } from "@/core/suggestions/hooks";
 import type { AgentThreadContext, GoalState } from "@/core/threads";
@@ -1906,7 +1907,7 @@ export function InputBox({
         token = referenceToken(
           "skill",
           selection.skill.name,
-          selection.skill.name,
+          skillDisplayName(selection.skill),
         );
       if (selection.kind === "conversation")
         token = referenceToken(
@@ -3271,7 +3272,7 @@ export function InputBox({
                 onModelSelect={handleModelSelect}
               />
             </ModelPicker>
-            {status === "streaming" && canSendBusyInput && (
+            {status === "streaming" && canCreateRuns && (
               <>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -3328,18 +3329,20 @@ export function InputBox({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <PromptInputSubmit
-                  aria-label={t.inputBox.runInputSend}
-                  className="size-8 rounded-full border border-[#d6def2] bg-white text-[#2563eb] shadow-none hover:bg-[#eef3ff]"
-                  status={runInputSending ? "submitted" : "ready"}
-                  title={
-                    runInputMode === "queue"
-                      ? t.inputBox.queueModeHelp
-                      : t.inputBox.steerModeHelp
-                  }
-                  variant="outline"
-                  disabled={composerLocked || !textInput.value.trim()}
-                />
+                {canSendBusyInput && (
+                  <PromptInputSubmit
+                    aria-label={t.inputBox.runInputSend}
+                    className="size-8 rounded-full border border-[#d6def2] bg-white text-[#2563eb] shadow-none hover:bg-[#eef3ff]"
+                    status={runInputSending ? "submitted" : "ready"}
+                    title={
+                      runInputMode === "queue"
+                        ? t.inputBox.queueModeHelp
+                        : t.inputBox.steerModeHelp
+                    }
+                    variant="outline"
+                    disabled={composerLocked || !textInput.value.trim()}
+                  />
+                )}
               </>
             )}
             <PromptInputSubmit

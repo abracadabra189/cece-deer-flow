@@ -30,6 +30,7 @@ import { useI18n } from "@/core/i18n/hooks";
 import { useInfiniteProjectDocuments } from "@/core/projects/hooks";
 import type { ProjectDocument } from "@/core/projects/types";
 import type { Skill } from "@/core/skills/type";
+import { isSkillVisible, skillDisplayName } from "@/core/skills/visibility";
 import { useInfiniteThreads } from "@/core/threads/hooks";
 import { agentNameOfThread, titleOfThread } from "@/core/threads/utils";
 import { isCompositionConfirmEnter, isIMEComposing } from "@/lib/ime";
@@ -126,10 +127,10 @@ export function MentionPicker({
   );
   const options = useMemo(() => {
     const result: Option[] = skills
-      .filter((skill) => skill.enabled)
+      .filter((skill) => skill.enabled && isSkillVisible(skill))
       .map((skill) => ({
         id: `skill:${skill.name}`,
-        label: skill.name,
+        label: skillDisplayName(skill),
         description: skill.description,
         selection: { kind: "skill", skill },
         selected: selectedSkills?.includes(skill.name),

@@ -102,6 +102,7 @@ class SkillResponse(BaseModel):
     """Response model for skill information."""
 
     name: str = Field(..., description="Name of the skill")
+    display_name: str | None = Field(None, description="Optional user-facing name of the skill")
     description: str = Field(..., description="Description of what the skill does")
     license: str | None = Field(None, description="License information")
     category: SkillCategory = Field(..., description="Category of the skill (public, custom, or legacy)")
@@ -251,6 +252,7 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
     """Convert a Skill object to a SkillResponse."""
     return SkillResponse(
         name=skill.name,
+        display_name=skill.display_name,
         description=skill.description,
         license=skill.license,
         category=skill.category,
