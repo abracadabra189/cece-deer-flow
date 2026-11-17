@@ -239,12 +239,6 @@ function isStar(field: string): boolean {
   return field === "*";
 }
 
-function cronNumber(field: string, min: number, max: number): number | null {
-  if (!/^\d+$/.test(field)) return null;
-  const value = Number(field);
-  return value >= min && value <= max ? value : null;
-}
-
 function isSimpleDowList(field: string): boolean {
   return field.split(",").every((tok) => /^[0-7]$/.test(tok));
 }
@@ -264,23 +258,26 @@ export function parseCron(cron: string): {
   const domF = fields[2]!;
   const monF = fields[3]!;
   const dowF = fields[4]!;
-  const minute = cronNumber(mF, 0, 59);
-  const hour = cronNumber(hF, 0, 23);
-  const dayOfMonth = cronNumber(domF, 1, 31);
+  const numMinute = /^\d+$/.test(mF);
+  const numHour = /^\d+$/.test(hF);
+  const numDom = /^\d+$/.test(domF);
   const stars = isStar(domF) && isStar(monF);
 
   // hourly: "M * * * *"
-  if (minute !== null && isStar(hF) && stars && isStar(dowF)) {
-    return { preset: "hourly", parts: { minute } };
+  if (numMinute && isStar(hF) && stars && isStar(dowF)) {
+    return { preset: "hourly", parts: { minute: Number(mF) } };
   }
   // daily: "M H * * *"
-  if (minute !== null && hour !== null && stars && isStar(dowF)) {
-    return { preset: "daily", parts: { minute, hour } };
+  if (numMinute && numHour && stars && isStar(dowF)) {
+    return {
+      preset: "daily",
+      parts: { minute: Number(mF), hour: Number(hF) },
+    };
   }
   // weekly: "M H * * DOW" (simple comma list of single digits only)
   if (
-    minute !== null &&
-    hour !== null &&
+    numMinute &&
+    numHour &&
     isStar(domF) &&
     isStar(monF) &&
     !isStar(dowF) &&
@@ -294,21 +291,15 @@ export function parseCron(cron: string): {
     if (ordered.length > 0) {
       return {
         preset: "weekly",
-        parts: { minute, hour, weekdays: ordered },
+        parts: { minute: Number(mF), hour: Number(hF), weekdays: ordered },
       };
     }
   }
   // monthly: "M H DOM * *"
-  if (
-    minute !== null &&
-    hour !== null &&
-    dayOfMonth !== null &&
-    isStar(monF) &&
-    isStar(dowF)
-  ) {
+  if (numMinute && numHour && numDom && isStar(monF) && isStar(dowF)) {
     return {
       preset: "monthly",
-      parts: { minute, hour, dayOfMonth },
+      parts: { minute: Number(mF), hour: Number(hF), dayOfMonth: Number(domF) },
     };
   }
   return { preset: "custom", parts: { raw: expr } };
@@ -404,14 +395,13 @@ function parseDisplayCron(cron: string): {
   }
   const fields = cron.split(/\s+/);
   const [m, h, dom, mon, dow] = fields;
-  if (fields.length !== 5 || !m || !h || !dow) {
-    return parsed;
-  }
-  const minute = cronNumber(m, 0, 59);
-  const hour = cronNumber(h, 0, 23);
   if (
-    minute === null ||
-    hour === null ||
+    fields.length !== 5 ||
+    !m ||
+    !h ||
+    !dow ||
+    !/^\d+$/.test(m) ||
+    !/^\d+$/.test(h) ||
     dom !== "*" ||
     mon !== "*" ||
     !/^[0-7](-[0-7])?(,[0-7](-[0-7])?)*$/.test(dow)
@@ -432,8 +422,8 @@ function parseDisplayCron(cron: string): {
   return {
     preset: "weekly",
     parts: {
-      minute,
-      hour,
+      minute: Number(m),
+      hour: Number(h),
       weekdays: orderedWeekdays([...days]),
     },
   };

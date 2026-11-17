@@ -13,7 +13,6 @@ import type {
 import type { MessageGroup } from "@/core/messages/utils";
 
 rs.mock("@/components/ai-elements/conversation", () => ({
-  ConversationScrollButton: () => null,
   Conversation: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),

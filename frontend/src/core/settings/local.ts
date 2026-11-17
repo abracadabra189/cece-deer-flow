@@ -84,7 +84,6 @@ export interface LocalSettings {
     | "reasoning_effort"
   > & {
     model_name?: string | undefined;
-    tool_approval_mode?: "ask" | "auto" | "full";
     mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
     reasoning_effort?: ReasoningEffortValue;
   };

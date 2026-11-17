@@ -40,8 +40,9 @@ export function WorkspaceContainer({
 export function WorkspaceHeader({
   className,
   children,
+  breadcrumbs = true,
   ...props
-}: React.ComponentProps<"header">) {
+}: React.ComponentProps<"header"> & { breadcrumbs?: boolean }) {
   const { t } = useI18n();
   const pathname = usePathname();
   const segments = useMemo(() => {
@@ -54,49 +55,57 @@ export function WorkspaceHeader({
     <header
       className={cn(
         "top-0 right-0 left-0 z-20 flex h-16 shrink-0 items-center justify-between gap-2 border-b backdrop-blur-sm transition-[width,height] ease-out group-has-data-[collapsible=icon]/sidebar-wrapper:h-12",
+        !breadcrumbs && "h-12 md:h-0 md:border-b-0",
         className,
       )}
       {...props}
     >
-      <div className="flex min-w-0 items-center gap-2 px-2 sm:px-4">
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-2 px-2 sm:px-4",
+          !breadcrumbs && "md:hidden",
+        )}
+      >
         <WorkspaceSidebarTrigger className="md:hidden" />
-        <Breadcrumb>
-          <BreadcrumbList>
-            {segments?.[0] && (
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink asChild>
-                  <Link href={`/${segments[0]}`}>
-                    {nameOfSegment(segments[0], t)}
-                  </Link>
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-            )}
-            {segments?.[1] && (
-              <>
-                <BreadcrumbSeparator className="hidden md:block" />
-                <BreadcrumbItem>
-                  {segments[1] && LINKABLE_SECTIONS[segments[1]] ? (
-                    <BreadcrumbLink asChild>
-                      <Link href={`/${segments[0]}/${segments[1]}`}>
-                        {nameOfSegment(segments[1], t)}
-                      </Link>
-                    </BreadcrumbLink>
-                  ) : (
-                    <BreadcrumbPage>
-                      {nameOfSegment(segments[1], t)}
-                    </BreadcrumbPage>
-                  )}
+        {breadcrumbs && (
+          <Breadcrumb>
+            <BreadcrumbList>
+              {segments?.[0] && (
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink asChild>
+                    <Link href={`/${segments[0]}`}>
+                      {nameOfSegment(segments[0], t)}
+                    </Link>
+                  </BreadcrumbLink>
                 </BreadcrumbItem>
-              </>
-            )}
-            {children && (
-              <>
-                <BreadcrumbSeparator />
-                {children}
-              </>
-            )}
-          </BreadcrumbList>
-        </Breadcrumb>
+              )}
+              {segments?.[1] && (
+                <>
+                  <BreadcrumbSeparator className="hidden md:block" />
+                  <BreadcrumbItem>
+                    {segments[1] && LINKABLE_SECTIONS[segments[1]] ? (
+                      <BreadcrumbLink asChild>
+                        <Link href={`/${segments[0]}/${segments[1]}`}>
+                          {nameOfSegment(segments[1], t)}
+                        </Link>
+                      </BreadcrumbLink>
+                    ) : (
+                      <BreadcrumbPage>
+                        {nameOfSegment(segments[1], t)}
+                      </BreadcrumbPage>
+                    )}
+                  </BreadcrumbItem>
+                </>
+              )}
+              {children && (
+                <>
+                  <BreadcrumbSeparator />
+                  {children}
+                </>
+              )}
+            </BreadcrumbList>
+          </Breadcrumb>
+        )}
       </div>
     </header>
   );

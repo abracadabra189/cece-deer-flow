@@ -5,10 +5,7 @@ import {
   FileCogIcon,
   FilePlayIcon,
   FileTextIcon,
-  FileJsonIcon,
   ImageIcon,
-  PresentationIcon,
-  SheetIcon,
 } from "lucide-react";
 
 const extensionMap: Record<string, string> = {
@@ -228,21 +225,6 @@ export function getFileIcon(filepath: string, className?: string) {
   const extension = getFileExtension(filepath);
   const { isCodeFile } = checkCodeFile(filepath);
   switch (extension) {
-    case "xlsx":
-    case "xls":
-    case "csv":
-    case "tsv":
-      return <SheetIcon className={className} />;
-    case "pptx":
-    case "ppt":
-      return <PresentationIcon className={className} />;
-    case "docx":
-    case "doc":
-      return <FileTextIcon className={className} />;
-    case "json":
-    case "jsonc":
-    case "json5":
-      return <FileJsonIcon className={className} />;
     case "skill":
       return <FileCogIcon className={className} />;
     case "html":

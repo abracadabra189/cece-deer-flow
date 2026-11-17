@@ -66,36 +66,22 @@ export type HumanInputResponse =
       value: string;
     };
 
-export type HitlApprovalDecision =
-  | "approve"
-  | "approve_thread"
-  | "edit"
-  | "reject";
+export type HitlApprovalDecision = "approve" | "reject";
 
 export type HitlApprovalAction = {
   tool_call_id: string;
   tool_name: string;
   args_summary: string | Record<string, unknown>;
   request_id: string;
-  args?: Record<string, unknown>;
-  args_schema?: Record<string, unknown>;
-  fingerprint?: string;
-  grant_allowed?: boolean;
-  reason?: string;
-  source?: Record<string, unknown>;
 };
 
 export type HitlApprovalRequest = {
-  version: 1 | 2;
+  version: 1;
   kind: "hitl_approval";
   request_id: string;
   actions: HitlApprovalAction[];
   allowed_decisions: HitlApprovalDecision[];
   pending_tool_call_ids: string[];
-  transport?: "live";
-  run_id?: string;
-  agent_id?: string;
-  expires_at?: number;
 };
 
 export type HitlApprovalResponse = {
@@ -107,7 +93,6 @@ export type HitlApprovalResponse = {
   response_kind: "option";
   option_id: HitlApprovalDecision;
   value: string;
-  args?: Record<string, unknown>;
 };
 
 export type HitlApprovalResume = { responses: HitlApprovalResponse[] };
@@ -142,12 +127,7 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isApprovalDecision(value: unknown): value is HitlApprovalDecision {
-  return (
-    value === "approve" ||
-    value === "reject" ||
-    value === "approve_thread" ||
-    value === "edit"
-  );
+  return value === "approve" || value === "reject";
 }
 
 /** Parse only the approval interrupt payload; static breakpoints stay invisible. */
@@ -157,7 +137,7 @@ export function parseHitlApprovalRequest(
   if (
     !isRecord(value) ||
     value.kind !== "hitl_approval" ||
-    (value.version !== 1 && value.version !== 2) ||
+    value.version !== 1 ||
     !isNonEmptyString(value.request_id) ||
     !Array.isArray(value.actions) ||
     value.actions.length === 0 ||
@@ -166,11 +146,6 @@ export function parseHitlApprovalRequest(
   ) {
     return null;
   }
-  if (
-    value.transport !== undefined &&
-    (value.transport !== "live" || !isNonEmptyString(value.run_id))
-  )
-    return null;
 
   const allowedDecisions = value.allowed_decisions.filter(isApprovalDecision);
   if (
@@ -197,14 +172,6 @@ export function parseHitlApprovalRequest(
     ) {
       return null;
     }
-    if (
-      value.version === 2 &&
-      (!isRecord(action.args) ||
-        Array.isArray(action.args) ||
-        !isRecord(action.args_schema) ||
-        Array.isArray(action.args_schema))
-    )
-      return null;
     toolCallIds.add(action.tool_call_id);
     requestIds.add(action.request_id);
     actions.push({
@@ -212,18 +179,6 @@ export function parseHitlApprovalRequest(
       tool_name: action.tool_name,
       args_summary: action.args_summary,
       request_id: action.request_id,
-      ...(isRecord(action.args) ? { args: action.args } : {}),
-      ...(isRecord(action.args_schema)
-        ? { args_schema: action.args_schema }
-        : {}),
-      ...(typeof action.fingerprint === "string"
-        ? { fingerprint: action.fingerprint }
-        : {}),
-      ...(typeof action.grant_allowed === "boolean"
-        ? { grant_allowed: action.grant_allowed }
-        : {}),
-      ...(typeof action.reason === "string" ? { reason: action.reason } : {}),
-      ...(isRecord(action.source) ? { source: action.source } : {}),
     });
   }
 
@@ -238,19 +193,12 @@ export function parseHitlApprovalRequest(
   }
 
   return {
-    version: value.version,
+    version: 1,
     kind: "hitl_approval",
     request_id: value.request_id,
     actions,
     allowed_decisions: allowedDecisions,
     pending_tool_call_ids: [...value.pending_tool_call_ids] as string[],
-    ...(value.transport === "live"
-      ? { transport: "live" as const, run_id: value.run_id as string }
-      : {}),
-    ...(typeof value.agent_id === "string" ? { agent_id: value.agent_id } : {}),
-    ...(typeof value.expires_at === "number"
-      ? { expires_at: value.expires_at }
-      : {}),
   };
 }
 
@@ -298,18 +246,11 @@ export function createHitlApprovalResponses(
   request: HitlApprovalRequest,
   decisions: Readonly<Record<string, HitlApprovalDecision | undefined>>,
   rejectionReason = "",
-  editedArguments: Readonly<
-    Record<string, Record<string, unknown> | undefined>
-  > = {},
 ): HitlApprovalResponse[] | null {
   const responses: HitlApprovalResponse[] = [];
   for (const action of request.actions) {
     const decision = decisions[action.tool_call_id];
     if (!decision || !request.allowed_decisions.includes(decision)) return null;
-    if (decision === "edit" && !editedArguments[action.tool_call_id])
-      return null;
-    if (decision === "approve_thread" && action.grant_allowed !== true)
-      return null;
     responses.push({
       version: 1,
       kind: "human_input_response",
@@ -319,9 +260,6 @@ export function createHitlApprovalResponses(
       response_kind: "option",
       option_id: decision,
       value: decision === "reject" ? rejectionReason : "",
-      ...(decision === "edit"
-        ? { args: editedArguments[action.tool_call_id] }
-        : {}),
     });
   }
   return responses;

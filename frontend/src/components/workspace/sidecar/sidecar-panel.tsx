@@ -2,15 +2,10 @@
 
 import type { Message } from "@langchain/langgraph-sdk";
 import {
-  CheckIcon,
-  GraduationCapIcon,
-  LightbulbIcon,
   MessageSquareTextIcon,
   PaperclipIcon,
-  RocketIcon,
   Trash2Icon,
   XIcon,
-  ZapIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -18,10 +13,6 @@ import { toast } from "sonner";
 import { ConversationEmptyState } from "@/components/ai-elements/conversation";
 import {
   PromptInput,
-  PromptInputActionMenu,
-  PromptInputActionMenuContent,
-  PromptInputActionMenuItem,
-  PromptInputActionMenuTrigger,
   PromptInputAttachment,
   PromptInputAttachments,
   PromptInputBody,
@@ -44,10 +35,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { hasPermission, PERMISSIONS } from "@/core/auth/permissions";
 import { useI18n } from "@/core/i18n/hooks";
@@ -59,10 +46,7 @@ import {
 import { useModels } from "@/core/models/hooks";
 import {
   getResolvedMode,
-  isThinkingRequired,
   reasoningEffortForMode,
-  resolveReasoningEffort,
-  supportsThinking as modelSupportsThinking,
 } from "@/core/models/reasoning";
 import type { Model } from "@/core/models/types";
 import { useLocalSettings } from "@/core/settings";
@@ -76,7 +60,6 @@ import {
   useDeleteThread,
   useThreadMetadata,
   useThreadStream,
-  type ThreadStreamOptions,
 } from "@/core/threads/hooks";
 import {
   formatUploadSize,
@@ -90,7 +73,6 @@ import { cn } from "@/lib/utils";
 
 import { MessageList, MESSAGE_LIST_DEFAULT_PADDING_BOTTOM } from "../messages";
 import { useThread as useParentThread } from "../messages/context";
-import { ModeHoverGuide } from "../mode-hover-guide";
 import {
   ModelPicker,
   ModelPickerContent,
@@ -118,8 +100,6 @@ function buildHiddenSidecarContextMessage({
     },
   } as Message;
 }
-
-type SidecarInputMode = NonNullable<ThreadStreamOptions["context"]["mode"]>;
 
 function promptMessageFiles(message: PromptInputMessage) {
   return message.files.flatMap((file) =>
@@ -220,24 +200,20 @@ export function SidecarPanel({ className }: { className?: string }) {
     env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true";
 
   useEffect(() => {
-    if (models.length === 0) {
-      return;
-    }
-
     const currentModel = models.find(
       (model) => model.name === sidecar.context.model_name,
     );
-    const fallbackModel = currentModel ?? models[0]!;
-    const nextModelName = fallbackModel.name;
-    const nextMode = getResolvedMode(sidecar.context.mode, fallbackModel);
-    const modeChanged = sidecar.context.mode !== nextMode;
-    const nextEffort = modeChanged
-      ? reasoningEffortForMode(nextMode, fallbackModel)
-      : resolveReasoningEffort(fallbackModel, sidecar.context.reasoning_effort);
+    const fallbackModel = currentModel ?? models[0];
+    const nextModelName = fallbackModel?.name ?? sidecar.context.model_name;
+    // Side conversations are intentionally quick follow-ups. Never inherit a
+    // heavier parent-chat mode; a model that mandates thinking is normalized
+    // by getResolvedMode instead.
+    const nextMode = getResolvedMode("flash", fallbackModel);
+    const nextEffort = reasoningEffortForMode(nextMode, fallbackModel);
 
     if (
       sidecar.context.model_name === nextModelName &&
-      !modeChanged &&
+      sidecar.context.mode === nextMode &&
       nextEffort === sidecar.context.reasoning_effort
     ) {
       return;
@@ -284,31 +260,16 @@ export function SidecarPanel({ className }: { className?: string }) {
       if (!model) {
         return;
       }
-      const nextMode = getResolvedMode(sidecar.context.mode, model);
-      const modeChanged = sidecar.context.mode !== nextMode;
+      const nextMode = getResolvedMode("flash", model);
       sidecar.setContext({
         ...sidecar.context,
         model_name: modelName,
         mode: nextMode,
-        reasoning_effort: modeChanged
-          ? reasoningEffortForMode(nextMode, model)
-          : resolveReasoningEffort(model, sidecar.context.reasoning_effort),
+        reasoning_effort: reasoningEffortForMode(nextMode, model),
       });
       setModelDialogOpen(false);
     },
     [models, sidecar],
-  );
-
-  const handleModeSelect = useCallback(
-    (mode: SidecarInputMode) => {
-      const nextMode = getResolvedMode(mode, selectedModel);
-      sidecar.setContext({
-        ...sidecar.context,
-        mode: nextMode,
-        reasoning_effort: reasoningEffortForMode(nextMode, selectedModel),
-      });
-    },
-    [sidecar, selectedModel],
   );
 
   const ensureSidecarThread = useCallback(
@@ -644,6 +605,7 @@ export function SidecarPanel({ className }: { className?: string }) {
               </PromptInputAttachments>
               {sidecar.activeReferences.length > 0 && (
                 <ReferenceAttachmentSummary
+                  compact
                   references={sidecar.activeReferences}
                   testId="sidecar-reference-attachment"
                   onClear={() => sidecar.clearActiveReferences()}
@@ -660,11 +622,6 @@ export function SidecarPanel({ className }: { className?: string }) {
             <PromptInputFooter className="@container flex flex-nowrap gap-2">
               <PromptInputTools className="min-w-0 flex-1 flex-nowrap overflow-hidden">
                 <SidecarAddAttachmentsButton uploadLimits={uploadLimits} />
-                <SidecarModeMenu
-                  context={sidecar.context}
-                  model={selectedModel}
-                  onModeSelect={handleModeSelect}
-                />
               </PromptInputTools>
               <PromptInputTools className="min-w-0 justify-end">
                 <SidecarModelSelector
@@ -771,174 +728,6 @@ function SidecarAddAttachmentsButton({
         <PaperclipIcon className="size-3" />
       </PromptInputButton>
     </Tooltip>
-  );
-}
-
-function SidecarModeMenu({
-  context,
-  model,
-  onModeSelect,
-}: {
-  context: ThreadStreamOptions["context"];
-  model: Model | undefined;
-  onModeSelect: (mode: SidecarInputMode) => void;
-}) {
-  const { t } = useI18n();
-  const supportThinking = modelSupportsThinking(model);
-  const thinkingRequired = isThinkingRequired(model);
-  const mode = getResolvedMode(context.mode, model);
-
-  return (
-    <PromptInputActionMenu>
-      <ModeHoverGuide mode={mode}>
-        <PromptInputActionMenuTrigger className="max-w-20 min-w-0 gap-1! px-2!">
-          <div>
-            {mode === "flash" && <ZapIcon className="size-3" />}
-            {mode === "thinking" && <LightbulbIcon className="size-3" />}
-            {mode === "pro" && <GraduationCapIcon className="size-3" />}
-            {mode === "ultra" && (
-              <RocketIcon className="size-3 text-[#dabb5e]" />
-            )}
-          </div>
-          <div
-            className={cn(
-              "truncate text-xs font-normal",
-              mode === "ultra" && "golden-text",
-            )}
-          >
-            {(mode === "flash" && t.inputBox.flashMode) ||
-              (mode === "thinking" && t.inputBox.reasoningMode) ||
-              (mode === "pro" && t.inputBox.proMode) ||
-              (mode === "ultra" && t.inputBox.ultraMode)}
-          </div>
-        </PromptInputActionMenuTrigger>
-      </ModeHoverGuide>
-      <PromptInputActionMenuContent className="w-80">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="text-muted-foreground text-xs">
-            {t.inputBox.mode}
-          </DropdownMenuLabel>
-          {!thinkingRequired && (
-            <PromptInputActionMenuItem
-              className={cn(
-                mode === "flash"
-                  ? "text-accent-foreground"
-                  : "text-muted-foreground/65",
-              )}
-              onSelect={() => onModeSelect("flash")}
-            >
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-1 font-bold">
-                  <ZapIcon
-                    className={cn(
-                      "mr-2 size-4",
-                      mode === "flash" && "text-accent-foreground",
-                    )}
-                  />
-                  {t.inputBox.flashMode}
-                </div>
-                <div className="pl-7 text-xs">
-                  {t.inputBox.flashModeDescription}
-                </div>
-              </div>
-              {mode === "flash" ? (
-                <CheckIcon className="ml-auto size-4" />
-              ) : (
-                <div className="ml-auto size-4" />
-              )}
-            </PromptInputActionMenuItem>
-          )}
-          {supportThinking && (
-            <PromptInputActionMenuItem
-              className={cn(
-                mode === "thinking"
-                  ? "text-accent-foreground"
-                  : "text-muted-foreground/65",
-              )}
-              onSelect={() => onModeSelect("thinking")}
-            >
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-1 font-bold">
-                  <LightbulbIcon
-                    className={cn(
-                      "mr-2 size-4",
-                      mode === "thinking" && "text-accent-foreground",
-                    )}
-                  />
-                  {t.inputBox.reasoningMode}
-                </div>
-                <div className="pl-7 text-xs">
-                  {t.inputBox.reasoningModeDescription}
-                </div>
-              </div>
-              {mode === "thinking" ? (
-                <CheckIcon className="ml-auto size-4" />
-              ) : (
-                <div className="ml-auto size-4" />
-              )}
-            </PromptInputActionMenuItem>
-          )}
-          <PromptInputActionMenuItem
-            className={cn(
-              mode === "pro"
-                ? "text-accent-foreground"
-                : "text-muted-foreground/65",
-            )}
-            onSelect={() => onModeSelect("pro")}
-          >
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-1 font-bold">
-                <GraduationCapIcon
-                  className={cn(
-                    "mr-2 size-4",
-                    mode === "pro" && "text-accent-foreground",
-                  )}
-                />
-                {t.inputBox.proMode}
-              </div>
-              <div className="pl-7 text-xs">
-                {t.inputBox.proModeDescription}
-              </div>
-            </div>
-            {mode === "pro" ? (
-              <CheckIcon className="ml-auto size-4" />
-            ) : (
-              <div className="ml-auto size-4" />
-            )}
-          </PromptInputActionMenuItem>
-          <PromptInputActionMenuItem
-            className={cn(
-              mode === "ultra"
-                ? "text-accent-foreground"
-                : "text-muted-foreground/65",
-            )}
-            onSelect={() => onModeSelect("ultra")}
-          >
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-1 font-bold">
-                <RocketIcon
-                  className={cn(
-                    "mr-2 size-4",
-                    mode === "ultra" && "text-[#dabb5e]",
-                  )}
-                />
-                <div className={cn(mode === "ultra" && "golden-text")}>
-                  {t.inputBox.ultraMode}
-                </div>
-              </div>
-              <div className="pl-7 text-xs">
-                {t.inputBox.ultraModeDescription}
-              </div>
-            </div>
-            {mode === "ultra" ? (
-              <CheckIcon className="ml-auto size-4" />
-            ) : (
-              <div className="ml-auto size-4" />
-            )}
-          </PromptInputActionMenuItem>
-        </DropdownMenuGroup>
-      </PromptInputActionMenuContent>
-    </PromptInputActionMenu>
   );
 }
 

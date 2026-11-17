@@ -181,11 +181,9 @@ test.describe("Artifact preview stability", () => {
         .first()
         .click();
       const panel = page.locator("#artifacts");
-      await expect(
-        panel.getByRole("status").filter({
-          hasText: "Some preview resources could not be loaded",
-        }),
-      ).toContainText("Some preview resources could not be loaded");
+      await expect(panel.getByRole("status")).toContainText(
+        "Some preview resources could not be loaded",
+      );
       const iframe = panel.locator('iframe[title="Artifact preview"]');
       await expect(iframe).toHaveAttribute(
         "sandbox",
@@ -352,7 +350,6 @@ test.describe("Artifact preview stability", () => {
     }) => {
       const threadId = `00000000-0000-0000-0000-00000000313${index}`;
       const filepath = `/mnt/user-data/outputs/${filename}`;
-      let downloadRequests = 0;
       mockLangGraphAPI(page, {
         threads: [
           {
@@ -363,33 +360,17 @@ test.describe("Artifact preview stability", () => {
           },
         ],
       });
-      await page.route(
-        `**/api/threads/${threadId}/artifacts${filepath}?download=true`,
-        async (route) => {
-          downloadRequests++;
-          await route.fulfill({
-            contentType: "application/octet-stream",
-            body: "Original artifact bytes",
-          });
-        },
-      );
 
       await page.goto(`/workspace/chats/${threadId}`);
       await page.getByText(filename, { exact: true }).first().click();
 
       const artifactsPanel = page.locator("#artifacts");
-      const download = artifactsPanel
-        .getByRole("button", {
-          name: `Download ${filename}`,
-          exact: true,
-        })
-        .last();
+      const download = artifactsPanel.getByRole("link", { name: "Download" });
       await expect(download).toBeVisible();
-      expect(downloadRequests).toBe(0);
-      const received = page.waitForEvent("download");
-      await download.click();
-      expect((await received).suggestedFilename()).toBe(filename);
-      expect(downloadRequests).toBe(1);
+      await expect(download).toHaveAttribute(
+        "href",
+        `/api/threads/${threadId}/artifacts${filepath}?download=true`,
+      );
       await expect(artifactsPanel.locator(".cm-editor")).toHaveCount(0);
       await expect(
         artifactsPanel.getByRole("button", { name: "Edit", exact: true }),

@@ -18,8 +18,6 @@ test.describe("standalone artifact viewer access", () => {
   test("renders a public showcase artifact without a session", async ({
     page,
   }) => {
-    const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(
       viewerUrl({
         path: DEMO_ARTIFACT,
@@ -33,13 +31,6 @@ test.describe("standalone artifact viewer access", () => {
       page.getByText("fei-fei-li-podcast-timeline.md").first(),
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("h1").first()).toBeVisible({ timeout: 15_000 });
-    await expect(
-      page.getByRole("button", {
-        name: "Download fei-fei-li-podcast-timeline.md",
-        exact: true,
-      }),
-    ).toBeVisible();
-    expect(errors).toEqual([]);
   });
 
   test("sends a logged-out visitor to login for a non-public artifact", async ({

@@ -24,7 +24,6 @@ import {
   Conversation,
   ConversationContent,
   type ConversationProps,
-  ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Button } from "@/components/ui/button";
 import { KnowledgeSourcesProvider } from "@/components/workspace/citations/knowledge-source";
@@ -105,7 +104,6 @@ import {
   findSubtaskResultMessage,
 } from "@/core/tasks/subtask-render";
 import type { AgentThreadState } from "@/core/threads";
-import { LOCAL_HUMAN_MESSAGE_ID_PREFIX } from "@/core/threads/hooks";
 import { cn } from "@/lib/utils";
 
 import { ArtifactFileList } from "../artifacts/artifact-file-list";
@@ -132,7 +130,7 @@ import {
   MessageTokenUsageDebugList,
   MessageTokenUsageList,
 } from "./message-token-usage";
-import { RunActivity, RunDuration } from "./run-duration";
+import { RunActivity, RunDurationLabel } from "./run-duration";
 import { ScheduledRunPrompt } from "./scheduled-run-prompt";
 import { ScheduledTaskCard } from "./scheduled-task-card";
 import { ScheduledTaskEventLine } from "./scheduled-task-event-line";
@@ -382,7 +380,7 @@ export function MessageList({
     request: HumanInputRequest,
     response: HumanInputResponse,
   ) => HumanInputSubmitResult | Promise<HumanInputSubmitResult>;
-  approvalRequests?: readonly HitlApprovalRequest[];
+  approvalRequests?: HitlApprovalRequest[];
   approvalMetadataLoading?: boolean;
   approvalMetadataError?: boolean;
   onReloadApprovalMetadata?: () => unknown;
@@ -531,9 +529,6 @@ export function MessageList({
     thread.isLoading ? Date.now() : null,
   );
   const turnStartTimeRef = useRef(turnStartTime);
-  const [clientDurationsByGroupId, setClientDurationsByGroupId] = useState<
-    ReadonlyMap<string, number>
-  >(() => new Map());
   const prevIsLoading = useRef(thread.isLoading);
 
   useEffect(() => {
@@ -542,85 +537,11 @@ export function MessageList({
       turnStartTimeRef.current = now;
       setTurnStartTime(now);
     } else if (!thread.isLoading && prevIsLoading.current) {
-      const startTime = turnStartTimeRef.current;
-      const lastAssistantGroup = [...groupedMessages]
-        .reverse()
-        .find((group) => group.type !== "human" && group.id);
-      if (startTime !== null && lastAssistantGroup?.id && !thread.error) {
-        const duration = Math.max(
-          0,
-          Math.floor((Date.now() - startTime) / 1000),
-        );
-        const key = `${threadId}:${lastAssistantGroup.id}`;
-        setClientDurationsByGroupId((current) => {
-          const next = new Map(current);
-          next.set(key, duration);
-          return next;
-        });
-      }
       turnStartTimeRef.current = null;
       setTurnStartTime(null);
     }
     prevIsLoading.current = thread.isLoading;
-  }, [groupedMessages, thread.error, thread.isLoading, threadId]);
-
-  // Pin a freshly sent user turn to the top of the viewport, ChatGPT-style:
-  // the reply then grows downward below the reading position instead of the
-  // viewport chasing the bottom. The list escapes the stick lock and grows a
-  // flexible end spacer so the last row can actually reach the top (see
-  // `pinGroupKey` in VirtualMessageList); scrolling down or the
-  // scroll-to-bottom button re-locks the follow.
-  //
-  // "Freshly sent" is identified by the optimistic message identity
-  // (LOCAL_HUMAN_MESSAGE_ID_PREFIX, minted once per turn in the thread hooks
-  // and shared with the server echo), not by comparing group tails: the
-  // optimistic append can render before `isLoading` flips, and a regenerate
-  // masks the superseded assistant messages first, which exposes an existing
-  // human turn as the last group mid-run. Identity also excludes history
-  // loads (prepend), thread switches and restoring a mid-run thread.
-  const [pinGroupKey, setPinGroupKey] = useState<string | null>(null);
-  const lastSeenThreadIdRef = useRef(threadId);
-  const pinnedKeysRef = useRef<Set<string>>(new Set());
-  // Captured during the first render, not inside the effect: React StrictMode
-  // (the dev default) runs effects mount → cleanup → mount with refs
-  // preserved, so a run-once flag mutated in the effect would let the second
-  // pass fall through and pin a restored mid-run thread. The mount-time tail
-  // absorbs idempotently on every pass.
-  const mountTailKeyRef = useRef<string | null | undefined>(undefined);
-  if (mountTailKeyRef.current === undefined) {
-    const firstGroup = groupedMessages.at(-1);
-    mountTailKeyRef.current =
-      firstGroup?.id ?? firstGroup?.messages[0]?.id ?? null;
-  }
-  useEffect(() => {
-    const lastGroup = groupedMessages.at(-1);
-    const lastGroupKey = lastGroup?.id ?? lastGroup?.messages[0]?.id;
-    if (lastGroupKey != null && lastGroupKey === mountTailKeyRef.current) {
-      // The tail that already existed at mount (restoring a mid-run thread)
-      // is never a fresh send.
-      pinnedKeysRef.current.add(lastGroupKey);
-    }
-    if (lastSeenThreadIdRef.current !== threadId) {
-      lastSeenThreadIdRef.current = threadId;
-      setPinGroupKey(null);
-      if (lastGroupKey) pinnedKeysRef.current.add(lastGroupKey);
-      return;
-    }
-    if (!thread.isLoading) {
-      // The run finished (or never started): drop the pin so the end spacer
-      // collapses with it.
-      setPinGroupKey(null);
-      return;
-    }
-    if (
-      lastGroup?.type === "human" &&
-      lastGroupKey?.startsWith(LOCAL_HUMAN_MESSAGE_ID_PREFIX) &&
-      !pinnedKeysRef.current.has(lastGroupKey)
-    ) {
-      pinnedKeysRef.current.add(lastGroupKey);
-      setPinGroupKey(lastGroupKey);
-    }
-  }, [groupedMessages, thread.isLoading, threadId]);
+  }, [thread.isLoading]);
 
   useEffect(() => {
     const startTime = turnStartTimeRef.current;
@@ -632,6 +553,7 @@ export function MessageList({
     ) {
       return;
     }
+
     turnStartTimeRef.current = activeRunStartedAt;
     setTurnStartTime(activeRunStartedAt);
   }, [activeRunStartedAt, thread.isLoading]);
@@ -760,24 +682,6 @@ export function MessageList({
     () => getSkillUsageByGroupIndex(groupedMessages),
     [groupedMessages],
   );
-  useEffect(() => {
-    setClientDurationsByGroupId((current) => {
-      let next: Map<string, number> | undefined;
-      runDurationDisplaysByGroupIndex.forEach((displays, groupIndex) => {
-        const groupId = groupedMessages[groupIndex]?.id;
-        if (displays.length === 0 || !groupId) {
-          return;
-        }
-        const key = `${threadId}:${groupId}`;
-        if (!current.has(key)) {
-          return;
-        }
-        next ??= new Map(current);
-        next.delete(key);
-      });
-      return next ?? current;
-    });
-  }, [groupedMessages, runDurationDisplaysByGroupIndex, threadId]);
   const tokenDebugSteps = useMemo(
     () =>
       tokenUsageInlineMode === "step_debug"
@@ -1106,6 +1010,8 @@ export function MessageList({
       isStreaming: boolean,
       enableBranchForTurn: boolean,
       enableRegenerateForTurn: boolean,
+      durationDisplays: RunDurationDisplay[] = [],
+      tokenUsage?: ReactNode,
       skills?: SkillUsage[],
     ) => {
       const clipboardData = getAssistantTurnCopyData(messages, { isStreaming });
@@ -1205,6 +1111,21 @@ export function MessageList({
                 </Button>
               </Tooltip>
             )}
+          {!isStreaming && (durationDisplays.length > 0 || tokenUsage) && (
+            <div className="text-muted-foreground ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px]">
+              {durationDisplays.length > 0 && (
+                <span className="inline-flex items-center whitespace-nowrap">
+                  {durationDisplays.map((display) => (
+                    <RunDurationLabel
+                      key={display.runId}
+                      durationSeconds={display.durationSeconds}
+                    />
+                  ))}
+                </span>
+              )}
+              {tokenUsage}
+            </div>
+          )}
         </div>
       );
     },
@@ -1234,10 +1155,12 @@ export function MessageList({
       turnUsageMessages?: Message[] | null;
       inlineDebug?: boolean;
       debugMessageIds?: string[];
+      className?: string;
     }) => {
       if (tokenUsageInlineMode === "per_turn") {
         return (
           <MessageTokenUsageList
+            className={className}
             enabled={true}
             isLoading={thread.isLoading}
             messages={turnUsageMessages ?? []}
@@ -1255,6 +1178,7 @@ export function MessageList({
         );
         return (
           <MessageTokenUsageDebugList
+            className={className}
             enabled={true}
             isLoading={thread.isLoading}
             steps={tokenDebugSteps.filter((step) =>
@@ -1267,6 +1191,7 @@ export function MessageList({
       return null;
     },
     [
+      className,
       showTokenDebugSummaries,
       thread.isLoading,
       tokenDebugSteps,
@@ -1290,37 +1215,15 @@ export function MessageList({
     return <MessageListSkeleton />;
   }
 
-  const getGroupRunDurations = (
-    group: (typeof groupedMessages)[number],
-    groupIndex: number,
-  ): RunDurationDisplay[] => {
-    const persistedDisplays = runDurationDisplaysByGroupIndex[groupIndex] ?? [];
-    const clientDuration =
-      !thread.error && group.id
-        ? clientDurationsByGroupId.get(`${threadId}:${group.id}`)
-        : undefined;
-    return persistedDisplays.length > 0
-      ? persistedDisplays
-      : clientDuration !== undefined
-        ? [
-            {
-              runId: `client:${group.id}`,
-              durationSeconds: clientDuration,
-            },
-          ]
-        : [];
-  };
+  const getGroupRunDurations = (groupIndex: number): RunDurationDisplay[] =>
+    runDurationDisplaysByGroupIndex[groupIndex] ?? [];
 
   const withRunDuration = (
     group: (typeof groupedMessages)[number],
     groupIndex: number,
     content: ReactNode,
-    inlineDurationRunIds: string[] = [],
   ) => {
-    const displays = getGroupRunDurations(group, groupIndex).filter(
-      (display) => !inlineDurationRunIds.includes(display.runId),
-    );
-    if (!content && displays.length === 0) {
+    if (!content) {
       return null;
     }
 
@@ -1329,12 +1232,6 @@ export function MessageList({
         key={`duration-group:${group.id ?? groupIndex}`}
         className="flex w-full flex-col gap-2"
       >
-        {displays.map((display) => (
-          <RunDuration
-            key={display.runId}
-            durationSeconds={display.durationSeconds}
-          />
-        ))}
         {content}
       </div>
     );
@@ -1368,7 +1265,6 @@ export function MessageList({
             ref={virtualMessageListRef}
             groups={groupedMessages}
             isLoading={thread.isLoading}
-            pinGroupKey={pinGroupKey}
             onActiveGroupChange={
               conversationOutlineEnabled ? handleActiveGroupChange : undefined
             }
@@ -1390,7 +1286,7 @@ export function MessageList({
               const reasoningDurations = new Map<Message, RunDurationDisplay>();
               const displays = groupIsLoading
                 ? []
-                : getGroupRunDurations(group, groupIndex);
+                : getGroupRunDurations(groupIndex);
               if (displays.length > 0) {
                 let reasoningTargets = reasoningTargetsCache.current.get(group);
                 if (!reasoningTargets) {
@@ -1406,10 +1302,6 @@ export function MessageList({
                   if (target) reasoningDurations.set(target, display);
                 }
               }
-              const inlineDurationRunIds = [...reasoningDurations.values()].map(
-                (display) => display.runId,
-              );
-
               if (group.type === "human" && group.scheduledOrigin) {
                 // A scheduled launch: the run block replaces the launched
                 // prompt; it is the task's, so it has no edit or copy actions.
@@ -1458,7 +1350,9 @@ export function MessageList({
                               : undefined
                           }
                           durationSeconds={
-                            reasoningDurations.get(msg)?.durationSeconds
+                            group.type === "assistant"
+                              ? undefined
+                              : reasoningDurations.get(msg)?.durationSeconds
                           }
                           showCopyButton={group.type !== "assistant"}
                           showWorkspaceChanges={workspaceChangeAnchorGroupIndices.has(
@@ -1517,10 +1411,6 @@ export function MessageList({
                         </div>
                       );
                     })}
-                    {renderTokenUsage({
-                      messages: group.messages,
-                      turnUsageMessages,
-                    })}
                     {group.type === "assistant" &&
                       renderAssistantActions(
                         group.messages,
@@ -1537,6 +1427,19 @@ export function MessageList({
                             typeof message.run_id === "string" &&
                             waitingForInputRunIds.has(message.run_id),
                         ) && group.id === latestAssistantGroupId,
+                        displays,
+                        <MessageTokenUsageList
+                          className="mt-0 border-t-0 pt-0"
+                          enabled={true}
+                          isLoading={
+                            groupIsLoading ||
+                            isAssistantMessageGroupStreaming(
+                              group.messages,
+                              streamingMessages,
+                            )
+                          }
+                          messages={group.messages}
+                        />,
                         sidecarSurface
                           ? undefined
                           : skillUsageByGroupIndex.get(groupIndex),
@@ -1554,7 +1457,6 @@ export function MessageList({
                       </p>
                     ) : null}
                   </div>,
-                  inlineDurationRunIds,
                 );
               } else if (group.type === "assistant:clarification") {
                 const message = group.messages[0];
@@ -1783,7 +1685,6 @@ export function MessageList({
                       debugMessageIds: subagentDebugMessageIds,
                     })}
                   </div>,
-                  inlineDurationRunIds,
                 );
               }
               return withRunDuration(
@@ -1817,13 +1718,12 @@ export function MessageList({
                     inlineDebug: false,
                   })}
                 </div>,
-                inlineDurationRunIds,
               );
             }}
           />
           {approvalRequests.map((request) => (
             <ToolApprovalCard
-              disabled={thread.isLoading && request.transport !== "live"}
+              disabled={thread.isLoading}
               key={request.request_id}
               request={request}
               onSubmit={onSubmitApproval}
@@ -1870,14 +1770,6 @@ export function MessageList({
           )}
           <div style={{ height: `${paddingBottom}px` }} />
         </ConversationContent>
-        <ConversationScrollButton
-          aria-label={t.common.scrollToBottom}
-          className="z-10"
-          // The jump button is explicit user intent that originates outside
-          // the scroll element, so its input events cannot cancel a running
-          // send-pin chain; do it here.
-          onPointerDown={() => virtualMessageListRef.current?.cancelPinFollow()}
-        />
       </Conversation>
       {conversationOutlineEnabled && (
         <ConversationOutline

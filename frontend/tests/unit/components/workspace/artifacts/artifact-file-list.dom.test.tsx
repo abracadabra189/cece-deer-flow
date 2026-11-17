@@ -89,15 +89,15 @@ afterEach(() => {
 });
 
 describe("ArtifactFileList archive download", () => {
-  it("keeps preview and download actions separate", () => {
+  it("renders current conversation artifacts as compact result rows", () => {
     renderList();
-    fireEvent.click(screen.getByRole("button", { name: "report.md Markdown" }));
-    expect(artifactState.select).toHaveBeenCalledWith(files[0]);
-    expect(artifactState.setOpen).toHaveBeenCalledWith(true);
-    expect(
-      screen.getByRole("button", { name: "Download report.md" }),
-    ).toBeTruthy();
+
+    const rows = screen.getAllByTestId("result-artifact-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.textContent).toContain("report.md");
+    expect(rows[0]?.className).toContain("rounded-lg");
   });
+
   it("offers a branch-local run accepted by the manifest ownership check", async () => {
     archiveState.manifest.mockResolvedValue({ fileCount: 2 });
     renderList({ runId: "branch-run", threadId: "branch-thread" });

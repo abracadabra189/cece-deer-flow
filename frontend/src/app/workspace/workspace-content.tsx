@@ -1,8 +1,10 @@
 import { cookies } from "next/headers";
+import type { CSSProperties } from "react";
 import { Toaster } from "sonner";
 
 import { QueryClientProvider } from "@/components/query-client-provider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { CeceMateTheme } from "@/components/workspace/cecemate/cecemate-theme";
 import { CommandPalette } from "@/components/workspace/command-palette";
 import { GatewayOfflineBanner } from "@/components/workspace/gateway-offline-banner";
 import { ModelLoadErrorBanner } from "@/components/workspace/model-load-error-banner";
@@ -36,16 +38,27 @@ export async function WorkspaceContent({
     <QueryClientProvider>
       <UserPreferencesBoundary>
         <ExtensionPageBootstrap />
-        <SidebarProvider className="h-screen" defaultOpen={initialSidebarOpen}>
-          <WorkspaceSidebar />
-          <SidebarInset className="min-w-0">
-            <GatewayOfflineBanner gatewayUnavailable={gatewayUnavailable} />
-            <ModelLoadErrorBanner gatewayUnavailable={gatewayUnavailable} />
-            {children}
-          </SidebarInset>
+        <SidebarProvider
+          className="cecemate-theme h-screen"
+          defaultOpen={initialSidebarOpen}
+          style={
+            {
+              "--sidebar-width": "248px",
+              "--sidebar-width-icon": "48px",
+            } as CSSProperties
+          }
+        >
+          <CeceMateTheme>
+            <WorkspaceSidebar />
+            <SidebarInset className="min-w-0 bg-[#f5f7fa]">
+              <GatewayOfflineBanner gatewayUnavailable={gatewayUnavailable} />
+              <ModelLoadErrorBanner gatewayUnavailable={gatewayUnavailable} />
+              {children}
+            </SidebarInset>
+            <SettingsDialogHost />
+          </CeceMateTheme>
         </SidebarProvider>
         <CommandPalette />
-        <SettingsDialogHost />
         <WorkspaceSettingsDeepLink />
         <Toaster position="top-center" />
       </UserPreferencesBoundary>

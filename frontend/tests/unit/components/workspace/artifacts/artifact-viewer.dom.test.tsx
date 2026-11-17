@@ -151,12 +151,9 @@ describe("ArtifactViewer", () => {
 
     renderViewer();
 
-    const downloads = await screen.findAllByRole("button", {
-      name: /download/i,
-    });
-    expect(downloads.length).toBeGreaterThan(0);
+    const download = await screen.findByRole("link", { name: /download/i });
+    expect(download.getAttribute("href")).toBe(
+      urlOfArtifact({ filepath, threadId, download: true }),
+    );
   });
 });
-rs.mock("@/core/auth/AuthProvider", () => ({
-  useAuth: () => ({ user: null }),
-}));

@@ -31,8 +31,7 @@ export function resolveStoredArtifactLanguage(filepath: string) {
 /**
  * Target for the artifacts panel's "open in new window" action.
  *
- * Markdown, tabular files and installed binary previews go to the in-app viewer route,
- * which renders them with the same
+ * Markdown and tabular files go to the in-app viewer route, which renders it with the same
  * components as the panel instead of handing the browser a `text/markdown`
  * response it can only show as raw source. Everything else keeps the raw
  * Gateway URL — notably HTML, SVG, and other XML documents, which the Gateway
@@ -43,19 +42,13 @@ export function resolveArtifactOpenURL({
   filepath,
   threadId,
   isMock = false,
-  hasPluginPreview = false,
 }: {
   filepath: string;
   threadId: string;
   isMock?: boolean;
-  hasPluginPreview?: boolean;
 }) {
   const language = resolveStoredArtifactLanguage(filepath);
-  if (
-    !hasPluginPreview &&
-    language !== "markdown" &&
-    getTabularDelimiter(language) === null
-  ) {
+  if (language !== "markdown" && getTabularDelimiter(language) === null) {
     return urlOfArtifact({ filepath, threadId, isMock });
   }
   return buildArtifactViewerURL({ filepath, threadId, isMock });

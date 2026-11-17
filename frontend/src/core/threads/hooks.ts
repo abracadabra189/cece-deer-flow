@@ -52,10 +52,6 @@ import { useSubtaskContext, useUpdateSubtask } from "../tasks/context";
 import { taskEventToSubtaskUpdate } from "../tasks/lifecycle";
 import { messageToStep } from "../tasks/steps";
 import { promptInputFilePartToFile, uploadFiles } from "../uploads";
-import {
-  AttachmentUploadError,
-  type AttachmentUploadSession,
-} from "../uploads/attachment-upload-session";
 import { uuid } from "../utils/uuid";
 
 import {
@@ -96,13 +92,6 @@ import {
   retainThreadTokenUsagePlaceholder,
   threadTokenUsageQueryKey,
 } from "./token-usage";
-import {
-  approvalsKey,
-  combineNativeApprovals,
-  fetchToolApprovals,
-  submitLiveApproval,
-  useToolApprovalFeature,
-} from "./tool-approvals";
 import type {
   AgentThread,
   AgentThreadState,
@@ -137,7 +126,6 @@ export type ThreadStreamOptions = {
 };
 
 type SendMessageOptions = {
-  attachmentUploads?: AttachmentUploadSession;
   additionalKwargs?: Record<string, unknown>;
   additionalInputMessages?: Message[];
   /**
@@ -172,7 +160,6 @@ type PausedRunContext = {
 type PendingApprovalSubmission = {
   threadId: string;
   requestId: string;
-  requestIds: string[];
   resolve: (accepted: boolean) => void;
   timeout: number | undefined;
 };
@@ -182,7 +169,6 @@ export function deriveHitlApprovalState({
   restInterrupts,
   historyLoading,
   restInterruptsError = false,
-  pendingApprovalRun = false,
   next,
   answeredRequestIds,
 }: {
@@ -190,7 +176,6 @@ export function deriveHitlApprovalState({
   restInterrupts?: unknown;
   historyLoading: boolean;
   restInterruptsError?: boolean;
-  pendingApprovalRun?: boolean;
   next: readonly string[];
   answeredRequestIds: ReadonlySet<string>;
 }) {
@@ -202,12 +187,11 @@ export function deriveHitlApprovalState({
     (request) => !answeredRequestIds.has(request.request_id),
   );
   return {
-    requests: combineNativeApprovals(pendingRequests),
+    requests: pendingRequests,
     hasPendingApproval:
       pendingRequests.length > 0 ||
       ((historyLoading || restInterruptsError) &&
-        (pendingApprovalRun ||
-          next.includes("HitlApprovalMiddleware.after_model"))),
+        next.includes("HitlApprovalMiddleware.after_model")),
   };
 }
 
@@ -510,15 +494,6 @@ function clearReconnectRun(threadId: string, runId: string): void {
     // Storage access is best-effort and must never block stream cleanup.
   }
 }
-
-/**
- * Prefix of the client-generated id minted once per turn for the visible
- * human message (`${LOCAL_HUMAN_MESSAGE_ID_PREFIX}${uuid()}`); the optimistic
- * display copy and the submitted message share it, and the server echo
- * (`<id>__user`) keeps it. Consumers that must recognize an optimistic human
- * (e.g. the send-scroll pin) match on this prefix instead of restating it.
- */
-export const LOCAL_HUMAN_MESSAGE_ID_PREFIX = "local-human-";
 /**
  * The turn this client submitted, recorded at dispatch time. The visible human
  * input gets one client-generated identity shared by the optimistic display
@@ -1980,10 +1955,6 @@ export function invalidateStoppedThreadCaches(
   }
 
   void queryClient.invalidateQueries({ queryKey: ["thread", threadId] });
-  void queryClient.invalidateQueries({
-    queryKey: ["tool-approvals"],
-    predicate: (query) => query.queryKey[2] === threadId,
-  });
   void queryClient.invalidateQueries({ queryKey: runInputsKey(threadId) });
   void queryClient.invalidateQueries({
     queryKey: threadHistoryQueryKey(threadId),
@@ -2223,6 +2194,7 @@ export function useThreadStream({
   // onCreated fires only for runs this hook submitted. A failed submit stays
   // with the submit flow; only SDK reconnects are handed to recovery.
   const submittedRunIdRef = useRef<string | null>(null);
+  const stoppingRunIdRef = useRef<string | null>(null);
 
   // Keep listeners ref updated with latest callbacks
   useEffect(() => {
@@ -2402,8 +2374,6 @@ export function useThreadStream({
             current.threadId === meta.thread_id ? current.requestIds : [],
           );
           requestIds.add(acceptedRequestId);
-          for (const id of pendingApproval?.requestIds ?? [])
-            requestIds.add(id);
           return { threadId: meta.thread_id, requestIds };
         });
       }
@@ -2622,21 +2592,6 @@ export function useThreadStream({
 
   const { isLoading: isThreadLoading, joinStream } = thread;
   const runInputAccount = useContext(AuthQueryScopeContext);
-  const approvalFeature = useToolApprovalFeature(!!runInputAccount && !isMock);
-  const liveApprovals = useQuery({
-    queryKey: approvalsKey(onStreamThreadId ?? "", runInputAccount),
-    queryFn: ({ signal }) => fetchToolApprovals(onStreamThreadId!, signal),
-    enabled:
-      !!approvalFeature.data?.enabled &&
-      !!onStreamThreadId &&
-      !!runInputAccount &&
-      !isMock,
-    refetchInterval: (query) =>
-      isThreadLoading || activeRunId || query.state.data?.requests.length
-        ? 1000
-        : false,
-    retry: false,
-  });
   const inputCapability = useRunInputsEnabled(!!runInputAccount && !isMock);
   const inputQuery = useQuery({
     queryKey: [...runInputsKey(onStreamThreadId ?? ""), runInputAccount],
@@ -2802,6 +2757,7 @@ export function useThreadStream({
       !resolvedThreadId ||
       !resolvedRunId ||
       completedRunIdsRef.current.has(resolvedRunId) ||
+      stoppingRunIdRef.current === resolvedRunId ||
       rejoin.inFlight ||
       rejoin.retryTimer !== null ||
       rejoin.settled ||
@@ -2849,16 +2805,32 @@ export function useThreadStream({
   );
 
   const stopThread = useCallback(async () => {
+    if (stoppingRunIdRef.current) return;
     settlePendingApproval(false);
     const stoppedThreadId =
       threadIdRef.current ?? displayThreadId ?? threadId ?? null;
     const pendingReplay = pendingPreparedReplayRef.current;
+    const runId =
+      (stoppedThreadId ? readReconnectRun(stoppedThreadId) : null) ??
+      knownActiveRunId;
     await stopThreadAndInvalidateCaches(
       queryClient,
-      () =>
-        !thread.isLoading && knownActiveRunId && stoppedThreadId
-          ? getAPIClient(isMock).runs.cancel(stoppedThreadId, knownActiveRunId)
-          : thread.stop(),
+      async () => {
+        if (!runId || !stoppedThreadId || isMock) {
+          await thread.stop();
+          return;
+        }
+        stoppingRunIdRef.current = runId;
+        try {
+          await getAPIClient(isMock).runs.cancel(stoppedThreadId, runId);
+          completedRunIdsRef.current.add(runId);
+          // Avoid the SDK issuing a second, unawaited cancellation request.
+          clearReconnectRun(stoppedThreadId, runId);
+          await thread.stop();
+        } finally {
+          stoppingRunIdRef.current = null;
+        }
+      },
       stoppedThreadId,
       isMock,
     );
@@ -3080,7 +3052,7 @@ export function useThreadStream({
       // checkpoint must never promote an older history-only human into this
       // turn's anchor).
       const hideFromUI = options?.additionalKwargs?.hide_from_ui === true;
-      const humanMessageId = `${LOCAL_HUMAN_MESSAGE_ID_PREFIX}${uuid()}`;
+      const humanMessageId = `local-human-${uuid()}`;
       localTurnAnchorRef.current = {
         threadId,
         humanIdentity: hideFromUI ? null : `message:${humanMessageId}`,
@@ -3147,32 +3119,28 @@ export function useThreadStream({
         if (message.files && message.files.length > 0) {
           setIsUploading(true);
           try {
+            const filePromises = message.files.map((fileUIPart) =>
+              promptInputFilePartToFile(fileUIPart),
+            );
+
+            const conversionResults = await Promise.all(filePromises);
+            const files = conversionResults.filter(
+              (file): file is File => file !== null,
+            );
+            const failedConversions = conversionResults.length - files.length;
+
+            if (failedConversions > 0) {
+              throw new Error(
+                `Failed to prepare ${failedConversions} attachment(s) for upload. Please retry.`,
+              );
+            }
+
             if (!threadId) {
               throw new Error("Thread is not ready for file upload.");
             }
 
-            {
-              let uploadResponse;
-              if (options?.attachmentUploads) {
-                uploadResponse = {
-                  files: await options.attachmentUploads.uploadAll(
-                    threadId,
-                    message.files,
-                  ),
-                };
-              } else {
-                const converted = await Promise.all(
-                  message.files.map((part) => promptInputFilePartToFile(part)),
-                );
-                const files = converted.filter(
-                  (file): file is File => file !== null,
-                );
-                if (files.length !== converted.length)
-                  throw new Error(
-                    "Failed to prepare attachments for upload. Please retry.",
-                  );
-                uploadResponse = await uploadFiles(threadId, files);
-              }
+            if (files.length > 0) {
+              const uploadResponse = await uploadFiles(threadId, files);
               uploadedFiles = uploadResponse.files.map((info) => ({
                 filename: info.filename,
                 size: info.size,
@@ -3203,11 +3171,7 @@ export function useThreadStream({
               error instanceof Error
                 ? error.message
                 : "Failed to upload files.";
-            toast.error(
-              error instanceof AttachmentUploadError && error.code !== "failed"
-                ? t.uploads.notReady
-                : errorMessage,
-            );
+            toast.error(errorMessage);
             setOptimisticMessages([]);
             setOptimisticThreadId(null);
             setLiveMessagesThreadId(null);
@@ -3273,7 +3237,6 @@ export function useThreadStream({
     [
       thread,
       t.uploads.uploadingFiles,
-      t.uploads.notReady,
       locale,
       context,
       queryClient,
@@ -3289,30 +3252,6 @@ export function useThreadStream({
       request: HitlApprovalRequest,
       responses: HitlApprovalResponse[],
     ) => {
-      if (request.transport === "live") {
-        if (
-          threadId !== onStreamThreadId ||
-          !liveApprovals.data?.requests?.some(
-            (pending) =>
-              pending.request_id === request.request_id &&
-              pending.run_id === request.run_id,
-          )
-        )
-          return false;
-        try {
-          await submitLiveApproval(threadId, request, responses);
-          await queryClient.invalidateQueries({
-            queryKey: approvalsKey(threadId, runInputAccount),
-          });
-          return true;
-        } catch (error) {
-          await queryClient.invalidateQueries({
-            queryKey: approvalsKey(threadId, runInputAccount),
-          });
-          toast.error(getStreamErrorMessage(error));
-          return false;
-        }
-      }
       if (thread.isLoading || sendInFlightRef.current) return false;
       const expected = new Set(
         request.actions.map((action) => action.tool_call_id),
@@ -3363,7 +3302,6 @@ export function useThreadStream({
       const submission: PendingApprovalSubmission = {
         threadId,
         requestId: request.request_id,
-        requestIds: request.actions.map((action) => action.request_id),
         resolve: resolveAccepted,
         timeout: undefined,
       };
@@ -3428,17 +3366,7 @@ export function useThreadStream({
         sendInFlightRef.current = false;
       }
     },
-    [
-      context,
-      queryClient,
-      settlePendingApproval,
-      stopThread,
-      t,
-      thread,
-      onStreamThreadId,
-      liveApprovals.data,
-      runInputAccount,
-    ],
+    [context, queryClient, settlePendingApproval, stopThread, t, thread],
   );
 
   const submitPreparedReplay = useCallback(
@@ -3882,13 +3810,6 @@ export function useThreadStream({
         liveInterrupt: thread.interrupt,
         restInterrupts,
         restInterruptsError,
-        pendingApprovalRun: (runsQuery.data ?? []).some(
-          (run) =>
-            run.status === "waiting_for_input" &&
-            extractHitlApprovalRequests(run.metadata?.hitl_approval).some(
-              (request) => !answeredApprovalRequestIds.has(request.request_id),
-            ),
-        ),
         historyLoading:
           isHistoryLoading || restInterruptsLoading || thread.isThreadLoading,
         next: thread.history?.[0]?.next ?? [],
@@ -3900,7 +3821,6 @@ export function useThreadStream({
       restInterrupts,
       restInterruptsError,
       restInterruptsLoading,
-      runsQuery.data,
       thread.history,
       thread.interrupt,
       thread.isThreadLoading,
@@ -3926,13 +3846,8 @@ export function useThreadStream({
     pendingUsageMessages,
     sendMessage,
     regenerateMessage,
-    approvalRequests: [
-      ...approvalState.requests,
-      ...(liveApprovals.data?.requests ?? []),
-    ],
-    hasPendingApproval:
-      approvalState.hasPendingApproval ||
-      !!liveApprovals.data?.requests?.length,
+    approvalRequests: approvalState.requests,
+    hasPendingApproval: approvalState.hasPendingApproval,
     submitHitlApproval,
     waitingForInputRunIds,
     editAndRegenerateMessage,

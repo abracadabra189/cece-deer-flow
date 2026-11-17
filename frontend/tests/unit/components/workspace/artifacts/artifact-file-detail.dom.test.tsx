@@ -39,6 +39,7 @@ rs.mock("@/components/workspace/artifacts/context", () => ({
     autoSelect: false,
     select: rs.fn(),
     deselect: rs.fn(),
+    returnToList: rs.fn(),
     open: true,
     autoOpen: false,
     setOpen: rs.fn(),
@@ -168,8 +169,10 @@ describe("ArtifactFileDetail unknown file types", () => {
       expect(view.queryByTestId("artifact-source")).toBeNull();
       expect(view.queryByRole("button", { name: "Edit" })).toBeNull();
       expect(
-        view.getAllByRole("button", { name: `Download ${filename}` }),
-      ).toHaveLength(2);
+        view.getByRole("link", { name: "Download" }).getAttribute("href"),
+      ).toBe(
+        `/backend/api/threads/${THREAD_ID}/artifacts/mnt/user-data/outputs/${filename}?download=true`,
+      );
     },
   );
 });

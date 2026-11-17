@@ -7,7 +7,7 @@ import { ArtifactDraftsProvider } from "@/core/artifacts/draft-context";
 import { DEFAULT_LOCALE } from "@/core/i18n/locale";
 
 export const metadata: Metadata = {
-  title: "CECE-DEMO",
+  title: "CeCeMate",
   description: "A LangChain-based framework for building super agents.",
 };
 

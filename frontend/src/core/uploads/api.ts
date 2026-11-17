@@ -126,7 +126,6 @@ async function readErrorDetail(
 export async function uploadFiles(
   threadId: string,
   files: File[],
-  signal?: AbortSignal,
 ): Promise<UploadResponse> {
   const formData = new FormData();
 
@@ -139,7 +138,6 @@ export async function uploadFiles(
     {
       method: "POST",
       body: formData,
-      signal,
     },
   );
 

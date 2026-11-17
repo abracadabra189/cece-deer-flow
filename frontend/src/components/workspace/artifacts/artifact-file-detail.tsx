@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Code2Icon,
   CopyIcon,
+  DownloadIcon,
   EyeIcon,
   LoaderIcon,
   PackageIcon,
@@ -10,7 +11,7 @@ import {
   RotateCcwIcon,
   SaveIcon,
   SquareArrowOutUpRightIcon,
-  XIcon,
+  ArrowLeftIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -55,7 +56,6 @@ import {
 } from "@/core/artifacts/viewer";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { writeTextToClipboard } from "@/core/clipboard";
-import { useArtifactPreviewRenderer } from "@/core/extensions/artifact-previews";
 import { useI18n } from "@/core/i18n/hooks";
 import { findToolCallResult } from "@/core/messages/utils";
 import { installSkill, SkillRequestError } from "@/core/skills/api";
@@ -68,18 +68,16 @@ import {
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
-import { FileTypeIcon } from "../file-type-icon";
 import { useThread } from "../messages/context";
 import { Tooltip } from "../tooltip";
 
-import { ArtifactDownloadButton } from "./artifact-download-button";
 import {
+  ArtifactDownloadFallback,
   ArtifactFilePreview,
   ArtifactPreviewError,
   formatArtifactBytes,
 } from "./artifact-file-preview";
 import { useArtifacts } from "./context";
-import { PluginArtifactPreview } from "./plugin-artifact-preview";
 
 const WRITE_FILE_PREVIEW_REFRESH_INTERVAL_MS = 3000;
 
@@ -98,8 +96,8 @@ export function ArtifactFileDetail({
   const isAdmin = user?.system_role === "admin";
   const {
     artifacts,
-    setOpen,
     select,
+    returnToList,
     drafts,
     setDrafts,
     editingPath,
@@ -118,7 +116,6 @@ export function ArtifactFileDetail({
     [filepathFromProps, isWriteFile],
   );
   const filepath = parsedWriteFile?.path ?? filepathFromProps;
-  const { match: pluginPreview } = useArtifactPreviewRenderer(filepath);
   // Keep these local because ChatBox replaces context artifacts with thread state.
   const [openedPresentedFilepaths, setOpenedPresentedFilepaths] = useState<
     string[]
@@ -285,6 +282,36 @@ export function ArtifactFileDetail({
     return !isDirty || window.confirm(t.artifactEditing.discardChanges);
   }, [isDirty, t.artifactEditing.discardChanges]);
 
+  const handleInstallSkill = useCallback(async () => {
+    if (isInstalling) return;
+    setIsInstalling(true);
+    try {
+      const result = await installSkill({
+        thread_id: threadId,
+        path: filepath,
+      });
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message ?? "Failed to install skill");
+      }
+    } catch (error) {
+      console.error("Failed to install skill:", error);
+      toast.error(
+        error instanceof SkillRequestError && error.isAdminRequired
+          ? t.settings.skills.installAdminRequired
+          : "Failed to install skill",
+      );
+    } finally {
+      setIsInstalling(false);
+    }
+  }, [
+    filepath,
+    isInstalling,
+    t.settings.skills.installAdminRequired,
+    threadId,
+  ]);
+
   const discardDraft = useCallback(() => {
     const hasCompleteContent =
       !truncated && content !== undefined && sha256 !== undefined;
@@ -412,36 +439,15 @@ export function ArtifactFileDetail({
     threadId,
   ]);
 
-  const handleInstallSkill = useCallback(async () => {
-    if (isInstalling) return;
-
-    setIsInstalling(true);
-    try {
-      const result = await installSkill({
-        thread_id: threadId,
-        path: filepath,
-      });
-      if (result.success) {
-        toast.success(result.message);
-      } else {
-        toast.error(result.message ?? "Failed to install skill");
-      }
-    } catch (error) {
-      console.error("Failed to install skill:", error);
-      if (error instanceof SkillRequestError && error.isAdminRequired) {
-        toast.error(t.settings.skills.installAdminRequired);
-      } else {
-        toast.error("Failed to install skill");
-      }
-    } finally {
-      setIsInstalling(false);
-    }
-  }, [threadId, filepath, isInstalling, t]);
   return (
-    <Artifact className={cn(className)}>
-      <ArtifactHeader className="px-2">
-        <div className="flex min-w-0 items-center gap-1">
-          <FileTypeIcon filename={filepath} compact />
+    <Artifact
+      className={cn(
+        "overflow-hidden rounded-none border-[#dfe6f3] bg-white shadow-none",
+        className,
+      )}
+    >
+      <ArtifactHeader className="border-b border-[#e5eaf5] bg-[#fbfcff] px-2">
+        <div className="flex items-center gap-2">
           <ArtifactTitle>
             {isWriteFile ? (
               <div className="px-2">{getFileName(filepath)}</div>
@@ -460,10 +466,14 @@ export function ArtifactFileDetail({
                 <SelectTrigger className="border-none bg-transparent! shadow-none select-none focus:outline-0 active:outline-0">
                   <SelectValue placeholder="Select a file" />
                 </SelectTrigger>
-                <SelectContent className="select-none">
+                <SelectContent className="border-[#dfe6f3] bg-white text-[#26324a] shadow-[0_8px_24px_rgb(20_32_64_/_0.12)] select-none">
                   <SelectGroup>
                     {artifactOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
+                      <SelectItem
+                        className="focus:bg-[#eef3ff] focus:text-[#2563eb] data-[state=checked]:bg-[#eef3ff] data-[state=checked]:text-[#2563eb]"
+                        key={option}
+                        value={option}
+                      >
                         {getFileName(option)}
                       </SelectItem>
                     ))}
@@ -591,7 +601,7 @@ export function ArtifactFileDetail({
                       isInstalling ||
                       env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true"
                     }
-                    onClick={handleInstallSkill}
+                    onClick={() => void handleInstallSkill()}
                   />
                 </Tooltip>
               )}
@@ -606,12 +616,7 @@ export function ArtifactFileDetail({
                 }
                 onClick={() => {
                   const w = window.open(
-                    resolveArtifactOpenURL({
-                      filepath,
-                      threadId,
-                      isMock,
-                      hasPluginPreview: !!pluginPreview,
-                    }),
+                    resolveArtifactOpenURL({ filepath, threadId, isMock }),
                     "_blank",
                     "noopener,noreferrer",
                   );
@@ -643,16 +648,32 @@ export function ArtifactFileDetail({
               />
             )}
             {!isEditing && !isWriteFile && (
-              <ArtifactDownloadButton
-                filepath={filepath}
-                threadId={threadId}
-                isMock={isMock}
-                compact
+              <ArtifactAction
+                icon={DownloadIcon}
+                label={t.common.download}
+                tooltip={
+                  isTabular && isDirty
+                    ? t.artifactTable.savedVersion
+                    : t.common.download
+                }
+                onClick={() => {
+                  const w = window.open(
+                    urlOfArtifact({
+                      filepath,
+                      threadId,
+                      download: true,
+                      isMock,
+                    }),
+                    "_blank",
+                    "noopener,noreferrer",
+                  );
+                  if (w) w.opener = null;
+                }}
               />
             )}
             <ArtifactAction
-              icon={XIcon}
-              label={t.common.close}
+              icon={ArrowLeftIcon}
+              label={t.common.backToArtifactList}
               onClick={() => {
                 if (
                   !hasUnsavedDrafts ||
@@ -660,10 +681,10 @@ export function ArtifactFileDetail({
                 ) {
                   setDrafts({});
                   setEditingPath(null);
-                  setOpen(false);
+                  returnToList();
                 }
               }}
-              tooltip={t.common.close}
+              tooltip={t.common.backToArtifactList}
             />
           </ArtifactActions>
         </div>
@@ -765,11 +786,10 @@ export function ArtifactFileDetail({
             />
           )}
           {!isCodeFile && !canPreviewInBrowser && (
-            <PluginArtifactPreview
+            <ArtifactDownloadFallback
               filepath={filepath}
               threadId={threadId}
               isMock={isMock}
-              isRunning={thread.isLoading}
             />
           )}
         </div>
