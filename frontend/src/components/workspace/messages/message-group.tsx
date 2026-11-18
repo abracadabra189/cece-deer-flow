@@ -286,10 +286,7 @@ function MessageGroupComponent({
     );
   };
 
-  const renderToolCall = (
-    step: CoTToolCallStep,
-    options?: { isLast?: boolean },
-  ) => {
+  const renderToolCall = (step: CoTToolCallStep) => {
     const debugStep =
       showTokenDebugSummaries && step.messageId
         ? debugStepByMessageId.get(step.messageId)
@@ -300,8 +297,6 @@ function MessageGroupComponent({
         key={step.occurrenceId}
         {...step}
         threadId={threadId}
-        isLast={options?.isLast}
-        isLoading={isLoading}
         deferBrowserPreview={deferBrowserPreviews}
         showDetails={showTokenDebugSummaries}
         tokenDebugStep={
@@ -418,7 +413,7 @@ function MessageGroupComponent({
                 stepIndexByStep.get(lastToolCallStep) ?? -1,
               )}
               <FlipDisplay uniqueKey={lastToolCallStep.occurrenceId}>
-                {renderToolCall(lastToolCallStep, { isLast: true })}
+                {renderToolCall(lastToolCallStep)}
               </FlipDisplay>
               {afterLastToolCallAssistantTextSteps
                 .filter((step) => !belowLastReasoningSteps.has(step))
@@ -754,8 +749,6 @@ function ToolCall({
   name,
   args,
   result,
-  isLast = false,
-  isLoading = false,
   deferBrowserPreview = false,
   tokenDebugStep,
   showDetails = false,
@@ -769,8 +762,6 @@ function ToolCall({
   name: string;
   args: Record<string, unknown>;
   result?: string | Record<string, unknown>;
-  isLast?: boolean;
-  isLoading?: boolean;
   deferBrowserPreview?: boolean;
   tokenDebugStep?: TokenDebugStep;
   showDetails?: boolean;
@@ -781,8 +772,7 @@ function ToolCall({
 }) {
   const { t } = useI18n();
   const kind = getToolCallKind(name);
-  const { setOpen, autoOpen, autoSelect, selectedArtifact, select } =
-    useArtifacts();
+  const { setOpen, select } = useArtifacts();
   const browserViewPanel = useMaybeBrowserView();
   const tokenLabel = tokenDebugStep
     ? formatDebugToken(tokenDebugStep, t)
@@ -818,29 +808,6 @@ function ToolCall({
         toolCallId: id,
       })
     : null;
-  const autoOpenArtifactUrl =
-    isLoading &&
-    isLast &&
-    autoOpen &&
-    autoSelect &&
-    writeFileArtifactUrl &&
-    !result
-      ? writeFileArtifactUrl
-      : null;
-
-  useEffect(() => {
-    if (!autoOpenArtifactUrl || selectedArtifact === autoOpenArtifactUrl) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      select(autoOpenArtifactUrl, true);
-      setOpen(true);
-    }, 100);
-
-    return () => window.clearTimeout(timeout);
-  }, [autoOpenArtifactUrl, select, selectedArtifact, setOpen]);
-
   if (kind === "browser") {
     const shot = browserView?.screenshot;
     const previewUrl =

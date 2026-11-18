@@ -34,6 +34,7 @@ const streamMockState = rs.hoisted(() => ({
   joinStream: rs.fn(async (_runId: string) => undefined),
   stop: rs.fn(async (_threadId?: string) => undefined),
   options: undefined as StreamOptions | undefined,
+  optionThreadIds: [] as Array<string | undefined>,
 }));
 
 rs.mock("@/core/api", () => ({
@@ -45,6 +46,7 @@ rs.mock("@/core/api", () => ({
 rs.mock("@langchain/langgraph-sdk/react", () => ({
   useStream: (options: StreamOptions) => {
     streamMockState.options = options;
+    streamMockState.optionThreadIds.push(options.threadId);
     return {
       isLoading: streamMockState.isLoading,
       joinStream: streamMockState.joinStream,
@@ -102,15 +104,15 @@ async function flushFrames() {
   }
 }
 
-function renderThread(threadId = "thread-1") {
+function renderThread(threadId: string | null = "thread-1") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const rendered = renderHook(
-    ({ activeThreadId }: { activeThreadId: string }) =>
+    ({ activeThreadId }: { activeThreadId: string | null }) =>
       useThreadStream({
         context: DEFAULT_LOCAL_SETTINGS.context,
-        threadId: activeThreadId,
+        threadId: activeThreadId ?? undefined,
       }),
     {
       initialProps: { activeThreadId: threadId },
@@ -119,6 +121,23 @@ function renderThread(threadId = "thread-1") {
   );
   return { queryClient, ...rendered };
 }
+
+test("keeps the local stream connected when a new chat receives its thread ID", async () => {
+  const { unmount } = renderThread(null);
+  await flushFrames();
+  streamMockState.stop.mockClear();
+
+  act(() => {
+    streamMockState.options?.onCreated?.({
+      thread_id: "thread-new",
+      run_id: "run-new",
+    });
+  });
+  await flushFrames();
+
+  expect(streamMockState.stop).not.toHaveBeenCalled();
+  unmount();
+});
 
 function failActiveRecoveredStream() {
   streamMockState.options?.onError?.(
@@ -140,6 +159,7 @@ beforeEach(() => {
   streamMockState.stop.mockReset();
   streamMockState.stop.mockResolvedValue(undefined);
   streamMockState.options = undefined;
+  streamMockState.optionThreadIds = [];
   rs.stubGlobal(
     "fetch",
     rs.fn(
@@ -221,6 +241,18 @@ test("releases the previous local stream when switching between active chats", a
   expect(streamMockState.stop).toHaveBeenCalledWith("thread-1");
   expect(streamMockState.joinStream).toHaveBeenLastCalledWith("run-thread-2");
   expect(apiMockState.cancel).not.toHaveBeenCalled();
+  unmount();
+});
+
+test("switches the SDK to the routed chat without an intermediate stale thread", async () => {
+  const { rerender, unmount } = renderThread("thread-1");
+  await flushFrames();
+  streamMockState.optionThreadIds = [];
+
+  rerender({ activeThreadId: "thread-2" });
+
+  expect(streamMockState.optionThreadIds).not.toContain("thread-1");
+  expect(streamMockState.optionThreadIds.at(-1)).toBe("thread-2");
   unmount();
 });
 

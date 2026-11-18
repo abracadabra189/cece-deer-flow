@@ -2119,6 +2119,12 @@ export function useThreadStream({
   const [isUploading, setIsUploading] = useState(false);
   // Track the thread ID that is currently streaming to handle thread changes during streaming
   const [onStreamThreadId, setOnStreamThreadId] = useState(() => threadId);
+  // Routed chats must switch the SDK in the same render as the route. Waiting
+  // for the synchronization effect below leaves one render subscribed to the
+  // previous chat, which can briefly combine that chat's live state with the
+  // next chat's history when users switch quickly. A newly created chat has no
+  // route ID yet, so it continues to use the ID recorded by onCreated.
+  const activeStreamThreadId = threadId ?? onStreamThreadId;
   // Ref to track current thread ID across async callbacks without causing re-renders,
   // and to allow access to the current thread id in onUpdateEvent
   const threadIdRef = useRef<string | null>(threadId ?? null);
@@ -2161,11 +2167,11 @@ export function useThreadStream({
     hasMore: hasMoreHistory,
     loadMore: loadMoreHistory,
     loading: isHistoryLoading,
-  } = useThreadHistory(onStreamThreadId ?? "", {
+  } = useThreadHistory(activeStreamThreadId ?? "", {
     enabled: !isMock,
     pendingSupersededRunIds,
   });
-  const runsQuery = useThreadRuns(onStreamThreadId ?? undefined, {
+  const runsQuery = useThreadRuns(activeStreamThreadId ?? undefined, {
     enabled: !isMock,
   });
   const activeRunId = useMemo(
@@ -2345,7 +2351,7 @@ export function useThreadStream({
   const thread = useStream<AgentThreadState>({
     client: getAPIClient(isMock),
     assistantId,
-    threadId: onStreamThreadId,
+    threadId: activeStreamThreadId,
     reconnectOnMount: true,
     fetchStateHistory: { limit: 1 },
     // Batch stream updates received in the same macrotask without adding a
@@ -2521,6 +2527,11 @@ export function useThreadStream({
       }
     },
     onError(error, run) {
+      // An aborted stream can still settle after a fast route switch. Its
+      // callbacks must not clear or refetch the conversation now on screen.
+      if (run?.thread_id && run.thread_id !== currentViewThreadIdRef.current) {
+        return;
+      }
       timedOutApprovalSubmissionRef.current = null;
       if (pendingApprovalSubmissionRef.current) {
         settlePendingApproval(false);
@@ -2573,6 +2584,11 @@ export function useThreadStream({
       }
     },
     onFinish(state, run) {
+      // See onError above: late completion of the previous chat must not
+      // invalidate the newly selected chat or call its page-level handlers.
+      if (run?.thread_id && run.thread_id !== currentViewThreadIdRef.current) {
+        return;
+      }
       settlePendingApproval(false);
       if (run) {
         completedRunIdsRef.current.add(run.run_id);
@@ -2596,10 +2612,10 @@ export function useThreadStream({
   const runInputAccount = useContext(AuthQueryScopeContext);
   const inputCapability = useRunInputsEnabled(!!runInputAccount && !isMock);
   const inputQuery = useQuery({
-    queryKey: [...runInputsKey(onStreamThreadId ?? ""), runInputAccount],
-    queryFn: ({ signal }) => fetchRunInputState(onStreamThreadId!, signal),
+    queryKey: [...runInputsKey(activeStreamThreadId ?? ""), runInputAccount],
+    queryFn: ({ signal }) => fetchRunInputState(activeStreamThreadId!, signal),
     enabled:
-      inputCapability && !isMock && !!onStreamThreadId && !!runInputAccount,
+      inputCapability && !isMock && !!activeStreamThreadId && !!runInputAccount,
     refetchInterval: (q) =>
       isThreadLoading || activeRunId
         ? 1000
@@ -2624,11 +2640,11 @@ export function useThreadStream({
       runInputAbortRef.current?.abort();
       runInputAttemptRef.current = null;
     },
-    [onStreamThreadId, runInputAccount],
+    [activeStreamThreadId, runInputAccount],
   );
   const sendInput = useCallback(
     async (text: string, mode: RunInputMode) => {
-      const targetThread = onStreamThreadId;
+      const targetThread = activeStreamThreadId;
       const runId = inputQuery.data?.active_run_id;
       if (!targetThread || !runId)
         throw new Error(t.inputBox.runInputUnavailable);
@@ -2710,7 +2726,7 @@ export function useThreadStream({
       context,
       inputQuery.data?.active_run_id,
       locale,
-      onStreamThreadId,
+      activeStreamThreadId,
       queryClient,
       t.inputBox.runInputUnavailable,
     ],
@@ -2737,7 +2753,7 @@ export function useThreadStream({
   // sessionStorage. A reopened browser or a new tab has no pointer, so recover
   // the newest active run from the server and join its resumable SSE stream.
   useEffect(() => {
-    const resolvedThreadId = onStreamThreadId ?? null;
+    const resolvedThreadId = activeStreamThreadId ?? null;
     const resolvedRunId = knownActiveRunId ?? null;
     let rejoin = activeRunRejoinRef.current;
 
@@ -2786,14 +2802,19 @@ export function useThreadStream({
     activeRunRejoinRetry,
     isThreadLoading,
     joinStream,
-    onStreamThreadId,
+    activeStreamThreadId,
   ]);
 
   useEffect(() => {
     const abortLocalStream = abortLocalStreamRef.current;
+    const releasedThreadId = activeStreamThreadId ?? null;
     return () => {
+      // A newly submitted chat begins without a thread ID. onCreated then
+      // promotes it to the server ID, which reruns this effect; that is not a
+      // navigation away from an existing stream, so do not abort it.
+      if (!releasedThreadId) return;
       const rejoin = activeRunRejoinRef.current;
-      if (rejoin.threadId !== (onStreamThreadId ?? null)) {
+      if (rejoin.threadId !== releasedThreadId) {
         return;
       }
       if (rejoin.retryTimer !== null) {
@@ -2812,7 +2833,7 @@ export function useThreadStream({
       void abortLocalStream();
       activeRunRejoinRef.current = createActiveRunRejoinState();
     };
-  }, [onStreamThreadId]);
+  }, [activeStreamThreadId]);
 
   const stopThread = useCallback(async () => {
     if (stoppingRunIdRef.current) return;

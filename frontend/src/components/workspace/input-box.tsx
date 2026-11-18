@@ -4,7 +4,6 @@ import type { Message } from "@langchain/langgraph-sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ChatStatus } from "ai";
 import {
-  ChevronDownIcon,
   CheckIcon,
   CpuIcon,
   GaugeIcon,
@@ -207,11 +206,6 @@ const CECE_MATE_MODE_OPTIONS: ReadonlyArray<{
     value: "pro",
     label: "深度研究",
     description: "适合需要多步推理的复杂任务",
-  },
-  {
-    value: "ultra",
-    label: "高强度推理",
-    description: "为复杂问题投入更多推理时间",
   },
 ];
 
@@ -3272,78 +3266,14 @@ export function InputBox({
                 onModelSelect={handleModelSelect}
               />
             </ModelPicker>
-            {status === "streaming" && canCreateRuns && (
-              <>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <PromptInputButton
-                      aria-label={t.inputBox.runInputMode}
-                      className="h-8 gap-1 rounded-full border border-[#d6def2] bg-white px-2.5 text-xs text-[#2563eb] shadow-none hover:bg-[#eef3ff]"
-                      disabled={composerLocked}
-                      title={
-                        runInputMode === "queue"
-                          ? t.inputBox.queueModeHelp
-                          : t.inputBox.steerModeHelp
-                      }
-                    >
-                      <span>
-                        {runInputMode === "queue"
-                          ? t.inputBox.queueMode
-                          : t.inputBox.steerMode}
-                      </span>
-                      <ChevronDownIcon className="size-3" />
-                    </PromptInputButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="min-w-60">
-                    <DropdownMenuItem
-                      className="items-start gap-2 py-2"
-                      onSelect={() => setRunInputMode("queue")}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm">
-                          {t.inputBox.queueMode}
-                        </span>
-                        <span className="text-muted-foreground block text-xs">
-                          {t.inputBox.queueModeHelp}
-                        </span>
-                      </span>
-                      {runInputMode === "queue" ? (
-                        <CheckIcon className="mt-0.5 size-4 shrink-0 text-[#2563eb]" />
-                      ) : null}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="items-start gap-2 py-2"
-                      onSelect={() => setRunInputMode("steer")}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm">
-                          {t.inputBox.steerMode}
-                        </span>
-                        <span className="text-muted-foreground block text-xs">
-                          {t.inputBox.steerModeHelp}
-                        </span>
-                      </span>
-                      {runInputMode === "steer" ? (
-                        <CheckIcon className="mt-0.5 size-4 shrink-0 text-[#2563eb]" />
-                      ) : null}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                {canSendBusyInput && (
-                  <PromptInputSubmit
-                    aria-label={t.inputBox.runInputSend}
-                    className="size-8 rounded-full border border-[#d6def2] bg-white text-[#2563eb] shadow-none hover:bg-[#eef3ff]"
-                    status={runInputSending ? "submitted" : "ready"}
-                    title={
-                      runInputMode === "queue"
-                        ? t.inputBox.queueModeHelp
-                        : t.inputBox.steerModeHelp
-                    }
-                    variant="outline"
-                    disabled={composerLocked || !textInput.value.trim()}
-                  />
-                )}
-              </>
+            {status === "streaming" && canSendBusyInput && (
+              <PromptInputSubmit
+                aria-label={t.inputBox.runInputSend}
+                className="size-8 rounded-full border border-[#d6def2] bg-white text-[#2563eb] shadow-none hover:bg-[#eef3ff]"
+                status={runInputSending ? "submitted" : "ready"}
+                variant="outline"
+                disabled={composerLocked || !textInput.value.trim()}
+              />
             )}
             <PromptInputSubmit
               className="size-8 rounded-full border-0 bg-linear-to-br from-[#2563eb] to-[#7b5cff] text-white shadow-[0_3px_10px_rgb(57_110_255_/_0.38)] hover:from-[#1d4ed8] hover:to-[#6844ed]"
