@@ -2588,6 +2588,8 @@ export function useThreadStream({
       invalidateStoppedThreadCaches(queryClient, threadIdRef.current, isMock);
     },
   });
+  const abortLocalStreamRef = useRef(thread.stop);
+  abortLocalStreamRef.current = thread.stop;
   liveInterruptRef.current = thread.interrupt;
 
   const { isLoading: isThreadLoading, joinStream } = thread;
@@ -2787,8 +2789,9 @@ export function useThreadStream({
     onStreamThreadId,
   ]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const abortLocalStream = abortLocalStreamRef.current;
+    return () => {
       const rejoin = activeRunRejoinRef.current;
       if (rejoin.threadId !== (onStreamThreadId ?? null)) {
         return;
@@ -2796,13 +2799,20 @@ export function useThreadStream({
       if (rejoin.retryTimer !== null) {
         clearTimeout(rejoin.retryTimer);
       }
-      if (rejoin.attempts > 0 && rejoin.threadId && rejoin.runId) {
-        clearReconnectRun(rejoin.threadId, rejoin.runId);
+      if (rejoin.threadId) {
+        const reconnectRunId = readReconnectRun(rejoin.threadId);
+        if (reconnectRunId) {
+          // The SDK's stop() aborts its local fetch first, then only cancels
+          // the backend run when this pointer still exists. Remove it before
+          // stopping so leaving a chat releases the SSE subscription while
+          // the resumable run continues in the background.
+          clearReconnectRun(rejoin.threadId, reconnectRunId);
+        }
       }
+      void abortLocalStream();
       activeRunRejoinRef.current = createActiveRunRejoinState();
-    },
-    [onStreamThreadId],
-  );
+    };
+  }, [onStreamThreadId]);
 
   const stopThread = useCallback(async () => {
     if (stoppingRunIdRef.current) return;
