@@ -2462,7 +2462,11 @@ export function useThreadStream({
         if (update && "title" in update && update.title) {
           const currentThreadId = threadIdRef.current;
           if (currentThreadId) {
-            setThreadTitleInCaches(queryClient, currentThreadId, update.title);
+            applyStreamedThreadTitle(
+              queryClient,
+              currentThreadId,
+              update.title,
+            );
           }
         }
       }
@@ -4250,6 +4254,23 @@ export function setThreadTitleInCaches(
   setThreadInCaches(queryClient, threadId, (thread) =>
     mergeThreadTitle(thread, title),
   );
+}
+
+function applyStreamedThreadTitle(
+  queryClient: QueryClient,
+  threadId: string,
+  title: string,
+): void {
+  const filters: QueryFilters[] = Object.values(
+    getThreadSnapshotCacheFilters(threadId),
+  );
+
+  // The title event is newer than any list or metadata query that was already
+  // in flight. Cancel those requests before updating the cache so their stale
+  // response cannot restore the placeholder title.
+  void Promise.all(filters.map((filter) => queryClient.cancelQueries(filter)))
+    .catch(() => undefined)
+    .finally(() => setThreadTitleInCaches(queryClient, threadId, title));
 }
 
 export function useInfiniteThreads(
