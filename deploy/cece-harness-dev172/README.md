@@ -11,6 +11,13 @@ cp deploy/cece-harness-dev172/extensions_config.example.json extensions_config.j
 
 Populate `.env` with the values referenced by the templates, including `DASHSCOPE_API_KEY`, `DATABASE_URL`, and `HYDC_API_KEY`. `HYDC_API_KEY` is injected into sandbox containers only for the CECE HYDC Data Skill; do not put it in a prompt, a command-line argument, or a tracked file. The CECE MCP authorization variables remain documented in the extensions template but are not needed while those MCP servers are disabled.
 
+Two session variables belong in `.env` as well:
+
+- `AUTH_JWT_SECRET` pins the session/ticket signing key. Without it the Gateway generates `{DEER_FLOW_HOME}/.jwt_secret` and warns at startup, so losing or moving that home volume logs **every** user out at once. Set it explicitly, and use a **different value per environment** — one shared key would let a token minted by one environment pass signature checks in another.
+- `DEER_FLOW_AUTH_ALLOW_INSECURE_PERSISTENT_COOKIE=1` makes the session cookie persistent over plain HTTP. Without it, a browser that reaches this deployment by IP or hostname over HTTP receives a session-scoped cookie and is signed out the moment the browser closes (mobile browsers evict it even sooner). The alternative is terminating HTTPS in front of nginx, which is the better long-term answer.
+
+The Compose file passes both through `environment:` so this stack uses its own values even though the repository-root `.env` is also loaded as an `env_file`.
+
 After changing `.env`, recreate the Gateway so its container receives the new environment. Use the isolated dev172 Compose file at `docker/docker-compose.cece-harness-dev172.yaml`; do not use the test224 Compose file.
 
 ```bash
@@ -19,6 +26,24 @@ docker compose --env-file .env -p cece-harness-dev172 \
   -f docker/docker-compose.dood.yaml \
   up -d --no-deps --force-recreate gateway
 ```
+
+## External-only sign-in (`auth.local`)
+
+This baseline closes both local-auth gates, so the external user system is the only way in:
+
+| Setting | Value | Effect |
+|---|---|---|
+| `auth.local.allow_registration` | `false` | `POST /api/v1/auth/register` → `403 registration_disabled` |
+| `auth.local.password_login_enabled` | `false` | `POST /api/v1/auth/login/local` → `403 password_login_disabled`, ahead of the login throttle and of any credential check; `/setup-status` reports it and the login page replaces the password form with a notice |
+
+Both live in `config.yaml` and are hot-reloadable, and neither revokes an already-issued session cookie — flipping them on a running deployment does not log anybody out. `/initialize` stays open, so a fresh install can still create its first admin.
+
+Because there is no self-service way back in, two invariants must hold:
+
+- `auth.external_user.admin_phones` is the **only** admin path once password login is closed, so keep at least one account in it (this baseline lists the two operator numbers). Role is decided when an account is *provisioned*, so add the entry before that account's first provision — an existing `user` row is not upgraded by a later call.
+- Any 401 lands the browser on `/login`, which now offers no way in. The integrating system must own re-entry: generate `login_url` at click time (tickets live 120s) and open it as a top-level navigation, never inside an iframe, where `SameSite=Lax` cookies are not sent.
+
+The rest of the session-durability checklist — cookie persistence over HTTP, the JWT secret, ticket TTL, `session_expiry_minutes`, account disable, `reset_admin.py` — is in `docs/EXTERNAL_USER_INTEGRATION.md` §3.6.
 
 ## Automatic skill synthesis (`auto_skill`)
 

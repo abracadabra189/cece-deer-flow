@@ -73,6 +73,11 @@ services:
       DEER_FLOW_INTERNAL_AUTH_TOKEN: ${DEER_FLOW_INTERNAL_AUTH_TOKEN}
       DEER_FLOW_HOST_BASE_DIR: ${DEER_FLOW_HOME}
       DEER_FLOW_SANDBOX_HOST: host.docker.internal
+      # environment: 优先于下面的 env_file（../.env 属于本地实例），所以本环境用自己的
+      # JWT 签名密钥，不与另一套栈共用；未设置时留空，Gateway 回落到 home 里的 .jwt_secret。
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      # 公网 HTTP（按 IP/域名访问）下也持久化会话 Cookie，否则关浏览器即掉登录。
+      DEER_FLOW_AUTH_ALLOW_INSECURE_PERSISTENT_COOKIE: ${DEER_FLOW_AUTH_ALLOW_INSECURE_PERSISTENT_COOKIE:-}
       NO_PROXY: ${NO_PROXY:-}${NO_PROXY:+,}localhost,127.0.0.1,::1,gateway,frontend,nginx,postgres,redis,host.docker.internal
       no_proxy: ${no_proxy:-}${no_proxy:+,}localhost,127.0.0.1,::1,gateway,frontend,nginx,postgres,redis,host.docker.internal
     env_file:

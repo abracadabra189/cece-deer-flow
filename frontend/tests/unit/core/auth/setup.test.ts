@@ -4,6 +4,7 @@ import { AUTH_REQUEST_TIMEOUT_MS } from "@/core/auth/constants";
 import {
   canCreateRegularAccount,
   fetchSetupStatus,
+  isPasswordLoginDisabled,
   isSystemAlreadyInitializedError,
   setupStatusFetchInit,
 } from "@/core/auth/setup";
@@ -182,6 +183,33 @@ describe("auth setup helpers", () => {
       canCreateRegularAccount({
         checked: true,
         status: { needs_setup: false },
+      }),
+    ).toBe(true);
+  });
+
+  test("password sign-in is hidden only on an explicit gateway false", () => {
+    // Absent (older Gateway) and an unfinished probe must keep the form: hiding it
+    // on unknown state would lock users out of every password deployment while the
+    // Gateway is slow or restarting.
+    expect(isPasswordLoginDisabled({ checked: false, status: null })).toBe(
+      false,
+    );
+    expect(
+      isPasswordLoginDisabled({
+        checked: true,
+        status: { needs_setup: false },
+      }),
+    ).toBe(false);
+    expect(
+      isPasswordLoginDisabled({
+        checked: true,
+        status: { needs_setup: false, password_login_enabled: true },
+      }),
+    ).toBe(false);
+    expect(
+      isPasswordLoginDisabled({
+        checked: true,
+        status: { needs_setup: false, password_login_enabled: false },
       }),
     ).toBe(true);
   });

@@ -124,6 +124,19 @@ class LocalAuthConfig(BaseModel):
             "does not apply to local registration."
         ),
     )
+    password_login_enabled: bool = Field(
+        default=True,
+        description=(
+            "Serve password sign-in at POST /api/v1/auth/login/local. Set to false when accounts "
+            "come from an external user system or SSO and nobody should sign in with a local "
+            "password: the endpoint then answers 403 password_login_disabled ahead of any "
+            "credential check (so it stops being a password oracle), and /setup-status reports "
+            "the state so the login page can hide the form. This closes sign-in, it does not "
+            "revoke cookies — already-issued sessions keep working. Before turning it off, make "
+            "sure an administrator can still get in another way (auth.external_user.admin_phones "
+            "or OIDC); /initialize stays open so a fresh install can still create its first admin."
+        ),
+    )
     max_login_attempts: int = Field(
         default=5,
         ge=2,

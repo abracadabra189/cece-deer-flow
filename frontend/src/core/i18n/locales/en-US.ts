@@ -2733,6 +2733,9 @@ export const enUS: Translations = {
     adminSetupRequiredTitle: "Administrator setup is required",
     adminSetupRequiredDescription:
       "DeerFlow needs an administrator account before new regular accounts can be created.",
+    externalOnlyTitle: "Sign in through the system that sent you here",
+    externalOnlyDescription:
+      "Password sign-in is disabled on this deployment. Go back to your business portal and open DeerFlow from there — your session is established automatically, with no separate account or password.",
     orContinueWith: "Or continue with",
     ssoHint:
       "If your account uses single sign-on, sign in with the option below instead.",
@@ -2759,6 +2762,8 @@ export const enUS: Translations = {
       password_too_short: "Password must be at least 6 characters.",
       registration_password_too_short:
         "Password must be at least 8 characters.",
+      external_login_failed:
+        "This sign-in link is no longer valid — it expired or was already used. Go back to the system that sent you here and open DeerFlow again.",
     },
   },
 };

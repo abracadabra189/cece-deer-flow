@@ -42,6 +42,22 @@ def _setup_auth(tmp_path):
         asyncio.run(close_engine())
 
 
+@pytest.fixture(autouse=True)
+def _open_local_auth_gates(monkeypatch):
+    """Pin the local-auth gates open for this module.
+
+    ``/initialize`` itself is ungated, but these cases seed a regular user through
+    ``/register`` first, and ``get_app_config()`` resolves the developer's real
+    ``config.yaml`` — so a checkout configured for external-only sign-in would 403
+    the setup step and the assertion would report the wrong conflict. The gates keep
+    their own suites: ``test_local_registration_gate.py`` and
+    ``test_local_password_login_gate.py``.
+    """
+    from app.gateway.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router, "_local_auth_gates", lambda: (True, True))
+
+
 @pytest.fixture()
 def client(_setup_auth):
     from app.gateway.app import create_app
