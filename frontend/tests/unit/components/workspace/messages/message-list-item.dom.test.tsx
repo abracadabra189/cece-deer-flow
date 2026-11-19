@@ -23,6 +23,10 @@ rs.mock("@/components/workspace/messages/markdown-content", () => ({
   MarkdownContent: () => null,
 }));
 
+rs.mock("@/components/workspace/changes", () => ({
+  WorkspaceChangeBadge: () => <div data-testid="workspace-change-badge" />,
+}));
+
 // Count calls to the copy-data derivation itself. The render path reads the
 // message content for the body (markdown, reasoning, tasks), so content
 // getters cannot distinguish rendering reads from copy derivation — the spy
@@ -181,6 +185,23 @@ describe("MessageListItem copy-data derivation guard", () => {
     renderRow(message, { showCopyButton: true, isLoading: true });
 
     expect(copyDataCalls.mock.calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe("MessageListItem workspace changes", () => {
+  it("does not append a workspace-change summary to an assistant response", () => {
+    render(
+      withI18n(
+        <MessageListItem
+          message={makeMessage("ai")}
+          threadId="thread-1"
+          runId="run-1"
+          showWorkspaceChanges
+        />,
+      ),
+    );
+
+    expect(screen.queryByTestId("workspace-change-badge")).toBeNull();
   });
 });
 

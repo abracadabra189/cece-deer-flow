@@ -1,7 +1,7 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { expect, rs, test } from "@rstest/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 
 import { I18nContext } from "@/core/i18n/context";
@@ -155,4 +155,59 @@ test("updates rendered thread state without receiving a values frame", async () 
     todos,
   });
   expect(result.current.thread.messages).toEqual([existingMessage]);
+});
+
+test("cancels a stale thread snapshot before accepting a streamed title", async () => {
+  const { useThreadStream } = await import("@/core/threads/hooks");
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(
+        I18nContext.Provider,
+        {
+          value: {
+            locale: "en-US",
+            setLocale: () => undefined,
+            t: enUS,
+          },
+        },
+        children,
+      ),
+    );
+  renderHook(
+    () =>
+      useThreadStream({
+        context: DEFAULT_LOCAL_SETTINGS.context,
+        isMock: true,
+        threadId: "thread-1",
+      }),
+    { wrapper },
+  );
+
+  let aborted = false;
+  void queryClient
+    .fetchQuery({
+      queryKey: ["thread", "metadata", "thread-1"],
+      queryFn: ({ signal }) =>
+        new Promise<never>((_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            aborted = true;
+            reject(new Error("Thread metadata request was cancelled"));
+          });
+        }),
+    })
+    .catch(() => undefined);
+
+  act(() => {
+    streamMockState.options?.onUpdateEvent?.(
+      { agent: { title: "Generated title" } },
+      { mutate: () => undefined },
+    );
+  });
+
+  await waitFor(() => expect(aborted).toBe(true));
 });

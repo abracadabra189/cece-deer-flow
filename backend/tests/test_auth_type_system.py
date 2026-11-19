@@ -58,8 +58,44 @@ def _persistence_engine(tmp_path):
         asyncio.run(close_engine())
 
 
+@pytest.fixture(autouse=True)
+def _no_dotenv_auth_leak(monkeypatch):
+    """Keep the checkout's dotenv out of auth policy resolution.
+
+    ``get_auth_config`` loads the selected env file into ``os.environ`` for the rest of
+    the process, and ``patch.dict(clear=True)`` cannot undo a load that happens inside
+    the call. An operator who followed the platform's own advice — ``AUTH_JWT_SECRET``
+    in ``.env``, ``DEER_FLOW_AUTH_ALLOW_INSECURE_PERSISTENT_COOKIE`` for an HTTP
+    deployment — would otherwise silently flip every default-policy case below: the
+    secret tests would take the env branch and public HTTP would look persistent.
+    These cases pin defaults, so both variables are removed and the dotenv load
+    becomes a no-op. Tests that *want* the opt-in still set it explicitly.
+    """
+    from app.gateway.auth.session_cookie import ALLOW_INSECURE_PERSISTENT_COOKIE_ENV
+
+    monkeypatch.delenv("AUTH_JWT_SECRET", raising=False)
+    monkeypatch.delenv(ALLOW_INSECURE_PERSISTENT_COOKIE_ENV, raising=False)
+    monkeypatch.setattr("deerflow.env.load_selected_env_file", lambda: True)
+
+
 def _setup_config():
     set_auth_config(AuthConfig(jwt_secret=_TEST_SECRET))
+
+
+@pytest.fixture(autouse=True)
+def _open_local_auth_gates(monkeypatch):
+    """Pin the local-auth gates open for this module.
+
+    These cases exercise the login/register/initialize flows and the token/cookie
+    types around them, not the operator gates. ``get_app_config()`` resolves the
+    developer's real ``config.yaml``, so a checkout configured for external-only
+    sign-in (``allow_registration`` / ``password_login_enabled`` false) would turn
+    every request here into a 403. The gates keep their own suites:
+    ``test_local_registration_gate.py`` and ``test_local_password_login_gate.py``.
+    """
+    from app.gateway.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router, "_local_auth_gates", lambda: (True, True))
 
 
 # ── CSRF Middleware Path Matching ────────────────────────────────────
@@ -974,6 +1010,54 @@ def test_change_password_reissues_access_and_csrf_in_lockstep_when_preference_ch
     assert "secure" in csrf_cookies[0]
     assert "max-age=604800" in access_cookies[0]
     assert "max-age=604800" in csrf_cookies[0]
+
+
+def test_change_password_new_email_registered_after_the_precheck_is_400(monkeypatch):
+    """An address registered between the uniqueness pre-check and the write is a 400, not a 500.
+
+    The route checks the new email, then hashes the password before it writes,
+    so a concurrent /register of the same address can commit first. The
+    unique index then rejects the update, and nothing about the account changes.
+    """
+    from app.gateway.deps import get_local_provider
+
+    _setup_config()
+    client = TestClient(_make_auth_app(), base_url="https://deerflow.example")
+    email = _unique_email("change-password-race")
+    new_email = _unique_email("change-password-race-target")
+    client.post("/api/v1/auth/register", json={"email": email, "password": "Tr0ub4dor3a"})
+    client.post("/api/v1/auth/login/local", data={"username": email, "password": "Tr0ub4dor3a"})
+    csrf_token = client.cookies.get("csrf_token")
+
+    provider = get_local_provider()
+    precheck = provider.get_user_by_email
+    prechecked: list[str] = []
+
+    async def precheck_then_concurrent_register(address: str):
+        found = await precheck(address)
+        prechecked.append(address)
+        await provider.create_user(email=address, password="Rac1ngSignupPwd!", system_role="user")
+        return found
+
+    monkeypatch.setattr(provider, "get_user_by_email", precheck_then_concurrent_register)
+    resp = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "Tr0ub4dor3a", "new_password": "An0therStrongPwd!", "new_email": new_email},
+        headers={"X-CSRF-Token": csrf_token},
+    )
+    monkeypatch.undo()
+
+    assert prechecked == [new_email]
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["detail"]["code"] == AuthErrorCode.EMAIL_ALREADY_EXISTS
+    # Nothing was written: the session still works, the email is unchanged,
+    # and only the old password logs in.
+    me = client.get("/api/v1/auth/me")
+    assert me.status_code == 200
+    assert me.json()["email"] == email
+    fresh = TestClient(_make_auth_app(), base_url="https://deerflow.example")
+    assert fresh.post("/api/v1/auth/login/local", data={"username": email, "password": "Tr0ub4dor3a"}).status_code == 200
+    assert fresh.post("/api/v1/auth/login/local", data={"username": email, "password": "An0therStrongPwd!"}).status_code == 401
 
 
 def test_initialize_remember_me_false_keeps_access_and_csrf_session_only():

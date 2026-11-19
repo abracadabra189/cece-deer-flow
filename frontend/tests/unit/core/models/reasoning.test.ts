@@ -131,16 +131,16 @@ describe("getResolvedMode", () => {
     expect(getResolvedMode(undefined, legacyPlain)).toBe("flash");
   });
 
-  it("keeps the requested mode on an optional-thinking model", () => {
+  it("keeps supported modes and downgrades the disabled ultra mode", () => {
     expect(getResolvedMode("flash", legacyThinking)).toBe("flash");
-    expect(getResolvedMode("ultra", legacyThinking)).toBe("ultra");
-    expect(getResolvedMode(undefined, legacyThinking)).toBe("pro");
+    expect(getResolvedMode("ultra", legacyThinking)).toBe("pro");
+    expect(getResolvedMode(undefined, legacyThinking)).toBe("flash");
   });
 
   it("never yields flash on a required-thinking model", () => {
     expect(getResolvedMode("flash", glm)).toBe("thinking");
     expect(getResolvedMode(undefined, glm)).toBe("pro");
-    expect(getResolvedMode("ultra", glm)).toBe("ultra");
+    expect(getResolvedMode("ultra", glm)).toBe("pro");
   });
 });
 
@@ -149,7 +149,7 @@ describe("reasoningEffortForMode", () => {
     expect(reasoningEffortForMode("flash", legacyThinking)).toBe("minimal");
     expect(reasoningEffortForMode("thinking", legacyThinking)).toBe("low");
     expect(reasoningEffortForMode("pro", legacyThinking)).toBe("medium");
-    expect(reasoningEffortForMode("ultra", legacyThinking)).toBe("high");
+    expect(reasoningEffortForMode("ultra", legacyThinking)).toBe("medium");
   });
 
   it("maps the presets onto a restricted contract", () => {

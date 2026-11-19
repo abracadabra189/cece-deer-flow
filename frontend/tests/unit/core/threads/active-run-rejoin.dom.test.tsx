@@ -10,6 +10,7 @@ import { DEFAULT_LOCAL_SETTINGS } from "@/core/settings/local";
 import { useThreadStream } from "@/core/threads/hooks";
 
 type StreamOptions = {
+  threadId?: string;
   onCreated?: (meta: { thread_id: string; run_id: string }) => void;
   onError?: (
     error: unknown,
@@ -24,29 +25,37 @@ type StreamOptions = {
 };
 
 const apiMockState = rs.hoisted(() => ({
-  listRuns: rs.fn(async () => [] as Run[]),
+  listRuns: rs.fn(async (_threadId?: string) => [] as Run[]),
+  cancel: rs.fn(async (_threadId: string, _runId: string) => undefined),
 }));
 
 const streamMockState = rs.hoisted(() => ({
   isLoading: false,
   joinStream: rs.fn(async (_runId: string) => undefined),
+  stop: rs.fn(async (_threadId?: string) => undefined),
   options: undefined as StreamOptions | undefined,
+  optionThreadIds: [] as Array<string | undefined>,
+}));
+
+const toastMockState = rs.hoisted(() => ({
+  error: rs.fn(),
 }));
 
 rs.mock("@/core/api", () => ({
   getAPIClient: () => ({
-    runs: { list: apiMockState.listRuns },
+    runs: { list: apiMockState.listRuns, cancel: apiMockState.cancel },
   }),
 }));
 
 rs.mock("@langchain/langgraph-sdk/react", () => ({
   useStream: (options: StreamOptions) => {
     streamMockState.options = options;
+    streamMockState.optionThreadIds.push(options.threadId);
     return {
       isLoading: streamMockState.isLoading,
       joinStream: streamMockState.joinStream,
       messages: [],
-      stop: async () => undefined,
+      stop: () => streamMockState.stop(options.threadId),
       submit: async () => undefined,
       values: {
         artifacts: [],
@@ -55,6 +64,12 @@ rs.mock("@langchain/langgraph-sdk/react", () => ({
         todos: [],
       },
     };
+  },
+}));
+
+rs.mock("sonner", () => ({
+  toast: {
+    error: toastMockState.error,
   },
 }));
 
@@ -99,15 +114,15 @@ async function flushFrames() {
   }
 }
 
-function renderThread(threadId = "thread-1") {
+function renderThread(threadId: string | null = "thread-1") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const rendered = renderHook(
-    ({ activeThreadId }: { activeThreadId: string }) =>
+    ({ activeThreadId }: { activeThreadId: string | null }) =>
       useThreadStream({
         context: DEFAULT_LOCAL_SETTINGS.context,
-        threadId: activeThreadId,
+        threadId: activeThreadId ?? undefined,
       }),
     {
       initialProps: { activeThreadId: threadId },
@@ -116,6 +131,23 @@ function renderThread(threadId = "thread-1") {
   );
   return { queryClient, ...rendered };
 }
+
+test("keeps the local stream connected when a new chat receives its thread ID", async () => {
+  const { unmount } = renderThread(null);
+  await flushFrames();
+  streamMockState.stop.mockClear();
+
+  act(() => {
+    streamMockState.options?.onCreated?.({
+      thread_id: "thread-new",
+      run_id: "run-new",
+    });
+  });
+  await flushFrames();
+
+  expect(streamMockState.stop).not.toHaveBeenCalled();
+  unmount();
+});
 
 function failActiveRecoveredStream() {
   streamMockState.options?.onError?.(
@@ -128,11 +160,17 @@ beforeEach(() => {
   rs.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   window.sessionStorage.clear();
   apiMockState.listRuns.mockReset();
+  apiMockState.cancel.mockReset();
+  apiMockState.cancel.mockResolvedValue(undefined);
   apiMockState.listRuns.mockResolvedValue([ACTIVE_RUN]);
   streamMockState.isLoading = false;
   streamMockState.joinStream.mockReset();
   streamMockState.joinStream.mockResolvedValue(undefined);
+  streamMockState.stop.mockReset();
+  streamMockState.stop.mockResolvedValue(undefined);
   streamMockState.options = undefined;
+  streamMockState.optionThreadIds = [];
+  toastMockState.error.mockReset();
   rs.stubGlobal(
     "fetch",
     rs.fn(
@@ -145,9 +183,43 @@ beforeEach(() => {
   );
 });
 
+test("reports a terminal run error when its stream error event was missed", async () => {
+  apiMockState.listRuns.mockResolvedValue([
+    {
+      run_id: "run-step-limit",
+      status: "error",
+      error:
+        "The run stopped at its step limit (recursion_limit=1000) before finishing.",
+    } as unknown as Run,
+  ]);
+
+  const { unmount } = renderThread();
+
+  await flushFrames();
+  expect(toastMockState.error).toHaveBeenCalledWith(
+    "The run stopped at its step limit (recursion_limit=1000) before finishing.",
+  );
+  unmount();
+});
+
 afterEach(() => {
   rs.useRealTimers();
   rs.unstubAllGlobals();
+});
+
+test("one stop cancels a streaming run and prevents stale data from rejoining it", async () => {
+  streamMockState.isLoading = true;
+  const { result, rerender, unmount } = renderThread();
+  await flushFrames();
+  await act(async () => {
+    await result.current.thread.stop();
+  });
+  expect(apiMockState.cancel).toHaveBeenCalledWith("thread-1", "run-active");
+  streamMockState.isLoading = false;
+  rerender({ activeThreadId: "thread-1" });
+  await flushFrames();
+  expect(streamMockState.joinStream).not.toHaveBeenCalled();
+  unmount();
 });
 
 test("joins the newest active run when a reopened tab has no reconnect pointer", async () => {
@@ -164,6 +236,74 @@ test("joins the newest active run when a reopened tab has no reconnect pointer",
   expect(window.sessionStorage.getItem("lg:stream:thread-1")).toBeNull();
 });
 
+test("releases the local recovered stream without cancelling the run when leaving the chat", async () => {
+  streamMockState.stop.mockImplementation(async () => {
+    expect(window.sessionStorage.getItem("lg:stream:thread-1")).toBeNull();
+  });
+  const { unmount } = renderThread();
+  await flushFrames();
+
+  expect(streamMockState.joinStream).toHaveBeenCalledWith("run-active");
+  expect(streamMockState.stop).not.toHaveBeenCalled();
+
+  unmount();
+
+  expect(streamMockState.stop).toHaveBeenCalledTimes(1);
+  expect(apiMockState.cancel).not.toHaveBeenCalled();
+});
+
+test("releases the previous local stream when switching between active chats", async () => {
+  apiMockState.listRuns.mockImplementation(async (threadId?: string) => [
+    {
+      run_id: `run-${threadId}`,
+      status: "running",
+      thread_id: threadId,
+    } as Run,
+  ]);
+  const { rerender, unmount } = renderThread("thread-1");
+  await flushFrames();
+  expect(streamMockState.joinStream).toHaveBeenLastCalledWith("run-thread-1");
+
+  rerender({ activeThreadId: "thread-2" });
+  await flushFrames();
+
+  expect(streamMockState.stop).toHaveBeenCalledTimes(1);
+  expect(streamMockState.stop).toHaveBeenCalledWith("thread-1");
+  expect(streamMockState.joinStream).toHaveBeenLastCalledWith("run-thread-2");
+  expect(apiMockState.cancel).not.toHaveBeenCalled();
+  unmount();
+});
+
+test("switches the SDK to the routed chat without an intermediate stale thread", async () => {
+  const { rerender, unmount } = renderThread("thread-1");
+  await flushFrames();
+  streamMockState.optionThreadIds = [];
+
+  rerender({ activeThreadId: "thread-2" });
+
+  expect(streamMockState.optionThreadIds).not.toContain("thread-1");
+  expect(streamMockState.optionThreadIds.at(-1)).toBe("thread-2");
+  unmount();
+});
+
+test("never cancels the destination run while releasing the previous chat", async () => {
+  streamMockState.stop.mockImplementation(async (threadId?: string) => {
+    if (!threadId) return;
+    const runId = window.sessionStorage.getItem(`lg:stream:${threadId}`);
+    if (runId) await apiMockState.cancel(threadId, runId);
+  });
+  const { rerender, unmount } = renderThread("thread-1");
+  await flushFrames();
+  window.sessionStorage.setItem("lg:stream:thread-2", "run-destination");
+
+  rerender({ activeThreadId: "thread-2" });
+  await flushFrames();
+
+  expect(streamMockState.stop).toHaveBeenCalledWith("thread-1");
+  expect(apiMockState.cancel).not.toHaveBeenCalled();
+  unmount();
+});
+
 test("leaves a matching reconnect pointer to the SDK without joining twice", async () => {
   window.sessionStorage.setItem("lg:stream:thread-1", "run-active");
   const { unmount } = renderThread();
@@ -175,6 +315,9 @@ test("leaves a matching reconnect pointer to the SDK without joining twice", asy
   );
 
   unmount();
+  expect(window.sessionStorage.getItem("lg:stream:thread-1")).toBeNull();
+  expect(streamMockState.stop).toHaveBeenCalledTimes(1);
+  expect(apiMockState.cancel).not.toHaveBeenCalled();
 });
 
 test("takes over a failed same-tab reconnect with bounded recovery", async () => {
@@ -506,5 +649,30 @@ test("still recovers a different active run after an earlier run finishes", asyn
 
   expect(streamMockState.joinStream).toHaveBeenCalledTimes(1);
   expect(streamMockState.joinStream).toHaveBeenCalledWith("run-next");
+  unmount();
+});
+
+test("exposes the active run's server start until that run finishes", async () => {
+  apiMockState.listRuns.mockResolvedValue([
+    { ...ACTIVE_RUN, created_at: "2026-11-04T08:00:00.250000+00:00" },
+  ]);
+  const { result, rerender, unmount } = renderThread();
+  await flushFrames();
+
+  expect(result.current.activeRunStartedAt).toBe(
+    Date.UTC(2026, 10, 4, 8, 0, 0, 250),
+  );
+
+  // The cached runs list can still say "running" after the stream finishes.
+  apiMockState.listRuns.mockImplementation(() => new Promise(() => undefined));
+  act(() => {
+    streamMockState.options?.onFinish?.(
+      { values: { artifacts: [], messages: [], title: "Done" } },
+      ACTIVE_RUN_META,
+    );
+  });
+  rerender({ activeThreadId: "thread-1" });
+
+  expect(result.current.activeRunStartedAt).toBeNull();
   unmount();
 });

@@ -435,7 +435,19 @@ async def login_local(
     form_data: OAuth2PasswordRequestForm = Depends(),
     remember_me: bool = Form(default=True),
 ):
-    """Local email/password login."""
+    """Local email/password login.
+
+    Returns 403 when ``auth.local.password_login_enabled`` is false. The gate runs ahead
+    of the throttle and of ``authenticate``: a closed endpoint must not count failures
+    against a shared egress IP, and answering 401/200 by password would keep it a
+    credential oracle for the accounts the operator meant to close.
+    """
+    if not await asyncio.to_thread(_local_password_login_enabled):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=AuthErrorResponse(code=AuthErrorCode.PASSWORD_LOGIN_DISABLED, message="Password sign-in is disabled on this deployment").model_dump(),
+        )
+
     client_ip = await _get_client_ip(request)
     await _check_rate_limit(client_ip)
 
@@ -458,6 +470,28 @@ async def login_local(
     )
 
 
+def _local_auth_gates() -> tuple[bool, bool]:
+    """``(allow_registration, password_login_enabled)`` from a single config read.
+
+    ``config.yaml`` is absent in bare-app contexts that never load it (tests build the
+    gateway without one). Both paths were unconditionally open before their gates existed,
+    so an absent config file falls back to those same defaults rather than turning these
+    unauthenticated endpoints into a hard dependency on the file. Only ``FileNotFoundError``
+    is caught: a malformed config must not silently re-open a closed deployment, so it
+    propagates.
+
+    One read serves both flags because ``/setup-status`` reports them together, and
+    ``get_app_config`` stats and re-hashes the config files on every call.
+    """
+    from deerflow.config.app_config import get_app_config
+
+    try:
+        local = get_app_config().auth.local
+    except FileNotFoundError:
+        return True, True
+    return local.allow_registration, local.password_login_enabled
+
+
 def _local_registration_enabled() -> bool:
     """Whether visitors may self-register a local account.
 
@@ -466,23 +500,27 @@ def _local_registration_enabled() -> bool:
     enforced in the SSO callback), so SSO-provisioned deployments need a way to
     close this path.
 
-    ``config.yaml`` is absent in bare-app contexts that never load it (tests build the
-    gateway without one). Registration was unconditionally open before this gate existed,
-    so an absent config file falls back to that same default rather than turning these two
-    endpoints into a hard dependency on the file. Only ``FileNotFoundError`` is caught:
-    a malformed config must not silently re-open a closed deployment, so it propagates.
-
     ``/register`` reads this fresh on every request (``get_app_config`` reloads on file
     change); ``/setup-status`` may serve it up to 60s stale via its per-IP result cache.
-    Both are unauthenticated and ``get_app_config`` stats and re-hashes the config
-    files on every call, so they run this through ``asyncio.to_thread``.
+    Both are unauthenticated and the config read stats and re-hashes the config files,
+    so they run this through ``asyncio.to_thread``.
     """
-    from deerflow.config.app_config import get_app_config
+    return _local_auth_gates()[0]
 
-    try:
-        return get_app_config().auth.local.allow_registration
-    except FileNotFoundError:
-        return True
+
+def _local_password_login_enabled() -> bool:
+    """Whether ``POST /login/local`` serves password sign-in.
+
+    Externally provisioned and SSO accounts carry ``password_hash IS NULL`` and can never
+    authenticate here, but legacy local accounts can — which leaves a sign-in path that
+    bypasses the external system's offboarding. Closing it is what makes "users only sign
+    in through the external user system" true rather than merely intended.
+
+    Read off-loop on every request (the endpoint is unauthenticated); ``/setup-status``
+    publishes the same flag so the login page can hide the form instead of offering one
+    that always 403s.
+    """
+    return _local_auth_gates()[1]
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -579,7 +617,12 @@ async def change_password(request: Request, response: Response, body: ChangePass
     if user.needs_setup and body.new_email is not None:
         user.needs_setup = False
 
-    await provider.update_user(user)
+    try:
+        await provider.update_user(user)
+    except ValueError:
+        # The address was registered between the pre-check above and this
+        # write; the repository rejected it and wrote nothing.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=AuthErrorResponse(code=AuthErrorCode.EMAIL_ALREADY_EXISTS, message="Email already in use").model_dump())
 
     # Re-issue cookie with new token_version
     token = create_access_token(str(user.id), token_version=user.token_version)
@@ -786,8 +829,12 @@ async def setup_status(request: Request):
 
             async def _compute_setup_status() -> dict:
                 admin_count = await get_local_provider().count_admin_users()
-                registration_enabled = await asyncio.to_thread(_local_registration_enabled)
-                return {"needs_setup": admin_count == 0, "registration_enabled": registration_enabled}
+                registration_enabled, password_login_enabled = await asyncio.to_thread(_local_auth_gates)
+                return {
+                    "needs_setup": admin_count == 0,
+                    "registration_enabled": registration_enabled,
+                    "password_login_enabled": password_login_enabled,
+                }
 
             task = asyncio.create_task(_compute_setup_status())
             _SETUP_STATUS_INFLIGHT[client_ip] = task

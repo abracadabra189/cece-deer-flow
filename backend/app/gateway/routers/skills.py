@@ -102,6 +102,7 @@ class SkillResponse(BaseModel):
     """Response model for skill information."""
 
     name: str = Field(..., description="Name of the skill")
+    display_name: str | None = Field(None, description="Optional user-facing name of the skill")
     description: str = Field(..., description="Description of what the skill does")
     license: str | None = Field(None, description="License information")
     category: SkillCategory = Field(..., description="Category of the skill (public, custom, or legacy)")
@@ -251,6 +252,7 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
     """Convert a Skill object to a SkillResponse."""
     return SkillResponse(
         name=skill.name,
+        display_name=skill.display_name,
         description=skill.description,
         license=skill.license,
         category=skill.category,
@@ -338,6 +340,20 @@ async def _publish_skills_cache_reset(user_id: str | None) -> str | None:
     return await asyncio.to_thread(publish_skills_cache_reset, user_id=user_id)
 
 
+def _assert_extensions_config_readable() -> None:
+    """Raise when the extensions config exists but cannot be read.
+
+    The storage layer fails closed on an unreadable config (every skill stays
+    listed, none is enabled), which keeps the runtime activation gate safe
+    without taking the listing down. The read surface must stay loud instead:
+    the ``enabled`` column it reports is derived from this config, so serving
+    a degraded list would present a broken deployment as a legitimately empty
+    one. The raised error reaches each handler's generic 500 branch, which
+    keeps the host path in the server log and out of the response body.
+    """
+    ExtensionsConfig.from_file()
+
+
 def _load_user_skills(config: AppConfig) -> list[Skill]:
     """Load every skill visible to the caller's storage, enabled or not.
 
@@ -347,6 +363,7 @@ def _load_user_skills(config: AppConfig) -> list[Skill]:
     each ``SKILL.md`` -- work that scales with the number of installed skills
     (#5747 moved the same call off the loop for ``get_custom_skill``).
     """
+    _assert_extensions_config_readable()
     return _get_user_skill_storage(config).load_skills(enabled_only=False)
 
 
@@ -477,7 +494,7 @@ async def _filter_visible_skills(
         return skills
 
     try:
-        provider, principal = resolve_skill_authorization(user, is_internal=_is_internal_caller(request, user))
+        provider, principal = await asyncio.to_thread(resolve_skill_authorization, user, is_internal=_is_internal_caller(request, user))
     except _AuthorizationUnavailable as exc:
         return [] if exc.fail_closed else skills
 

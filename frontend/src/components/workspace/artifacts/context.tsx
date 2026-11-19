@@ -11,7 +11,6 @@ import {
   type SetStateAction,
 } from "react";
 
-import { useSidebar } from "@/components/ui/sidebar";
 import { useArtifactDrafts } from "@/core/artifacts/draft-context";
 import type { ArtifactDraftState } from "@/core/artifacts/editing";
 import { useAuth } from "@/core/auth/AuthProvider";
@@ -25,6 +24,7 @@ export interface ArtifactsContextType {
   autoSelect: boolean;
   select: (artifact: string, autoSelect?: boolean) => void;
   deselect: () => void;
+  returnToList: () => void;
 
   open: boolean;
   autoOpen: boolean;
@@ -93,7 +93,6 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
   );
   const [autoOpen, setAutoOpen] = useState(true);
   const [editingPath, setEditingPath] = useState<string | null>(null);
-  const { setOpen: setSidebarOpen } = useSidebar();
   const pathname = usePathname();
   const { user } = useAuth();
   const { drafts, setDrafts } = useArtifactDrafts(
@@ -134,20 +133,22 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
   const select = useCallback(
     (artifact: string, autoSelect = false) => {
       setSelectedArtifact(artifact);
-      if (env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true") {
-        setSidebarOpen(false);
-      }
       if (!autoSelect) {
         setAutoSelect(false);
       }
     },
-    [setSidebarOpen, setSelectedArtifact, setAutoSelect],
+    [setSelectedArtifact, setAutoSelect],
   );
 
   const deselect = useCallback(() => {
     setSelectedArtifact(null);
     setAutoSelect(true);
     setOpen(false);
+  }, []);
+
+  const returnToList = useCallback(() => {
+    setSelectedArtifact(null);
+    setAutoSelect(true);
   }, []);
 
   const value: ArtifactsContextType = {
@@ -168,6 +169,7 @@ export function ArtifactsProvider({ children }: ArtifactsProviderProps) {
     selectedArtifact,
     select,
     deselect,
+    returnToList,
 
     drafts,
     setDrafts,

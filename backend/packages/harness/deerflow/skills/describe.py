@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import html
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated
 
@@ -28,6 +29,13 @@ from deerflow.skills.catalog import SkillCatalog
 from deerflow.skills.types import SkillCategory
 
 logger = logging.getLogger(__name__)
+
+#: Learned skills rendered in the priority ``<auto_skill_index>`` block. Bounded
+#: so a large store cannot grow the prompt without limit; anything beyond the cap
+#: stays reachable through ``describe_skill`` and the ordinary ``<skill_index>``.
+AUTO_INDEX_MAX_ENTRIES = 20
+#: Per-entry description bound in that block.
+AUTO_INDEX_DESCRIPTION_BUDGET = 200
 
 
 # ── Setup ────────────────────────────────────────────────────────────────────
@@ -210,28 +218,84 @@ def _render_skill_metadata(skills: list, container_base_path: str) -> str:
 # ── Prompt rendering ─────────────────────────────────────────────────────────
 
 
+def _render_auto_skill_index(entries: Iterable[tuple[str, str]]) -> str:
+    """Render bounded ``- name: description`` lines for the learned skills.
+
+    Both values come from a generated ``SKILL.md``'s frontmatter, so they are
+    escaped like every other skill metadata render site: a description must not be
+    able to close ``<auto_skill_index>`` and forge a framework block.
+    """
+    materialized = tuple(entries)
+    lines: list[str] = []
+    for name, description in materialized[:AUTO_INDEX_MAX_ENTRIES]:
+        esc_name = html.escape(name, quote=False)
+        clipped = " ".join((description or "").split())
+        if len(clipped) > AUTO_INDEX_DESCRIPTION_BUDGET:
+            clipped = clipped[:AUTO_INDEX_DESCRIPTION_BUDGET] + "…"
+        lines.append(f"- {esc_name}: {html.escape(clipped, quote=False)}" if clipped else f"- {esc_name}")
+    if len(materialized) > AUTO_INDEX_MAX_ENTRIES:
+        lines.append(f"- … {len(materialized) - AUTO_INDEX_MAX_ENTRIES} more (use describe_skill to find them)")
+    return "\n".join(lines)
+
+
 def get_skill_index_prompt_section(
     *,
     skill_names: frozenset[str] = frozenset(),
     container_base_path: str = DEFAULT_SKILLS_CONTAINER_PATH,
     skill_evolution_section: str = "",
+    auto_skill_entries: Iterable[tuple[str, str]] = (),
 ) -> str:
     """Generate ``<skill_system>`` with a name-only ``<skill_index>``.
 
     Mirrors ``get_deferred_tools_prompt_section`` from ``tool_search.py``.
     The agent knows what exists and can use ``describe_skill`` to load metadata.
 
+    *auto_skill_entries* are the platform-learned skills in this build as
+    ``(name, description)`` pairs. They are rendered first, in their own
+    ``<auto_skill_index>`` with descriptions, and the discovery instructions tell
+    the model to check them before deciding whether any other skill is needed.
+    Descriptions matter here: a learned skill's name is an English slug, so a
+    request in another language would have nothing to match on.
+
     Returns empty string when there are no skills.
     """
-    if not skill_names:
+    auto_entries = tuple(auto_skill_entries or ())
+    auto_names = {name for name, _ in auto_entries}
+    other_names = frozenset(name for name in skill_names if name not in auto_names)
+    if not auto_entries and not other_names:
         return ""
 
-    names = ", ".join(html.escape(name, quote=False) for name in sorted(skill_names))
     evolution = f"\n{skill_evolution_section}" if skill_evolution_section else ""
+
+    verification_order = ""
+    auto_block = ""
+    if auto_entries:
+        verification_order = """
+**Skill Verification Order — check the learned skills first:**
+1. <auto_skill_index> lists scenarios this platform already learned from real runs. If the current request belongs to one of them, call describe_skill(name), then read_file the returned location and follow that skill.
+2. Only then decide whether another skill is still needed. Load one only when the matched learned skill does not cover this request — never load extra skills "just in case".
+3. When nothing in <auto_skill_index> matches, use the ordinary discovery flow below.
+"""
+        auto_block = f"""
+<auto_skill_index>
+{_render_auto_skill_index(auto_entries)}
+</auto_skill_index>
+"""
+
+    names = ", ".join(html.escape(name, quote=False) for name in sorted(other_names))
+    skill_index = (
+        f"""
+<skill_index>
+{names}
+</skill_index>
+"""
+        if other_names
+        else ""
+    )
 
     return f"""<skill_system>
 You have access to skills that provide optimized workflows for specific tasks.
-
+{verification_order}
 **Skill Discovery:**
 1. Check <skill_index> for a skill name that matches your task
 2. Call describe_skill(name) to fetch its description and capabilities
@@ -244,9 +308,6 @@ You have access to skills that provide optimized workflows for specific tasks.
 
 **Allowed tools:** A skill's `allowed-tools` metadata is compatibility information for other agent frameworks. It never restricts or grants tools here; your tools are controlled by DeerFlow's Agent configuration and authorization.
 {evolution}
-<skill_index>
-{names}
-</skill_index>
-
+{auto_block}{skill_index}
 Skills are located at: {container_base_path}
 </skill_system>"""

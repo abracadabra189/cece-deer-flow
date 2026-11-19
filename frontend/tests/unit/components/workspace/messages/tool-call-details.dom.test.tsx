@@ -16,6 +16,14 @@ import type { ArtifactEntry } from "@/core/threads/types";
 
 import { FlipDisplay as StaticFlipDisplay } from "../../../helpers/flip-display";
 
+const artifactsMock = rs.hoisted(() => ({
+  autoOpen: true,
+  autoSelect: true,
+  selectedArtifact: null as string | null,
+  select: rs.fn(),
+  setOpen: rs.fn(),
+}));
+
 rs.mock("@/components/workspace/flip-display", () => ({
   FlipDisplay: (props: Parameters<typeof StaticFlipDisplay>[0]) => (
     <StaticFlipDisplay {...props} />
@@ -23,11 +31,16 @@ rs.mock("@/components/workspace/flip-display", () => ({
 }));
 
 rs.mock("@/components/workspace/artifacts", () => ({
-  useArtifacts: () => ({ setOpen: () => undefined, select: () => undefined }),
+  useArtifacts: () => artifactsMock,
 }));
 afterEach(() => {
   cleanup();
   rs.restoreAllMocks();
+  artifactsMock.autoOpen = true;
+  artifactsMock.autoSelect = true;
+  artifactsMock.selectedArtifact = null;
+  artifactsMock.select.mockReset();
+  artifactsMock.setOpen.mockReset();
 });
 
 const call: Message = {
@@ -54,6 +67,7 @@ function group(
   messages: Message[],
   debug = true,
   toolArtifacts?: ArtifactEntry[],
+  isLoading = false,
 ) {
   return (
     <I18nContext.Provider
@@ -63,6 +77,7 @@ function group(
         messages={messages}
         showTokenDebugSummaries={debug}
         toolArtifacts={toolArtifacts}
+        isLoading={isLoading}
       />
     </I18nContext.Provider>
   );
@@ -74,6 +89,34 @@ function expand() {
 }
 
 describe("generic tool details", () => {
+  it("does not auto-open the results area for a streamed file write", async () => {
+    render(
+      group(
+        [
+          {
+            type: "ai",
+            id: "writing-ai",
+            content: "",
+            tool_calls: [
+              {
+                id: "write-1",
+                name: "write_file",
+                args: { path: "/mnt/user-data/outputs/report.md" },
+              },
+            ],
+          } as Message,
+        ],
+        undefined,
+        undefined,
+        true,
+      ),
+    );
+
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    expect(artifactsMock.select).not.toHaveBeenCalled();
+    expect(artifactsMock.setOpen).not.toHaveBeenCalled();
+  });
+
   it("updates artifact badges with unchanged messages while retaining Debug details", () => {
     const messages = [call, tool("report ready")];
     const { rerender } = render(group(messages));

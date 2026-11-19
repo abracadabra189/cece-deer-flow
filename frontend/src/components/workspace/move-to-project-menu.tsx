@@ -70,7 +70,7 @@ export function MoveToProjectMenu({
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
         <FolderInput className="text-muted-foreground" />
-        <span>{t.projects.moveToProject}</span>
+        <span>{t.taskGroups.moveToTaskGroup}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-56">
         {projects?.map((project) => (
@@ -89,12 +89,12 @@ export function MoveToProjectMenu({
         {projects && projects.length > 0 && <DropdownMenuSeparator />}
         <DropdownMenuItem onSelect={onNewProject}>
           <Plus className="text-muted-foreground" />
-          <span>{t.projects.newProject}…</span>
+          <span>{t.taskGroups.newTaskGroup}…</span>
         </DropdownMenuItem>
         {currentProjectId !== null && (
           <DropdownMenuItem onSelect={() => handleMove(null)}>
             <FolderMinus className="text-muted-foreground" />
-            <span>{t.projects.removeFromProject}</span>
+            <span>{t.taskGroups.removeFromTaskGroup}</span>
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
@@ -154,7 +154,7 @@ export function NewProjectDialog({
                 toast.error(
                   error instanceof Error && error.message
                     ? error.message
-                    : t.projects.moveFailed,
+                    : t.taskGroups.moveFailed,
                 );
               },
             },
@@ -164,7 +164,7 @@ export function NewProjectDialog({
           toast.error(
             error instanceof Error && error.message
               ? error.message
-              : t.projects.createFailed,
+              : t.taskGroups.createFailed,
           );
         },
       },
@@ -175,8 +175,8 @@ export function NewProjectDialog({
     isCreating,
     handleOpenChange,
     moveThreadToProject,
-    t.projects.createFailed,
-    t.projects.moveFailed,
+    t.taskGroups.createFailed,
+    t.taskGroups.moveFailed,
     thread.thread_id,
   ]);
 
@@ -184,13 +184,13 @@ export function NewProjectDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{t.projects.newProject}</DialogTitle>
+          <DialogTitle>{t.taskGroups.newTaskGroup}</DialogTitle>
         </DialogHeader>
         <div className="py-4">
           <Input
             value={createName}
             onChange={(e) => setCreateName(e.target.value)}
-            placeholder={t.projects.namePlaceholder}
+            placeholder={t.taskGroups.namePlaceholder}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !isIMEComposing(e)) {
                 e.preventDefault();

@@ -4,11 +4,12 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 const mocks = rs.hoisted(() => ({
   pathname: "/workspace/chats/a",
   user: { id: "account-a" } as { id: string } | null,
+  setSidebarOpen: rs.fn(),
 }));
 
 rs.mock("next/navigation", () => ({ usePathname: () => mocks.pathname }));
 rs.mock("@/components/ui/sidebar", () => ({
-  useSidebar: () => ({ setOpen: rs.fn() }),
+  useSidebar: () => ({ setOpen: mocks.setSidebarOpen }),
 }));
 rs.mock("@/core/auth/AuthProvider", () => ({
   useAuth: () => ({ user: mocks.user }),
@@ -29,7 +30,7 @@ import {
 const filepath = "/mnt/user-data/outputs/report.txt";
 
 function Probe() {
-  const { drafts, setDrafts } = useArtifacts();
+  const { drafts, select, setDrafts } = useArtifacts();
   const draft = drafts[filepath];
   return (
     <>
@@ -52,6 +53,7 @@ function Probe() {
         Edit
       </button>
       <button onClick={() => setDrafts({})}>Discard</button>
+      <button onClick={() => select(filepath)}>Select artifact</button>
       <button
         onClick={() =>
           setDrafts((current) => ({
@@ -110,9 +112,16 @@ afterEach(() => {
   window.sessionStorage.clear();
   mocks.pathname = "/workspace/chats/a";
   mocks.user = { id: "account-a" };
+  mocks.setSidebarOpen.mockReset();
 });
 
 describe("artifact draft navigation", () => {
+  it("keeps the left sidebar open when selecting an artifact preview", () => {
+    render(<Workspace />);
+    fireEvent.click(screen.getByText("Select artifact"));
+    expect(mocks.setSidebarOpen).not.toHaveBeenCalled();
+  });
+
   it("keeps drafts and the unload warning across the workspace-to-home exit", () => {
     const view = render(<Workspace />);
     fireEvent.click(screen.getByText("Edit"));

@@ -17,6 +17,7 @@ import {
   NotebookPenIcon,
   SearchIcon,
   SquareTerminalIcon,
+  ShieldCheckIcon,
   WrenchIcon,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
@@ -28,7 +29,6 @@ import {
   ChainOfThoughtSearchResults,
   ChainOfThoughtStep,
 } from "@/components/ai-elements/chain-of-thought";
-import { CodeBlock } from "@/components/ai-elements/code-block";
 import { Button } from "@/components/ui/button";
 import {
   buildWriteFileArtifactURL,
@@ -73,6 +73,7 @@ interface MessageGroupProps {
   showTokenDebugSummaries?: boolean;
   threadId?: string;
   toolArtifacts?: ArtifactEntry[];
+  awaitingApproval?: boolean;
 }
 
 function MessageGroupComponent({
@@ -85,6 +86,7 @@ function MessageGroupComponent({
   showTokenDebugSummaries = false,
   threadId,
   toolArtifacts,
+  awaitingApproval = false,
 }: MessageGroupProps) {
   const { t } = useI18n();
   const markdownComponents = useMemo(
@@ -284,10 +286,7 @@ function MessageGroupComponent({
     );
   };
 
-  const renderToolCall = (
-    step: CoTToolCallStep,
-    options?: { isLast?: boolean },
-  ) => {
+  const renderToolCall = (step: CoTToolCallStep) => {
     const debugStep =
       showTokenDebugSummaries && step.messageId
         ? debugStepByMessageId.get(step.messageId)
@@ -298,8 +297,6 @@ function MessageGroupComponent({
         key={step.occurrenceId}
         {...step}
         threadId={threadId}
-        isLast={options?.isLast}
-        isLoading={isLoading}
         deferBrowserPreview={deferBrowserPreviews}
         showDetails={showTokenDebugSummaries}
         tokenDebugStep={
@@ -416,7 +413,7 @@ function MessageGroupComponent({
                 stepIndexByStep.get(lastToolCallStep) ?? -1,
               )}
               <FlipDisplay uniqueKey={lastToolCallStep.occurrenceId}>
-                {renderToolCall(lastToolCallStep, { isLast: true })}
+                {renderToolCall(lastToolCallStep)}
               </FlipDisplay>
               {afterLastToolCallAssistantTextSteps
                 .filter((step) => !belowLastReasoningSteps.has(step))
@@ -516,6 +513,16 @@ function MessageGroupComponent({
 
   return (
     <>
+      {awaitingApproval ? (
+        <p
+          className="text-muted-foreground flex items-center gap-1.5 text-sm"
+          data-testid="awaiting-approval"
+          role="status"
+        >
+          <ShieldCheckIcon className="size-4" />
+          {t.humanInput.approval.waiting}
+        </p>
+      ) : null}
       {processingPanel}
       {clarificationTextSteps.map((step) => (
         <div key={step.id} className="w-full">
@@ -547,6 +554,7 @@ function areMessageGroupPropsEqual(
     previous.className === next.className &&
     previous.durationSeconds === next.durationSeconds &&
     Boolean(previous.isLoading) === Boolean(next.isLoading) &&
+    Boolean(previous.awaitingApproval) === Boolean(next.awaitingApproval) &&
     Boolean(previous.deferBrowserPreviews) ===
       Boolean(next.deferBrowserPreviews) &&
     Boolean(previous.showTokenDebugSummaries) ===
@@ -741,8 +749,6 @@ function ToolCall({
   name,
   args,
   result,
-  isLast = false,
-  isLoading = false,
   deferBrowserPreview = false,
   tokenDebugStep,
   showDetails = false,
@@ -756,8 +762,6 @@ function ToolCall({
   name: string;
   args: Record<string, unknown>;
   result?: string | Record<string, unknown>;
-  isLast?: boolean;
-  isLoading?: boolean;
   deferBrowserPreview?: boolean;
   tokenDebugStep?: TokenDebugStep;
   showDetails?: boolean;
@@ -768,8 +772,7 @@ function ToolCall({
 }) {
   const { t } = useI18n();
   const kind = getToolCallKind(name);
-  const { setOpen, autoOpen, autoSelect, selectedArtifact, select } =
-    useArtifacts();
+  const { setOpen, select } = useArtifacts();
   const browserViewPanel = useMaybeBrowserView();
   const tokenLabel = tokenDebugStep
     ? formatDebugToken(tokenDebugStep, t)
@@ -805,29 +808,6 @@ function ToolCall({
         toolCallId: id,
       })
     : null;
-  const autoOpenArtifactUrl =
-    isLoading &&
-    isLast &&
-    autoOpen &&
-    autoSelect &&
-    writeFileArtifactUrl &&
-    !result
-      ? writeFileArtifactUrl
-      : null;
-
-  useEffect(() => {
-    if (!autoOpenArtifactUrl || selectedArtifact === autoOpenArtifactUrl) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      select(autoOpenArtifactUrl, true);
-      setOpen(true);
-    }, 100);
-
-    return () => window.clearTimeout(timeout);
-  }, [autoOpenArtifactUrl, select, selectedArtifact, setOpen]);
-
   if (kind === "browser") {
     const shot = browserView?.screenshot;
     const previewUrl =
@@ -1098,22 +1078,12 @@ function ToolCall({
         />
       );
     }
-    const command: string | undefined = (args as { command: string })?.command;
     return (
       <ChainOfThoughtStep
         key={id}
         label={resolveLabel(description)}
         icon={SquareTerminalIcon}
-      >
-        {command && (
-          <CodeBlock
-            className="mx-0 cursor-pointer border-none px-0"
-            showLineNumbers={false}
-            language="bash"
-            code={command}
-          />
-        )}
-      </ChainOfThoughtStep>
+      />
     );
   } else if (kind === "ask_clarification") {
     return (

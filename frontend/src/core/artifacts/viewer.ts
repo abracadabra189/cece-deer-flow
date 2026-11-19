@@ -42,13 +42,19 @@ export function resolveArtifactOpenURL({
   filepath,
   threadId,
   isMock = false,
+  hasPluginPreview = false,
 }: {
   filepath: string;
   threadId: string;
   isMock?: boolean;
+  hasPluginPreview?: boolean;
 }) {
   const language = resolveStoredArtifactLanguage(filepath);
-  if (language !== "markdown" && getTabularDelimiter(language) === null) {
+  if (
+    !hasPluginPreview &&
+    language !== "markdown" &&
+    getTabularDelimiter(language) === null
+  ) {
     return urlOfArtifact({ filepath, threadId, isMock });
   }
   return buildArtifactViewerURL({ filepath, threadId, isMock });

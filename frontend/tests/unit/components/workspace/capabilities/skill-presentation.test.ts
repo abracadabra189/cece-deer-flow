@@ -44,9 +44,34 @@ describe("skill card presentation", () => {
     }
   });
 
+  it("prefers an author-provided display name without changing the skill ID", () => {
+    const source: Skill = {
+      ...skill("enterprise-risk-analysis", "custom"),
+      display_name: "企业风险分析",
+    };
+
+    expect(presentSkill(source, "zh-CN")).toMatchObject({
+      title: "企业风险分析",
+      description: source.description,
+    });
+    expect(source.name).toBe("enterprise-risk-analysis");
+  });
+
+  it.each([
+    ["chart-visualization", "将数据转换为清晰直观的可视化图表。"],
+    ["consulting-analysis", "生成结构化的专业咨询分析报告。"],
+    ["web-design-guidelines", "提供清晰、一致且易用的网页设计建议。"],
+  ])("uses a Chinese description for %s", (name, description) => {
+    expect(presentSkill(skill(name), "zh-CN").description).toBe(description);
+  });
+
   it("falls back to source metadata for uncurated public skills", () => {
     for (const name of [...publicSkillNames, "new-public-skill"]) {
-      if (Object.hasOwn(builtinSkillPresentation, name)) continue;
+      if (
+        Object.hasOwn(builtinSkillPresentation, name) ||
+        ["chart-visualization", "consulting-analysis"].includes(name)
+      )
+        continue;
       const source = skill(name);
       expect(presentSkill(source, "zh-CN")).toEqual({
         title: source.name,

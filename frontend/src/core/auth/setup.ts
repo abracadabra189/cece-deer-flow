@@ -4,6 +4,7 @@ import { parseAuthError } from "./types";
 export type SetupStatusResponse = {
   needs_setup?: boolean;
   registration_enabled?: boolean;
+  password_login_enabled?: boolean;
 };
 
 export type SetupStatusCheck = {
@@ -46,4 +47,12 @@ export function canCreateRegularAccount(check: SetupStatusCheck): boolean {
     check.status?.needs_setup !== true &&
     check.status?.registration_enabled !== false
   );
+}
+
+export function isPasswordLoginDisabled(check: SetupStatusCheck): boolean {
+  // Same absence rule as canCreateRegularAccount: password_login_enabled is
+  // missing on older Gateways, and only an explicit false hides the form. Until
+  // the probe succeeds the form stays, so a slow Gateway cannot lock a user out
+  // of a deployment that does allow password sign-in.
+  return check.checked && check.status?.password_login_enabled === false;
 }

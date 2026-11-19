@@ -471,6 +471,16 @@ describe("MessageGroup", () => {
     expect(html).not.toContain("Check how processing groups convert messages.");
   });
 
+  it("keeps a sandbox step label but never exposes its command", () => {
+    const html = renderToolCall("bash", {
+      description: "Inspect the workspace configuration",
+      command: "cat /mnt/user-data/workspace/.env",
+    });
+
+    expect(html).toContain("Inspect the workspace configuration");
+    expect(html).not.toContain("cat /mnt/user-data/workspace/.env");
+  });
+
   it("defers browser screenshot previews while the thread is loading", () => {
     const messages = [
       {

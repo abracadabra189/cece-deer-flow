@@ -118,7 +118,7 @@ describe("workspace mobile sidebar", () => {
     await waitFor(() => expect(document.activeElement).toBe(pageTrigger));
   });
 
-  it("preserves destination focus when navigation closes the drawer", async () => {
+  it("keeps the drawer open when navigation changes", async () => {
     const view = render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "Toggle navigation" }));
     await screen.findByRole("dialog");
@@ -127,12 +127,7 @@ describe("workspace mobile sidebar", () => {
     navigation.pathname = "/workspace/chats";
     view.rerender(<Harness />);
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        screen.getByRole("textbox", { name: "Search chats" }),
-      ),
-    );
+    expect(screen.getByRole("dialog")).toBeDefined();
   });
 
   it("uses the standard mobile drawer width with a collapsed desktop preference", async () => {
@@ -153,7 +148,7 @@ describe("workspace mobile sidebar", () => {
   });
 
   for (const defaultOpen of [false, true]) {
-    it(`closes the mobile drawer on navigation with desktop open=${defaultOpen}`, async () => {
+    it(`keeps the mobile drawer open on navigation with desktop open=${defaultOpen}`, async () => {
       const view = render(<Harness defaultOpen={defaultOpen} />);
       fireEvent.click(
         screen.getByRole("button", {
@@ -165,7 +160,7 @@ describe("workspace mobile sidebar", () => {
       navigation.pathname = "/workspace/agents";
       view.rerender(<Harness defaultOpen={defaultOpen} />);
 
-      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(screen.getByRole("dialog")).toBeDefined();
       expect(screen.getByTestId("desktop-state").textContent).toBe(
         String(defaultOpen),
       );

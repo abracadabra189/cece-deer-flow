@@ -19,6 +19,7 @@ import {
 import {
   canCreateRegularAccount,
   fetchSetupStatus,
+  isPasswordLoginDisabled,
   type SetupStatusResponse,
 } from "@/core/auth/setup";
 import { parseAuthError } from "@/core/auth/types";
@@ -77,6 +78,13 @@ export default function LoginPage() {
     status: setupStatus,
   });
   const systemNeedsAdminSetup = setupStatus?.needs_setup === true;
+  // Operator closed password sign-in (auth.local.password_login_enabled: false):
+  // accounts come from an external user system or SSO, so the form would only ever
+  // answer 403. Say where to go instead of offering a field that cannot work.
+  const passwordLoginDisabled = isPasswordLoginDisabled({
+    checked: setupStatusPhase === "ready",
+    status: setupStatus,
+  });
   const showSetupStatusUnavailable =
     setupStatusPhase === "unavailable" ||
     (setupStatusAttempt > 0 && setupStatusPhase === "checking");
@@ -305,50 +313,62 @@ export default function LoginPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} noValidate className="space-y-2">
-          <div className="flex flex-col space-y-1">
-            <label htmlFor="email" className="text-sm font-medium">
-              {t.login.email}
-            </label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={t.login.emailPlaceholder}
-              required
-            />
+        {passwordLoginDisabled ? (
+          <div className="border-l-2 border-blue-500 ps-3 text-sm">
+            <p className="font-medium">{t.login.externalOnlyTitle}</p>
+            <p className="text-muted-foreground mt-1">
+              {t.login.externalOnlyDescription}
+            </p>
+            {/* A failed external hand-off lands here as ?error=…, and with the form
+                hidden this notice is the only place the reason can surface. */}
+            {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
           </div>
-          <div className="flex flex-col space-y-1">
-            <label htmlFor="password" className="text-sm font-medium">
-              {t.login.password}
-            </label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={t.login.passwordPlaceholder}
-              required
-              minLength={isLogin ? 6 : 8}
+        ) : (
+          <form onSubmit={handleSubmit} noValidate className="space-y-2">
+            <div className="flex flex-col space-y-1">
+              <label htmlFor="email" className="text-sm font-medium">
+                {t.login.email}
+              </label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={t.login.emailPlaceholder}
+                required
+              />
+            </div>
+            <div className="flex flex-col space-y-1">
+              <label htmlFor="password" className="text-sm font-medium">
+                {t.login.password}
+              </label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={t.login.passwordPlaceholder}
+                required
+                minLength={isLogin ? 6 : 8}
+              />
+            </div>
+
+            <RememberSessionOption
+              checked={rememberMe}
+              onCheckedChange={setRememberMe}
             />
-          </div>
 
-          <RememberSessionOption
-            checked={rememberMe}
-            onCheckedChange={setRememberMe}
-          />
+            {error && <p className="text-sm text-red-500">{error}</p>}
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
-
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading
-              ? t.login.pleaseWait
-              : isLogin
-                ? t.login.signIn
-                : t.login.createAccount}
-          </Button>
-        </form>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading
+                ? t.login.pleaseWait
+                : isLogin
+                  ? t.login.signIn
+                  : t.login.createAccount}
+            </Button>
+          </form>
+        )}
 
         {ssoProviders.length > 0 && (
           <div className="space-y-2">
@@ -386,7 +406,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {regularSignupAllowed && (
+        {regularSignupAllowed && !passwordLoginDisabled && (
           <div className="text-center text-sm">
             <button
               type="button"

@@ -60,7 +60,6 @@ import { pathOfThread } from "@/core/threads/utils";
 import { isIMEComposing } from "@/lib/ime";
 import { cn } from "@/lib/utils";
 
-import { WorkspaceChangeBadge } from "../changes";
 import { CitationSourcesPanel } from "../citations/citation-sources-panel";
 import { KnowledgeSourcesPanel } from "../citations/knowledge-source";
 import { ConversationReferenceChip } from "../conversation-references/conversation-reference-chip";
@@ -154,7 +153,6 @@ export function MessageListItem({
   artifactPaths = [],
   knowledgeSources = [],
   showCopyButton = true,
-  showWorkspaceChanges = false,
   durationSeconds,
   canEdit = false,
   editLockedByGoal = false,
@@ -170,6 +168,7 @@ export function MessageListItem({
   feedback?: FeedbackData | null;
   runId?: string;
   showCopyButton?: boolean;
+  /** @deprecated Completion summaries no longer expose workspace file changes. */
   showWorkspaceChanges?: boolean;
   durationSeconds?: number;
   canEdit?: boolean;
@@ -240,8 +239,6 @@ export function MessageListItem({
         threadId={threadId}
         artifactPaths={artifactPaths}
         knowledgeSources={knowledgeSources}
-        runId={runId}
-        showWorkspaceChanges={showWorkspaceChanges}
         durationSeconds={durationSeconds}
         editState={
           isHuman && isEditing
@@ -260,10 +257,12 @@ export function MessageListItem({
         <MessageToolbar
           className={cn(
             isHuman
-              ? "absolute right-0 -bottom-9 left-0 justify-end"
+              ? "mt-1 w-full justify-end rounded-md px-0.5"
               : "absolute right-0 bottom-0 left-0",
             // focus-within: a keyboard user tabbing to a button sees it.
             "z-20 opacity-0 transition-opacity delay-200 duration-300 group-hover/conversation-message:opacity-100 focus-within:opacity-100",
+            isHuman &&
+              "[&_button:focus-visible]:bg-[#edf3ff] [&_button:hover]:bg-[#edf3ff] [&_button:hover]:text-[#2563eb]",
           )}
           data-testid="message-toolbar"
         >
@@ -420,8 +419,6 @@ function MessageContent_({
   threadId,
   artifactPaths,
   knowledgeSources = [],
-  runId,
-  showWorkspaceChanges = false,
   durationSeconds,
   editState,
 }: {
@@ -431,7 +428,7 @@ function MessageContent_({
   threadId: string;
   artifactPaths: readonly string[];
   knowledgeSources?: readonly RetrievalSource[];
-  runId?: string;
+  /** @deprecated Completion summaries no longer expose workspace file changes. */
   showWorkspaceChanges?: boolean;
   durationSeconds?: number;
   editState?: {
@@ -664,13 +661,6 @@ function MessageContent_({
       </MessageArtifactPathsContext.Provider>
       <CitationSourcesPanel sources={citationSources} />
       <KnowledgeSourcesPanel content={contentToDisplay} />
-      {message.type === "ai" && showWorkspaceChanges && (
-        <WorkspaceChangeBadge
-          threadId={threadId}
-          runId={runId}
-          disabled={isLoading}
-        />
-      )}
     </AIElementMessageContent>
   );
 }

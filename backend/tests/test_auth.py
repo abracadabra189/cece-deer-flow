@@ -21,6 +21,27 @@ from app.gateway.authz import (
     require_permission,
 )
 
+
+@pytest.fixture(autouse=True)
+def _open_local_auth_gates(monkeypatch):
+    """Pin the local-auth gates open for this module.
+
+    These cases exercise login, lockout and session behaviour, not the operator
+    gates. ``get_app_config()`` resolves the developer's real ``config.yaml``, so a
+    checkout configured for external-only sign-in (``allow_registration`` /
+    ``password_login_enabled`` false) would 403 before the flow under test ever ran.
+    The gates keep their own suites: ``test_local_registration_gate.py`` and
+    ``test_local_password_login_gate.py``.
+
+    Yields the real helper so a case that is *about* the gate's own config read can
+    put it back (request this fixture by name).
+    """
+    from app.gateway.routers import auth as auth_router
+
+    original = auth_router._local_auth_gates
+    monkeypatch.setattr(auth_router, "_local_auth_gates", lambda: (True, True))
+    return original
+
 # ── Password Hashing ────────────────────────────────────────────────────────
 
 
@@ -897,6 +918,69 @@ def test_update_user_normalizes_email(tmp_path):
     asyncio.run(_run())
 
 
+def test_update_user_to_a_registered_email_raises_value_error(tmp_path):
+    """An email change that collides at commit reports the conflict like create_user.
+
+    The caller's pre-check cannot see an address registered after it ran, so
+    the unique index is what catches the collision. The update must then
+    raise the documented ``ValueError`` and leave the row as it was.
+    """
+    import asyncio
+
+    from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
+
+    async def _run() -> None:
+        from deerflow.persistence.engine import close_engine, get_session_factory, init_engine
+
+        url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
+        await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
+        try:
+            repo = SQLiteUserRepository(get_session_factory())
+            await repo.create_user(User(email="alice@x.com", password_hash="h", system_role="user"))
+            bob = await repo.create_user(User(email="bob@x.com", password_hash="bob-hash", system_role="user"))
+            bob.email = "Alice@X.com"
+            bob.password_hash = "new-hash"
+            bob.token_version += 1
+
+            with pytest.raises(ValueError, match="Email already registered: alice@x.com"):
+                await repo.update_user(bob)
+
+            stored = await repo.get_user_by_id(str(bob.id))
+            assert stored is not None
+            assert (stored.email, stored.password_hash, stored.token_version) == ("bob@x.com", "bob-hash", 0)
+        finally:
+            await close_engine()
+
+    asyncio.run(_run())
+
+
+def test_update_user_non_email_integrity_error_propagates(tmp_path):
+    """Only the email index maps to ValueError; another unique violation is not an email conflict."""
+    import asyncio
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.gateway.auth.repositories.sqlite import SQLiteUserRepository
+
+    async def _run() -> None:
+        from deerflow.persistence.engine import close_engine, get_session_factory, init_engine
+
+        url = f"sqlite+aiosqlite:///{tmp_path}/scratch.db"
+        await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
+        try:
+            repo = SQLiteUserRepository(get_session_factory())
+            await repo.create_user(User(email="alice@x.com", password_hash=None, system_role="user", oauth_provider="oidc", oauth_id="sub-1"))
+            bob = await repo.create_user(User(email="bob@x.com", password_hash="h", system_role="user"))
+            bob.oauth_provider, bob.oauth_id = "oidc", "sub-1"
+
+            with pytest.raises(IntegrityError):
+                await repo.update_user(bob)
+        finally:
+            await close_engine()
+
+    asyncio.run(_run())
+
+
 def test_distinct_emails_remain_distinct(tmp_path):
     """Case-folding must not collapse genuinely different addresses."""
     import asyncio
@@ -1692,14 +1776,17 @@ async def test_rate_limiter_counts_failure_when_config_breaks(throttle_store, mo
         await _check_rate_limit(ip)
 
 
-def test_login_local_broken_config_fails_closed_after_first_failure(memory_throttle_store, monkeypatch):
-    """Route-level pin of the same sequence, through POST /login/local.
+def test_login_local_broken_config_fails_closed_before_verification(memory_throttle_store, monkeypatch, _open_local_auth_gates):
+    """Route-level pin: a malformed config.yaml closes POST /login/local outright.
 
-    The first wrong password is verified once and counted (the 500 comes from
-    the re-raised config error, not from a skipped record); the second request
-    from the same client IP must 500 in _check_rate_limit *before*
-    authenticate() is reached — no unlimited password verification while
-    config.yaml stays malformed.
+    The password-login gate reads the config ahead of the throttle and of
+    authenticate(), so a malformed file 500s on the *first* request with zero
+    password verifications and nothing counted. That is strictly fail-closed: the
+    pre-gate ordering let one verification through before the throttle's own
+    config read raised on the failure record.
+
+    This case is about the gate's own config read, so it restores the real helper
+    that the module-wide autouse fixture stubs open for every other test here.
     """
     import asyncio
 
@@ -1708,6 +1795,8 @@ def test_login_local_broken_config_fails_closed_after_first_failure(memory_throt
 
     from app.gateway.routers import auth as auth_router
     from deerflow.config import app_config as app_config_module
+
+    monkeypatch.setattr(auth_router, "_local_auth_gates", _open_local_auth_gates)
 
     def _malformed():
         raise ValueError("config validation error")
@@ -1729,12 +1818,13 @@ def test_login_local_broken_config_fails_closed_after_first_failure(memory_throt
     with TestClient(app, raise_server_exceptions=False) as client:
         first = client.post("/api/v1/auth/login/local", data={"username": "user@example.com", "password": "wrong"})
         assert first.status_code == 500
-        assert calls["authenticate"] == 1  # verified once — and counted despite the raise
-        assert asyncio.run(memory_throttle_store.get("testclient")).fail_count == 1
+        assert calls["authenticate"] == 0  # gate raised before any verification
+        record = asyncio.run(memory_throttle_store.get("testclient"))
+        assert record is None or record.fail_count == 0
 
         second = client.post("/api/v1/auth/login/local", data={"username": "user@example.com", "password": "wrong-again"})
         assert second.status_code == 500
-        assert calls["authenticate"] == 1  # fail-closed: no second verification
+        assert calls["authenticate"] == 0  # fail-closed: still no verification
 
 
 def test_login_local_lockout_follows_the_shared_database_across_replicas(tmp_path, monkeypatch):
@@ -2175,6 +2265,9 @@ def test_missing_jwt_secret_generates_ephemeral(monkeypatch, caplog):
 
     config_module._auth_config = None
     monkeypatch.delenv("AUTH_JWT_SECRET", raising=False)
+    # get_auth_config() loads the dotenv file, which would put the operator's real
+    # AUTH_JWT_SECRET straight back into the environment this test just cleared.
+    monkeypatch.setattr("deerflow.env.load_selected_env_file", lambda: True)
 
     with caplog.at_level(logging.WARNING):
         config = config_module.get_auth_config()

@@ -72,6 +72,30 @@ def test_parse_description_returned(tmp_path):
     assert skill.description == "Does amazing things"
 
 
+def test_parse_display_name_returned(tmp_path):
+    """An optional display name is preserved separately from the skill ID."""
+    skill_file = _write_skill(
+        tmp_path,
+        "name: enterprise-risk-analysis\ndisplay_name: 企业风险分析\ndescription: Analyze enterprise risks",
+    )
+    skill = parse_skill_file(skill_file, category="custom")
+    assert skill is not None
+    assert skill.name == "enterprise-risk-analysis"
+    assert skill.display_name == "企业风险分析"
+
+
+def test_bundled_public_skills_define_display_names():
+    """Every currently bundled skill has a user-facing name for the catalog."""
+    public_root = Path(__file__).parents[2] / "skills" / "public"
+    skill_files = sorted(public_root.glob("*/SKILL.md"))
+    assert skill_files
+
+    for skill_file in skill_files:
+        skill = parse_skill_file(skill_file, category="public")
+        assert skill is not None
+        assert skill.display_name
+
+
 def test_parse_multiline_description(tmp_path):
     """Multi-line YAML descriptions are collapsed correctly by yaml.safe_load."""
     front_matter = "name: my-skill\ndescription: >\n  A folded\n  description"

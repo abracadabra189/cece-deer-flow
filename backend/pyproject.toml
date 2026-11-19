@@ -56,7 +56,9 @@ memory-zh = ["deerflow-harness[memory-zh]"]
 # Managed extension packages are added here by `deerflow extensions install`.
 # Keeping them separate from development tooling lets every startup mode sync
 # the same locked runtime set without promoting those packages to core deps.
-extensions = []
+extensions = [
+    "deerflow-extension-office-preview",
+]
 dev = [
     # Direct SDK use in Claude provider serialization tests.
     "anthropic>=0.97.0",
@@ -89,6 +91,7 @@ markers = [
     "allow_blocking_io: opt out of the strict Blockbuster gate in tests/blocking_io/",
     "integration: tests that require an external service (e.g. Redis); skipped when unavailable",
     "live: tests that call real external APIs and require explicit opt-in",
+    "bundled_extension: behavior tests owned by a bundled extension example; excluded from the core shards and run by the bundled extension CI job",
 ]
 
 [tool.uv]
@@ -117,3 +120,4 @@ members = ["packages/harness", "packages/extension-api"]
 [tool.uv.sources]
 deerflow-harness = { workspace = true }
 deerflow-extension-api = { workspace = true }
+deerflow-extension-office-preview = { path = "extensions/sources/deerflow-extension-office-preview" }

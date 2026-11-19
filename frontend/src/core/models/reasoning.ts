@@ -19,6 +19,18 @@ export type ReasoningEffortValue = GenericReasoningEffort | (string & {});
 
 export type InputMode = "flash" | "thinking" | "pro" | "ultra";
 
+/**
+ * Ultra remains accepted in persisted thread and user settings for backward
+ * compatibility, but is temporarily unavailable in the CeCeMate UI. Downgrade
+ * old selections before resolving model capabilities so they cannot retain the
+ * expensive high-effort preset after the option is hidden.
+ */
+function normalizeAvailableMode(
+  mode: InputMode | undefined,
+): InputMode | undefined {
+  return mode === "ultra" ? "pro" : mode;
+}
+
 const MODE_EFFORT_PRESETS: Record<InputMode, GenericReasoningEffort> = {
   flash: "minimal",
   thinking: "low",
@@ -116,17 +128,18 @@ export function getResolvedMode(
   mode: InputMode | undefined,
   model: Model | null | undefined,
 ): InputMode {
+  const availableMode = normalizeAvailableMode(mode);
   const { thinking } = getReasoningCapabilities(model);
   if (thinking === "unsupported") {
     return "flash";
   }
   if (thinking === "required") {
-    if (mode === "flash") {
+    if (availableMode === "flash") {
       return "thinking";
     }
-    return mode ?? "pro";
+    return availableMode ?? "pro";
   }
-  return mode ?? "pro";
+  return availableMode ?? "flash";
 }
 
 /** The effort a mode preset implies, mapped onto the model's contract. */
@@ -134,5 +147,6 @@ export function reasoningEffortForMode(
   mode: InputMode,
   model: Model | null | undefined,
 ): ReasoningEffortValue | undefined {
-  return resolveReasoningEffort(model, MODE_EFFORT_PRESETS[mode]);
+  const availableMode = normalizeAvailableMode(mode) ?? "pro";
+  return resolveReasoningEffort(model, MODE_EFFORT_PRESETS[availableMode]);
 }

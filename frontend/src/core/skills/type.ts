@@ -1,5 +1,6 @@
 export interface Skill {
   name: string;
+  display_name?: string | null;
   description: string;
   category: string;
   license: string;

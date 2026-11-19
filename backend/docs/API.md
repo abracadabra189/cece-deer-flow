@@ -160,6 +160,114 @@ Revocation is immediate.
 - Revoking or deleting the owning user invalidates their PATs on the next
   request.
 
+### External User Provisioning
+
+Integrates an operator's **existing user system**: the external backend resolves
+or registers a DeerFlow account by phone number and receives credentials that
+land that user in the UI already signed in. Gated by `auth.external_user.enabled`
+(404 while disabled) and authenticated by a shared key — see the trust boundary
+in [AUTH_DESIGN.md](AUTH_DESIGN.md#外部用户系统接入手机号开通) and the
+integration guide (flow, configuration, checklist) in
+`docs/EXTERNAL_USER_INTEGRATION.md`. The partner-facing specification (request and
+response fields, captured error bodies, redirect semantics, self-test checklist,
+FAQ) is `docs/EXTERNAL_USER_API.md`.
+
+```
+POST /api/v1/auth/external/provision
+X-External-User-Key: <auth.external_user.api_key>     # or: Authorization: Bearer <key>
+Content-Type: application/json
+
+{ "phone": "+8613800138000", "username": "张三", "next": "/workspace/chats" }
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `phone` | yes | The identity key. 5–20 digits with an optional leading `+`; spaces, dashes, dots and parentheses are stripped and full-width digits are normalized, so one person cannot become two accounts |
+| `username` | no | Display name, ≤100 characters; control and bidirectional formatting characters are rejected (422). Stored as the `external_username` user preference and refreshed on every call |
+| `next` | no | Relative path the browser lands on after login; validated by the same open-redirect guard as the OIDC flow |
+
+Response `200`:
+
+```json
+{
+  "user_id": "4eaa39f9-74ff-4584-8a05-8f1fdf5a7ba2",
+  "phone": "+8613800138000",
+  "username": "张三",
+  "email": "8613800138000@users.deerflow.internal",
+  "system_role": "user",
+  "created": true,
+  "token_type": "Bearer",
+  "access_token": "<session JWT>",
+  "expires_in": 604800,
+  "login_ticket": "<one-time ticket>",
+  "base_url": "http://host:2026",
+  "url_path": "/api/v1/auth/external/login?ticket=…&next=/workspace/chats",
+  "login_url": "http://host:2026/api/v1/auth/external/login?ticket=…&next=…"
+}
+```
+
+- `created` is `true` only for the call that registered the account; later calls
+  for the same phone return the same `user_id` with fresh credentials.
+- `email` is a **derived storage key**, not a mailbox: `users.email` is NOT NULL
+  and unique while a phone user has none. Accounts created here have no password,
+  so password login stays impossible for them.
+- `access_token` is the ordinary session JWT. The Gateway reads it **only** from
+  the `access_token` cookie — an `Authorization: Bearer <jwt>` header is *not*
+  accepted (that slot belongs to `dfp_` PATs). Use it to seed a cookie in a
+  webview/native client, or use `login_url` for browsers.
+- `expires_in` is the lifetime of **both** tokens: the `access_token` returned here
+  and the browser session the redeem step mints from `login_url`. Set
+  `auth.external_user.session_expiry_minutes` to shorten it; leaving it `null` uses
+  `auth.token_expiry_days`. Note that the session *cookie's* `Max-Age` follows the
+  shared cookie policy (`token_expiry_days`), so a shorter `session_expiry_minutes`
+  yields a cookie that outlives its token — the user is logged out when the token
+  expires, not when the cookie does. Keep the two equal on an external-only
+  deployment, where a 401 has no self-service way back.
+- `login_url` is the browser entry point: send the user there. It is also
+  returned pre-split as `base_url` (the public origin a browser must use to reach
+  this Gateway) plus `url_path` (the login path with its query), so a caller whose
+  users reach DeerFlow through a different ingress can re-base the path instead
+  of string-editing a full URL. `login_url == base_url + url_path`; the `next`
+  value inside `url_path` keeps its literal slashes.
+  `base_url` comes from `auth.external_user.frontend_base_url` when that is set,
+  and otherwise from the provisioning request's own (proxy-aware) origin. Configure
+  it whenever the integrating backend calls `provision` over an address users
+  cannot reach — a service name, a cluster-local host, its own proxy — because the
+  request-derived origin would then be unusable in a browser. That origin must
+  serve `/api/*` (the nginx entry point does).
+
+```
+GET /api/v1/auth/external/login?ticket=<login_ticket>&next=<optional>
+```
+
+Redeems the ticket once, sets `access_token` + `deerflow_session_persistent` +
+`csrf_token`, and answers `302 → {frontend_base_url}/auth/callback?next=…`, so the
+existing frontend callback page completes the login with no frontend change. Every
+failure — missing, malformed, expired, forged, replayed, or naming a
+disabled/deleted account — answers `302 → /login?error=external_login_failed`
+without setting a cookie, so the endpoint is not a ticket-validity oracle and a
+browser never sees a JSON error.
+
+Tickets are signed with `AUTH_JWT_SECRET`, carry `uid` (never `sub`, so a ticket
+can never be replayed as a session token), live `ticket_ttl_seconds` (default 120,
+max 900), and are **single-use across the whole deployment**: consumption is one
+atomic `INSERT … ON CONFLICT (jti) DO NOTHING` into `external_login_tickets`, so
+every Gateway worker and every replica sharing the application database agrees on
+"already spent". Expired rows are swept in the same transaction. If the claim
+cannot be recorded (no database, store error) the ticket is rejected — the
+endpoint fails closed rather than falling back to a process-local record.
+
+Errors: `401` missing/invalid key · `404` feature disabled · `403` account
+disabled · `409` the derived email belongs to an unrelated account (an external
+call never seizes a pre-existing local account) · `422` invalid phone or username.
+
+```bash
+curl -sS -X POST http://localhost:2026/api/v1/auth/external/provision \
+  -H "X-External-User-Key: $EXTERNAL_USER_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"phone":"+8613800138000","username":"张三"}'
+```
+
 ## LangGraph-compatible API
 
 Base URL: `/api/langgraph`
@@ -242,6 +350,11 @@ Goal payloads must be state values, not reducer control wrappers: the reserved
 external boundaries. Ordinary `type`/`value` fields remain compatible.
 `goal: null` retains its existing semantics: it clears a state update's goal,
 but does not replace a goal through run input.
+
+A state update's optional `as_node` names the graph node recorded as the
+writer, and defaults to `manual_state_update`. It must be a name LangGraph can
+register as a node: `__start__`, `__end__`, LangGraph's other reserved names and
+names containing `:` or `|` are rejected with 422 before anything is written.
 
 Replaying messages from an earlier root checkpoint, including response regeneration, preserves
 the thread's current goal and continuation budget. A cleared or achieved goal
@@ -351,7 +464,7 @@ does not accept this header and keeps the existing missing-stream close of
 **Run Option Compatibility:**
 - Supported concurrency strategies: `reject`, `rollback`, and `interrupt`
 - Compatibility default: `if_not_exists="create"`; this matches DeerFlow's current behavior
-- Artifact delivery is enforced automatically when a run creates or modifies regular files under `/mnt/user-data/outputs`. `present_files` must present at least one path produced by the current run (or a directory containing it), and the terminal receipt must be persisted; presenting only an unrelated file does not satisfy delivery. Runs without changed outputs retain ordinary conversational behavior. `artifact_delivery` is not a client-settable run option.
+- Artifact delivery is enforced automatically when a run creates or modifies regular files under `/mnt/user-data/outputs`. `present_files` or `present_shared_artifact` must present at least one path produced by the current run (or a directory containing it), and the terminal receipt must be persisted; presenting only an unrelated file does not satisfy delivery. Runs without changed outputs retain ordinary conversational behavior. `artifact_delivery` is not a client-settable run option. A run failed this way is stored as `error`, and its stream carries an `error` event (name `RunError`) with the delivery message before `end`, matching the `/wait` error envelope and the step-limit event described under `recursion_limit`.
 - Unsupported options return `422`: `webhook`, `stream_resumable=true`, `after_seconds`, `feedback_keys`, any non-null `on_completion` value (including the SDK values `"complete"` and `"continue"`), `if_not_exists="reject"`, and `multitask_strategy="enqueue"`
 - `stream_resumable=false` is accepted: it is the LangGraph SDK's default and requests the non-resumable stream DeerFlow already serves
 - Undeclared SDK options, including `checkpoint_during` and `durability`, also return `422` instead of being silently discarded
@@ -1458,7 +1571,7 @@ DELETE /api/threads/{thread_id}/uploads/{filename}
 
 ### Thread Cleanup
 
-Remove DeerFlow-managed local thread files under `.deer-flow/threads/{thread_id}` after the LangGraph thread itself has been deleted.
+Delete a thread's checkpoint data and DeerFlow-managed files and metadata.
 
 ```http
 DELETE /api/threads/{thread_id}
@@ -1475,6 +1588,14 @@ DELETE /api/threads/{thread_id}
 **Error behavior:**
 - `422` for invalid thread IDs
 - `500` returns a generic `{"detail": "Failed to delete local thread data."}` response while full exception details stay in server logs
+- `500` with `{"detail": "Failed to delete thread checkpoints."}` when a configured
+  checkpointer cannot delete the thread's checkpoints. The owner row is retained
+  for a retry.
+- `409` with `Thread has work in flight. Delete it after the work finishes.` when
+  thread work blocks deletion. After a checkpoint error, a retry can also return
+  this response until the durable delete reservation is released or reconciled.
+  In a single-worker deployment with ownership heartbeats disabled, a stranded
+  reservation is reconciled at Gateway startup.
 
 Deleting a thread also removes every user's read marker for it.
 
@@ -1954,16 +2075,16 @@ DeerFlow supports four HTTP identity sources. They share the same thread/run iso
 
 DeerFlow enforces authentication for all non-public HTTP routes. Public routes are limited to health/docs metadata and these public auth endpoints:
 
-- `POST /api/v1/auth/initialize` creates the first admin account when no admin exists.
-- `POST /api/v1/auth/login/local` logs in with email/password and sets an HttpOnly `access_token` cookie.
-- `POST /api/v1/auth/register` creates a regular `user` account and sets the session cookie.
+- `POST /api/v1/auth/initialize` creates the first admin account when no admin exists. It stays open under both local-auth gates below, so a fresh install can never be locked out.
+- `POST /api/v1/auth/login/local` logs in with email/password and sets an HttpOnly `access_token` cookie. Answers `403 password_login_disabled` when `auth.local.password_login_enabled: false`; the gate runs ahead of the login throttle and of credential verification, so a closed deployment neither counts failures against a shared egress IP nor stays a password oracle. Already-issued session cookies are unaffected — this closes sign-in, it does not revoke sessions.
+- `POST /api/v1/auth/register` creates a regular `user` account and sets the session cookie. Answers `403 registration_disabled` when `auth.local.allow_registration: false`.
 - `POST /api/v1/auth/logout` clears the session cookie.
-- `GET /api/v1/auth/setup-status` reports whether the first admin still needs to be created.
+- `GET /api/v1/auth/setup-status` reports `{needs_setup, registration_enabled, password_login_enabled}`: whether the first admin still needs to be created, plus the two local-auth gates the login page renders from (the signup entry and the password form). Cached per client IP for up to 60s.
 
 The authenticated auth endpoints are:
 
 - `GET /api/v1/auth/me` returns the current user.
-- `POST /api/v1/auth/change-password` changes password, optionally changes email during setup, increments `token_version`, and reissues the cookie.
+- `POST /api/v1/auth/change-password` changes password, optionally changes email during setup, increments `token_version`, and reissues the cookie. A `new_email` that another account already uses returns `400` `email_already_exists`, including an address registered while the request runs, and changes nothing.
 
 Protected state-changing requests also require the CSRF double-submit token: send the `csrf_token` cookie value as the `X-CSRF-Token` header. Login/register/initialize/logout are bootstrap auth endpoints: they are exempt from the double-submit token but still reject hostile browser `Origin` headers.
 

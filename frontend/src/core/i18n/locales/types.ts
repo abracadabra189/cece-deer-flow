@@ -77,6 +77,26 @@ export interface Translations {
     catalogEntry: string;
     catalogHint: string;
     installationGuide: string;
+    detail: {
+      guide: string;
+      gettingStarted: string;
+      requirements: string;
+      loaded: string;
+      loadedHint: string;
+      tools: string;
+      pages: string;
+      management: string;
+      readyHint: string;
+      disabledHint: string;
+      failedHint: string;
+      noPageHint: string;
+      guideHint: string;
+      technicalDetails: string;
+      package: string;
+      namespace: string;
+      refresh: string;
+      refreshHint: string;
+    };
     catalog: Record<
       | "workflows"
       | "reportSections"
@@ -93,7 +113,12 @@ export interface Translations {
       | "weknora"
       | "lightrag"
       | "example",
-      { title: string; description: string }
+      {
+        title: string;
+        description: string;
+        gettingStarted?: { title: string; description: string }[];
+        requirements?: string[];
+      }
     >;
     pageUnavailable: string;
     pageUnavailableHint: string;
@@ -196,6 +221,8 @@ export interface Translations {
     share: string;
     openInNewWindow: string;
     close: string;
+    back: string;
+    backToArtifactList: string;
     more: string;
     search: string;
     loadMore: string;
@@ -203,6 +230,8 @@ export interface Translations {
     download: string;
     thinking: string;
     artifacts: string;
+    resultArea: string;
+    resultArtifacts: string;
     public: string;
     custom: string;
     notAvailableInDemoMode: string;
@@ -228,6 +257,8 @@ export interface Translations {
     editRerunWarning: string;
     branch: string;
     showArtifacts: string;
+    showResultArea: string;
+    collapseResultArea: string;
     browser: string;
     showBrowser: string;
   };
@@ -290,6 +321,19 @@ export interface Translations {
     linkCopied: string;
   };
 
+  artifactSelection: {
+    rewrite: string;
+    instructions: string;
+    exactRequired: string;
+    review: string;
+    original: string;
+    replacement: string;
+    apply: string;
+    applied: string;
+    changed: string;
+    limit: string;
+  };
+
   artifactEditing: {
     unsaved: string;
     saving: string;
@@ -342,6 +386,12 @@ export interface Translations {
   };
 
   modelPicker: {
+    search: string;
+    provider: string;
+    allProviders: string;
+    noResults: string;
+    recent: string;
+
     title: string;
     favorites: string;
     otherModels: string;
@@ -485,6 +535,7 @@ export interface Translations {
       waitingForYou: string;
       waiting: string;
       paused: string;
+      waitingApproval: string;
       autoContinuedOnce: string;
       autoContinuedMany: string;
       details: string;
@@ -506,6 +557,8 @@ export interface Translations {
         runFailed: string;
         needsInputCard: string;
         needsInputReply: string;
+        needsApproval: string;
+        needsApprovalReload: string;
         external: string;
         unchecked: string;
         unknown: string;
@@ -567,6 +620,15 @@ export interface Translations {
     scheduledTasks: string;
     agentsDisabledTooltip: string;
     channels: string;
+  };
+  taskGroups: {
+    title: string;
+    newTaskGroup: string;
+    namePlaceholder: string;
+    moveToTaskGroup: string;
+    removeFromTaskGroup: string;
+    createFailed: string;
+    moveFailed: string;
   };
   // Sidebar projects section
   projects: {
@@ -747,6 +809,8 @@ export interface Translations {
     label: string;
     title: string;
     description: string;
+    followUpPending: string;
+    followUpStopped: string;
     workerUnavailable: string;
     empty: string;
     emptyHint: string;
@@ -1318,6 +1382,7 @@ export interface Translations {
     branchCreated: string;
     branchFailed: string;
     streamReplayGap: string;
+    streamServerError: (status: number) => string;
     outlineLabel: string;
     outlineAttachmentFallback: string;
   };
@@ -1583,6 +1648,25 @@ export interface Translations {
     requiredA11yLabel: string;
     selectPlaceholder: string;
     answeredValue: (value: string) => string;
+    approval: {
+      title: string;
+      description: string;
+      waiting: string;
+      loading: string;
+      loadFailed: string;
+      reload: string;
+      approve: string;
+      reject: string;
+      approveAll: string;
+      rejectAll: string;
+      submitDecisions: string;
+      reasonLabel: string;
+      reasonPlaceholder: string;
+      submitFailed: string;
+      submitTimeout: string;
+      featureDisabled: string;
+      noPending: string;
+    };
   };
 
   // Uploads
@@ -1615,6 +1699,7 @@ export interface Translations {
     input: string;
     output: string;
     total: string;
+    unit: string;
     view: string;
     unavailable: string;
     unavailableShort: string;
@@ -1664,6 +1749,30 @@ export interface Translations {
     title: string;
     description: string;
     models: {
+      connectionSettings: string;
+      importTitle: string;
+      importDescription: string;
+      savedConnection: string;
+      newConnection: string;
+      fetchModels: string;
+      searchModels: string;
+      selectVisible: string;
+      clearSelection: string;
+      alreadyConfigured: string;
+      noCatalogResults: string;
+      catalogTruncated: string;
+      discovery_unsupported: string;
+      discovery_failed: string;
+      importUncertain: string;
+      importStopped: string;
+      stopImport: string;
+      closeCatalog: string;
+      catalogCount: (
+        visible: number,
+        total: number,
+        selected: number,
+      ) => string;
+      testAndAdd: (count: number) => string;
       title: string;
       description: string;
       adminOnly: string;
@@ -2137,6 +2246,8 @@ export interface Translations {
     createAdminAccount: string;
     adminSetupRequiredTitle: string;
     adminSetupRequiredDescription: string;
+    externalOnlyTitle: string;
+    externalOnlyDescription: string;
     orContinueWith: string;
     ssoHint: string;
     continueWith: (provider: string) => string;
@@ -2157,6 +2268,7 @@ export interface Translations {
       invalid_email: string;
       password_too_short: string;
       registration_password_too_short: string;
+      external_login_failed: string;
     };
   };
 }

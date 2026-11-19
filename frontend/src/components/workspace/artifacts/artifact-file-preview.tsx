@@ -13,6 +13,7 @@ import {
   createHtmlPreviewScrollKey,
   HTML_PREVIEW_SCROLL_MESSAGE_SOURCE,
 } from "@/core/artifacts/preview";
+import { rehypeArtifactSourceRanges } from "@/core/artifacts/selection-dom";
 import {
   type ArtifactImageContext,
   resolveArtifactImageURL,
@@ -41,32 +42,43 @@ export function ArtifactPreviewError({
   isMock,
   message,
   downloadLabel,
+  onRetry,
+  retryLabel,
 }: {
   filepath: string;
   threadId: string;
   isMock?: boolean;
   message: string;
   downloadLabel: string;
+  onRetry?: () => void;
+  retryLabel?: string;
 }) {
   return (
     <div className="flex size-full items-center justify-center p-6">
       <div className="flex max-w-sm flex-col items-center gap-4 text-center">
         <p className="text-muted-foreground text-sm">{message}</p>
-        <Button asChild>
-          <a
-            href={urlOfArtifact({
-              filepath,
-              threadId,
-              download: true,
-              isMock,
-            })}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <DownloadIcon className="size-4" />
-            {downloadLabel}
-          </a>
-        </Button>
+        <div className="flex flex-wrap justify-center gap-2">
+          {onRetry ? (
+            <Button variant="outline" onClick={onRetry}>
+              {retryLabel ?? "Retry"}
+            </Button>
+          ) : null}
+          <Button asChild>
+            <a
+              href={urlOfArtifact({
+                filepath,
+                threadId,
+                download: true,
+                isMock,
+              })}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <DownloadIcon className="size-4" />
+              {downloadLabel}
+            </a>
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -138,6 +150,7 @@ export function ArtifactFilePreview({
   artifact,
   truncated = false,
   active = true,
+  onTextSelection,
 }: {
   content: string;
   language: string;
@@ -146,8 +159,17 @@ export function ArtifactFilePreview({
   artifact?: ArtifactImageContext;
   truncated?: boolean;
   active?: boolean;
+  onTextSelection?: (container: HTMLElement) => void;
 }) {
   const { t } = useI18n();
+  const selectionPlugins = useMemo(
+    () =>
+      [
+        ...(artifactMarkdownPlugins.rehypePlugins ?? []),
+        [rehypeArtifactSourceRanges, { source: content }],
+      ] as typeof artifactMarkdownPlugins.rehypePlugins,
+    [content],
+  );
   const { filepath, threadId, isMock } = artifact ?? {};
   const transformUrl = useCallback<UrlTransform>(
     (src, key, node) =>
@@ -277,12 +299,24 @@ export function ArtifactFilePreview({
   }
   if (language === "markdown") {
     return (
-      <div className="size-full overflow-auto px-4 py-3">
+      <div
+        className="size-full overflow-auto px-4 py-3"
+        onMouseUp={(event) => onTextSelection?.(event.currentTarget)}
+        onKeyUp={(event) => onTextSelection?.(event.currentTarget)}
+        onTouchEnd={(event) => onTextSelection?.(event.currentTarget)}
+        data-testid="artifact-markdown-preview"
+      >
         <SafeStreamdown
           // Streamdown memoizes blocks by content, not the image URL resolver.
           key={JSON.stringify([scrollKey, filepath, threadId, Boolean(isMock)])}
           className="min-w-0"
           {...artifactMarkdownPlugins}
+          mode={onTextSelection ? "static" : undefined}
+          rehypePlugins={
+            onTextSelection
+              ? selectionPlugins
+              : artifactMarkdownPlugins.rehypePlugins
+          }
           urlTransform={transformUrl}
           components={toStreamdownComponents({ a: ArtifactLink })}
         >

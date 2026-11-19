@@ -8,15 +8,53 @@ import { getTabularDelimiter } from "@/core/artifacts/preview";
 import { urlOfArtifact } from "@/core/artifacts/utils";
 import { resolveStoredArtifactLanguage } from "@/core/artifacts/viewer";
 import { useI18n } from "@/core/i18n/hooks";
-import { getFileIcon, getFileName } from "@/core/utils/files";
+import { checkCodeFile, getFileIcon, getFileName } from "@/core/utils/files";
 
 import {
   formatArtifactBytes,
   ArtifactFilePreview,
 } from "./artifact-file-preview";
+import { PluginArtifactPreview } from "./plugin-artifact-preview";
 
 /** Shared standalone reader for Markdown and bounded CSV/TSV previews. */
 export function ArtifactViewer({
+  filepath,
+  threadId,
+  isMock = false,
+}: {
+  filepath: string;
+  threadId: string;
+  isMock?: boolean;
+}) {
+  const language = resolveStoredArtifactLanguage(filepath) ?? "text";
+  const isTextPreview =
+    filepath.endsWith(".skill") ||
+    checkCodeFile(filepath).isCodeFile ||
+    language === "markdown" ||
+    getTabularDelimiter(language) !== null;
+
+  if (!isTextPreview) {
+    return (
+      <div className="bg-background h-screen">
+        <PluginArtifactPreview
+          filepath={filepath}
+          threadId={threadId}
+          isMock={isMock}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <TextArtifactViewer
+      filepath={filepath}
+      threadId={threadId}
+      isMock={isMock}
+    />
+  );
+}
+
+function TextArtifactViewer({
   filepath,
   threadId,
   isMock = false,

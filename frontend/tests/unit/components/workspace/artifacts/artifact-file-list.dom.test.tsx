@@ -89,6 +89,15 @@ afterEach(() => {
 });
 
 describe("ArtifactFileList archive download", () => {
+  it("renders current conversation artifacts as compact result rows", () => {
+    renderList();
+
+    const rows = screen.getAllByTestId("result-artifact-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.textContent).toContain("report.md");
+    expect(rows[0]?.className).toContain("rounded-lg");
+  });
+
   it("offers a branch-local run accepted by the manifest ownership check", async () => {
     archiveState.manifest.mockResolvedValue({ fileCount: 2 });
     renderList({ runId: "branch-run", threadId: "branch-thread" });

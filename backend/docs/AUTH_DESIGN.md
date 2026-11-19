@@ -112,9 +112,22 @@ enum UserScope:
 
 登录失败会按客户端 IP 计数。IP 解析只在 TCP peer 属于 `AUTH_TRUSTED_PROXIES` 时信任 `X-Real-IP`，不使用 `X-Forwarded-For`。`AUTH_TRUSTED_PROXIES` 接受逗号分隔的 IP、CIDR 或主机名；主机名在事件循环外解析，结果（包括解析失败）缓存 10 秒，因此重启后换了地址的代理容器仍能被识别。两个 compose 文件默认把它设为内置的 `nginx` 服务：否则所有浏览器登录都以 nginx 的地址计数，任何人输错 5 次密码就会锁住所有用户。nginx 在每个转发到 Gateway 的 location 中都用 `$remote_addr` 覆盖 `X-Real-IP`，这是信任它的前提。阈值与锁定时长可通过 `auth.local.max_login_attempts`（默认 5）和 `auth.local.lockout_seconds`（默认 300 秒）配置，按次实时读取，改配置后下一次登录即生效，无需重启 Gateway（`max_login_attempts` 最小为 2：单次失败不得锁定 IP。时长热改按方向生效：下调可提前释放进行中的锁定、收紧阈值会保留已计数的失败；上调只延长仍在锁定期内的锁定，不会复活已服满原时长的锁定）。计数器的存放位置由 `auth.local.throttle_storage` 决定（启动时解析一次，改动需重启）：默认 `auto` 在 `database.backend` 为 `sqlite` / `postgres` 时使用应用数据库中的 `login_throttle` 表，所有共享该数据库的 Gateway 副本对同一 IP 执行同一份限制；`memory` 退回进程内计数器（N 个副本意味着攻击者有 N × `max_login_attempts` 次机会，且一个副本上的锁定对其他副本不可见，多实例部署会在启动时打 WARNING）；`db` 强制使用共享表，数据库为 `memory` 时降级为进程内计数器并打 WARNING，已配置的数据库引擎不可用时则拒绝启动（`auto` 在该情况下降级并打 WARNING）。锁定期内的再次失败不会重置 `locked_at`：锁定时长从锁定开始计算，而不是从最后一次尝试计算。
 
+**开关**：`auth.local.password_login_enabled`（默认 `true`）可以彻底关闭这条路径。设为 `false` 时，
+`/login/local` 在**限流与密码校验之前**返回 `403 password_login_disabled`：既不会因为策略性拒绝而把共享
+出口 IP 的失败计数用尽，也不会继续充当密码 oracle。`setup-status` 同步暴露该标志，登录页据此隐藏密码
+表单。**它只关闭登录入口，不吊销已签发的会话 Cookie**，因此在运行中的部署上开启不会造成集体掉线。
+账号由外部用户系统或 SSO 供给的部署应当关闭它——那些账号 `password_hash` 为 `NULL`、本来就无法密码登录，
+但存量本地密码账号仍能绕过外部系统的离职停用流程。关闭前请确认管理员还有别的入口
+（`auth.external_user.admin_phones` 或 OIDC）；`/initialize` 不受这两个开关影响，全新安装仍可创建首个管理员。
+
 ### 注册
 
 `POST /api/v1/auth/register` 创建普通 `user`，并自动登录。
+
+`auth.local.allow_registration`（默认 `true`）设为 `false` 时返回 `403 registration_disabled`。
+SSO / 外部供给的部署需要它：OIDC 的供给策略（`allowed_email_domains`、`require_verified_email`、
+`auto_create_users`）只在 SSO 回调中生效，管不住本地注册这条路径。它与
+`password_login_enabled` 相互独立——只关注册仍允许存量密码账号登录，只关登录仍允许自助注册。
 
 当前实现允许在没有 admin 时注册普通用户，但 `setup-status` 仍会返回 `needs_setup=true`，因为 admin 仍不存在。这是当前产品策略边界：如果后续要求“必须先初始化 admin 才能注册普通用户”，需要在 `/register` 增加 admin-exists gate。
 
@@ -127,6 +140,7 @@ enum UserScope:
 - `token_version += 1`，使旧 JWT 立即失效。
 - 重新签发 cookie。
 - 如果 `needs_setup=true` 且传了 `new_email`，则更新邮箱并清除 `needs_setup`。
+- `new_email` 已被其他账号使用时返回 `400` `email_already_exists`，不做任何修改；请求进行期间被并发注册的邮箱同样如此。
 
 `python -m app.gateway.auth.reset_admin` 会：
 
@@ -381,6 +395,76 @@ IM worker 通过 Gateway 内部 HTTP 调用 agent runtime，并携带：
 - 绑定成功后附带 `X-DeerFlow-Owner-User-Id`（来自 `channel_connections.owner_user_id`，对应 `users.id`）
 
 与 Internal Auth 直接 HTTP 相比，IM 路径多了 **connect-code 绑定** 与 **`users` 表关联**，外部身份可追溯、可撤销。配置与运维见 [IM_CHANNEL_CONNECTIONS.md](IM_CHANNEL_CONNECTIONS.md)。
+
+### 外部用户系统接入（账户名开通）
+
+平台已有自己的用户体系时，不需要用户在 DeerFlow 再注册一次：外部后端用手机号换取
+DeerFlow 会话。开关是 `auth.external_user.enabled`（关闭时两个端点都返回 404）。
+
+```
+外部用户系统                          浏览器
+────────────────────                 ────────────────────────────
+POST /api/v1/auth/external/provision
+  { phone, username }  ──►  查/建账号（users 表）
+                       ◄──  { user_id, access_token, login_ticket, login_url }
+把 login_url 交给用户 ─────►  GET /api/v1/auth/external/login?ticket=…
+                              校验并消费一次性票据 → 下发会话 Cookie
+                              302 → /auth/callback?next=…（已登录）
+```
+
+**信任边界（最重要的一条）**：`provision` 只认共享密钥
+`auth.external_user.api_key`（`X-External-User-Key` 头，或 `Authorization: Bearer`）。
+持有该密钥就等于能为**任意手机号**取得账号，因此它等同管理员凭据：只放在 `.env`
+（`api_key: $EXTERNAL_USER_API_KEY`）、只在内网或 TLS 之后暴露、轮换即改环境变量。
+`enabled: true` 而密钥缺失或短于 16 字符时，配置加载直接失败，端点不可能裸奔。
+与 Internal Auth 的区别：Internal Auth 的 `Owner-User-Id` 指向**已存在**的用户，
+本接口会**创建**用户，所以它的密钥必须按更高密级管理。
+
+**身份映射**复用既有外部身份列，不加表结构：
+
+| 字段 | 取值 |
+|---|---|
+| `users.oauth_provider` | `auth.external_user.provider_id`（默认 `external-phone`） |
+| `users.oauth_id` | 归一化后的手机号（身份键） |
+| `users.email` | 派生的保留地址 `{phone}@{email_domain}`（列非空且唯一，手机号用户没有邮箱） |
+| `users.password_hash` | `NULL` —— 该账号无法走密码登录，认证权归外部系统 |
+| `user_preferences.external_username` | 外部传入的用户名（每次调用刷新） |
+
+`(oauth_provider, oauth_id)` 上有唯一偏索引，所以同一手机号的并发开通会收敛到同一行：
+落败方的 INSERT 抛 `ValueError`，改为重读而不是 500 或重复建号。派生邮箱已被**其他**账号
+占用时返回 409——外部开通绝不抢占既有本地账号，与 OIDC 的规则一致。接入第二套外部系统时
+必须同时换 `provider_id` 和 `email_domain`，否则同一手机号会撞上同一派生邮箱。
+
+**票据与会话**：`login_ticket` 用 `AUTH_JWT_SECRET` 签名，声明里是 `uid` 而不是 `sub`，
+因此它永远无法被当成会话 JWT 重放（`TokenPayload` 要求 `sub`，会判为 MALFORMED）。
+默认存活 120 秒。**单次消费由数据库保证**：兑换即向 `external_login_tickets` 执行一次
+`INSERT … ON CONFLICT (jti) DO NOTHING`，`jti` 主键使多个 Gateway worker／多副本对
+"已用过"达成一致（进程内缓存做不到这点——每个进程都会各放行一次）；过期行在同一事务内
+按批清扫。无法写入消费记录（无数据库、存储异常）时**拒绝票据**，绝不退化为进程内判定。
+票据消费成功后下发的就是普通会话 Cookie，后续请求与密码登录用户完全同权、同 CSRF、同 PAT 规则。
+
+**会话持久性**：正因为下发的是标准会话 Cookie，它的持久化规则也与密码登录一致——
+`resolve_session_cookie_policy` 只在 HTTPS、localhost 直连，或显式设置
+`DEER_FLOW_AUTH_ALLOW_INSECURE_PERSISTENT_COOKIE` 时写入 `Max-Age`；**公网 HTTP（例如按 IP 或
+域名走 HTTP 访问）下是会话级 Cookie，关闭浏览器即掉登录**。JWT 无状态，网关重启与多 worker
+都不影响已登录会话，但签名密钥来自 `AUTH_JWT_SECRET`（未设置时自动生成到
+`{DEER_FLOW_HOME}/.jwt_secret`），home 卷丢失即全员掉线，生产应显式固定。令牌有效期由
+`session_expiry_minutes`（否则 `token_expiry_days`）决定，provision 返回的 `expires_in`
+与 `/login` 铸出的浏览器会话同源；Cookie 的 `Max-Age` 仍按共享策略的 `token_expiry_days`
+计算，把前者设短会得到一个比令牌活得久的 Cookie。仅外部登录的部署没有自助找回入口
+（`/login` 只有密码表单，外部账号无密码），逐条检查清单见
+`docs/EXTERNAL_USER_INTEGRATION.md` §3.6。
+
+**运维**：改 `auth.external_user.*` 属于热重载字段（下一轮装配生效）；改 `.env` 里的
+密钥必须重建容器（`env_file` 只在创建时读取）。日志里搜 `External provisioning`
+可看到每次开通/命中（记 `user_id` 与角色，不记手机号），搜 `Rejected an external
+provisioning call` 可看到密钥校验失败。停用某用户走既有的账号禁用（`disabled`），
+票据兑换与开通都会拒绝它。
+
+契约与字段说明见 [API.md](API.md#external-user-provisioning)；接入流程、配置清单与
+对接注意事项见 `docs/EXTERNAL_USER_INTEGRATION.md`；实现：
+`app/gateway/routers/external_users.py`、`app/gateway/auth/external_provisioning.py`、
+`app/gateway/auth/external_ticket.py`；测试：`tests/test_external_user_auth.py`。
 
 ## LangGraph-compatible 认证
 

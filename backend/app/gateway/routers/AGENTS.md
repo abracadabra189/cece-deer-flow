@@ -1,5 +1,11 @@
 # Router contracts
 
+Artifact range validators and bytes come from one opened file. POSIX streams
+the descriptor. Windows copies only the selected response bytes into a
+private temporary file and closes the public handle before sending headers.
+Preserve the ZIP single-link checks and drain preparation before cancellation
+can release an artifact response's resources.
+
 Trash listing resolves the live retention configuration off-loop before its
 best-effort sweep. Configuration failures skip automatic cleanup and preserve
 the listing; never substitute a default policy for an unreadable one. Resolve
@@ -112,3 +118,43 @@ Unauthenticated auth routes (`/register`, `/setup-status`, `/providers`,
 `/oauth/{provider}`, `/callback/{provider}`, the `/login/local` throttle) read
 `get_app_config()` through `asyncio.to_thread`: each read stats and hashes the
 config files. Coverage: `tests/blocking_io/test_auth_router_config_reads.py`.
+
+External user-system provisioning (`/api/v1/auth/external`, gated by
+`auth.external_user.enabled`, 404 when off) reads config the same off-loop way and
+is public in `AuthMiddleware` while self-authenticating, like the signed webhooks:
+`POST /provision` accepts only the shared `api_key` (`X-External-User-Key` or
+Bearer) and resolves-or-registers an account by phone, linked as
+`(oauth_provider=provider_id, oauth_id=phone)` with a derived reserved
+`users.email` and no password — an unrelated owner of that email is a 409, never a
+takeover. It is CSRF-exempt (a key-authenticated machine caller has no
+double-submit pair) and deliberately absent from `_AUTH_EXEMPT_PATHS`, which would
+also trigger the Origin check and CSRF-cookie issuance. `GET /login` spends a
+signed ticket exactly once — durably, via an atomic claim on the shared
+`external_login_tickets` table, so peers cannot each redeem it — and the claims
+carry `uid`, never `sub`, so a ticket can never replay as a session token. It
+then issues the ordinary session cookies and 302s
+to the frontend `/auth/callback`, so the browser flow needs no frontend change;
+every failure redirects to `/login?error=external_login_failed` without setting a
+cookie, keeping the endpoint from becoming a ticket-validity oracle. Contract:
+`backend/docs/API.md#external-user-provisioning`; trust boundary:
+`backend/docs/AUTH_DESIGN.md`. Tests: `test_external_user_auth.py` plus the
+config-read anchors named above.
+
+Managed-model `/discover` and `/import` require administrator access before
+reading credentials or making outbound requests. Discovery is read-only and
+bounded (20 seconds, 2 MiB, 2,000 IDs/20 pages); it never follows redirects
+and requests identity encoding, rejecting compressed bodies before decoding.
+Import probes each new profile, saves through the drained writer, and atomically
+deduplicates retries without changing existing disabled profiles. Saved-key reuse
+requires matching connection and revision, checked again under the write lock
+after probing (409 on change); provider errors remain redacted.
+
+Agent-scoped memory routes take `agent_name` and validate it with
+`AGENT_NAME_PATTERN`; the backend must also declare
+`supports_agent_scoped_management` or the route answers 501. The two routes that
+create the scope — `POST /memory/facts` and `POST /memory/import` — additionally
+reject Windows reserved device names through `windows_incompatible_segment()`.
+The scope is a host directory (`agents/{name}/facts`), so the character class
+alone let the first write fail with `FileNotFoundError` and answer 500. Keep
+reads and deletes permissive: a scope an older release stored under a reserved
+name must stay exportable and clearable. Tests: `test_memory_router.py`.
