@@ -181,7 +181,7 @@ skills:
 # 让完整描述（含中文触发词）进入提示词。详见 README 的
 # “Interaction with skills.deferred_discovery”一节。
 auto_skill:
-  enabled: true
+  enabled: false
   # 合成用便宜快速模型，避免占用默认大模型的配额与延迟预算
   model_name: qwen3.8-flash
   name_prefix: "auto"                 # 可见名 {prefix}-{场景slug}；hyphen-case，≤32 字符
