@@ -6,7 +6,10 @@ import type { Todo } from "../todos";
 
 /** Gateway status outside the SDK's closed RunStatus union. */
 export type AppRunStatus = Run["status"] | "waiting_for_input";
-export type AppRun = Omit<Run, "status"> & { status: AppRunStatus };
+export type AppRun = Omit<Run, "status"> & {
+  status: AppRunStatus;
+  error?: string | null;
+};
 
 export interface GoalState {
   objective: string;

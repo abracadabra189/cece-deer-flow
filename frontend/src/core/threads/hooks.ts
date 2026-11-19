@@ -2201,6 +2201,9 @@ export function useThreadStream({
   // with the submit flow; only SDK reconnects are handed to recovery.
   const submittedRunIdRef = useRef<string | null>(null);
   const stoppingRunIdRef = useRef<string | null>(null);
+  // A terminal error normally arrives through the stream. Keep its run ID so
+  // the REST fallback below cannot show the same failure twice.
+  const reportedRunErrorsRef = useRef(new Set<string>());
 
   // Keep listeners ref updated with latest callbacks
   useEffect(() => {
@@ -2219,6 +2222,33 @@ export function useThreadStream({
     }
     threadIdRef.current = normalizedThreadId;
   }, [threadId]);
+
+  useEffect(() => {
+    if (isMock || !activeStreamThreadId) {
+      return;
+    }
+    // A stream can close before its terminal error frame reaches this tab.
+    // The existing runs query is scoped to the visible thread, so it can
+    // surface that terminal failure without leaking errors from a chat the
+    // user already left.
+    const missedError = runsQuery.data?.find((run) => {
+      return (
+        run.status === "error" &&
+        typeof run.error === "string" &&
+        run.error.trim().length > 0 &&
+        !reportedRunErrorsRef.current.has(run.run_id)
+      );
+    });
+    if (!missedError) {
+      return;
+    }
+    if (!missedError.error) {
+      return;
+    }
+    reportedRunErrorsRef.current.add(missedError.run_id);
+    toast.error(getStreamErrorToastMessage(missedError.error, t, true));
+  }, [activeStreamThreadId, isMock, runsQuery.data, t]);
+
   useEffect(() => {
     return () => {
       timedOutApprovalSubmissionRef.current = null;
@@ -2536,6 +2566,12 @@ export function useThreadStream({
       if (run?.thread_id && run.thread_id !== currentViewThreadIdRef.current) {
         return;
       }
+      const errorAlreadyReported = Boolean(
+        run?.run_id && reportedRunErrorsRef.current.has(run.run_id),
+      );
+      if (run?.run_id) {
+        reportedRunErrorsRef.current.add(run.run_id);
+      }
       timedOutApprovalSubmissionRef.current = null;
       if (pendingApprovalSubmissionRef.current) {
         settlePendingApproval(false);
@@ -2569,7 +2605,9 @@ export function useThreadStream({
       pendingPreparedReplayRef.current = null;
       setPendingSupersededRunIds(new Set());
       setPendingSupersededMessageIds(new Set());
-      toast.error(getStreamErrorToastMessage(error, t, true));
+      if (!errorAlreadyReported) {
+        toast.error(getStreamErrorToastMessage(error, t, true));
+      }
       pendingUsageBaselineMessageIdsRef.current = new Set(
         messagesRef.current
           .map(messageIdentity)

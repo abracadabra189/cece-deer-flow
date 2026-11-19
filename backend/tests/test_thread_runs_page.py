@@ -53,6 +53,23 @@ def test_list_runs_returns_bare_array():
     assert "before_run_id" not in kwargs
 
 
+@pytest.mark.parametrize("endpoint", ["/runs", "/runs/page"])
+def test_run_listing_includes_terminal_error(endpoint):
+    record = _record("failed-run", "2026-01-03T00:00:00+00:00")
+    record.status = RunStatus.error
+    record.error = "The run stopped at its step limit (recursion_limit=1000) before finishing."
+    app, _ = _make_app([record])
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/threads/thread-1{endpoint}")
+
+    assert response.status_code == 200
+    body = response.json()
+    row = body[0] if endpoint == "/runs" else body["data"][0]
+    assert row["status"] == "error"
+    assert row["error"] == record.error
+
+
 @pytest.mark.parametrize("endpoint", ["/runs", "/runs/page", "/runs/legacy-client-run"])
 def test_run_reads_omit_historical_client_context_without_mutating_record(endpoint):
     client_context = {"name": "old-client", "preferences": {"note": "synthetic-private-value"}}
