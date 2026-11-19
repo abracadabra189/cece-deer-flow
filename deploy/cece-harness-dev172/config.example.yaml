@@ -115,7 +115,7 @@ models:
 token_budget:
   enabled: true
   max_tokens: 3000000
-  warn_threshold: 0.40
+  warn_threshold: 0.30
   hard_stop_threshold: 1.0
 
 tool_progress:
