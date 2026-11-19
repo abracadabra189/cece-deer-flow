@@ -37,6 +37,10 @@ const streamMockState = rs.hoisted(() => ({
   optionThreadIds: [] as Array<string | undefined>,
 }));
 
+const toastMockState = rs.hoisted(() => ({
+  error: rs.fn(),
+}));
+
 rs.mock("@/core/api", () => ({
   getAPIClient: () => ({
     runs: { list: apiMockState.listRuns, cancel: apiMockState.cancel },
@@ -60,6 +64,12 @@ rs.mock("@langchain/langgraph-sdk/react", () => ({
         todos: [],
       },
     };
+  },
+}));
+
+rs.mock("sonner", () => ({
+  toast: {
+    error: toastMockState.error,
   },
 }));
 
@@ -160,6 +170,7 @@ beforeEach(() => {
   streamMockState.stop.mockResolvedValue(undefined);
   streamMockState.options = undefined;
   streamMockState.optionThreadIds = [];
+  toastMockState.error.mockReset();
   rs.stubGlobal(
     "fetch",
     rs.fn(
@@ -170,6 +181,25 @@ beforeEach(() => {
         ),
     ),
   );
+});
+
+test("reports a terminal run error when its stream error event was missed", async () => {
+  apiMockState.listRuns.mockResolvedValue([
+    {
+      run_id: "run-step-limit",
+      status: "error",
+      error:
+        "The run stopped at its step limit (recursion_limit=1000) before finishing.",
+    } as unknown as Run,
+  ]);
+
+  const { unmount } = renderThread();
+
+  await flushFrames();
+  expect(toastMockState.error).toHaveBeenCalledWith(
+    "The run stopped at its step limit (recursion_limit=1000) before finishing.",
+  );
+  unmount();
 });
 
 afterEach(() => {

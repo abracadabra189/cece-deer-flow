@@ -33,7 +33,7 @@ Use `references/commands.md` only as a discovery hint; live `help` is authoritat
 - State data scope and time range with factual conclusions.
 - Separate retrieved facts from analysis and inference. Name missing data instead of filling gaps from guesswork.
 - Treat an empty result, authorization failure, or service error as a data limitation, not evidence that an entity or event does not exist.
-- The dev172 policy caps calls: ordinary questions up to 2, normal research up to 4, and user-requested deep research up to 8. Do not batch enumerate or query unrelated interfaces merely to appear comprehensive.
+- The CECE deployment policy caps calls: ordinary questions up to 2, normal research up to 8, and user-requested deep research up to 16. Do not batch enumerate or query unrelated interfaces merely to appear comprehensive.
 
 ## Errors
 

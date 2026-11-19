@@ -20,7 +20,7 @@ const examples = [
   {
     title: "企业风险监控",
     description: "跨城市产业风险识别 + 企业排查 + 风险研判，输出可溯源报告",
-    prompt: "帮我写一份上海市AI算法产业的企业风险分析报告",
+    prompt: "帮我写一份上海市人工智能产业的企业风险分析报告",
     tone: "bg-[#eaf0ff] text-[#2563eb]",
     Icon: BarChart3Icon,
   },
