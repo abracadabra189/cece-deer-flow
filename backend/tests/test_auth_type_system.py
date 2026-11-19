@@ -58,8 +58,44 @@ def _persistence_engine(tmp_path):
         asyncio.run(close_engine())
 
 
+@pytest.fixture(autouse=True)
+def _no_dotenv_auth_leak(monkeypatch):
+    """Keep the checkout's dotenv out of auth policy resolution.
+
+    ``get_auth_config`` loads the selected env file into ``os.environ`` for the rest of
+    the process, and ``patch.dict(clear=True)`` cannot undo a load that happens inside
+    the call. An operator who followed the platform's own advice — ``AUTH_JWT_SECRET``
+    in ``.env``, ``DEER_FLOW_AUTH_ALLOW_INSECURE_PERSISTENT_COOKIE`` for an HTTP
+    deployment — would otherwise silently flip every default-policy case below: the
+    secret tests would take the env branch and public HTTP would look persistent.
+    These cases pin defaults, so both variables are removed and the dotenv load
+    becomes a no-op. Tests that *want* the opt-in still set it explicitly.
+    """
+    from app.gateway.auth.session_cookie import ALLOW_INSECURE_PERSISTENT_COOKIE_ENV
+
+    monkeypatch.delenv("AUTH_JWT_SECRET", raising=False)
+    monkeypatch.delenv(ALLOW_INSECURE_PERSISTENT_COOKIE_ENV, raising=False)
+    monkeypatch.setattr("deerflow.env.load_selected_env_file", lambda: True)
+
+
 def _setup_config():
     set_auth_config(AuthConfig(jwt_secret=_TEST_SECRET))
+
+
+@pytest.fixture(autouse=True)
+def _open_local_auth_gates(monkeypatch):
+    """Pin the local-auth gates open for this module.
+
+    These cases exercise the login/register/initialize flows and the token/cookie
+    types around them, not the operator gates. ``get_app_config()`` resolves the
+    developer's real ``config.yaml``, so a checkout configured for external-only
+    sign-in (``allow_registration`` / ``password_login_enabled`` false) would turn
+    every request here into a 403. The gates keep their own suites:
+    ``test_local_registration_gate.py`` and ``test_local_password_login_gate.py``.
+    """
+    from app.gateway.routers import auth as auth_router
+
+    monkeypatch.setattr(auth_router, "_local_auth_gates", lambda: (True, True))
 
 
 # ── CSRF Middleware Path Matching ────────────────────────────────────

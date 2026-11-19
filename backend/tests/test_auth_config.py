@@ -8,6 +8,20 @@ import pytest
 import app.gateway.auth.config as cfg
 
 
+@pytest.fixture(autouse=True)
+def _no_dotenv_leak(monkeypatch):
+    """Keep the developer's dotenv out of secret resolution.
+
+    ``get_auth_config`` loads the selected env file, which repopulates
+    ``AUTH_JWT_SECRET`` even inside ``patch.dict(os.environ, {}, clear=True)``.
+    The platform's own warning tells operators to put that variable in ``.env``, so
+    on any machine that followed the advice the "missing secret" cases below would
+    silently take the env branch instead of exercising file generation. Report the
+    file as already loaded so neither loader reads the checkout's dotenv.
+    """
+    monkeypatch.setattr("deerflow.env.load_selected_env_file", lambda: True)
+
+
 def test_auth_config_defaults():
     config = cfg.AuthConfig(jwt_secret="test-secret-key-123")
     assert config.token_expiry_days == 7

@@ -2246,6 +2246,8 @@ export interface Translations {
     createAdminAccount: string;
     adminSetupRequiredTitle: string;
     adminSetupRequiredDescription: string;
+    externalOnlyTitle: string;
+    externalOnlyDescription: string;
     orContinueWith: string;
     ssoHint: string;
     continueWith: (provider: string) => string;
@@ -2266,6 +2268,7 @@ export interface Translations {
       invalid_email: string;
       password_too_short: string;
       registration_password_too_short: string;
+      external_login_failed: string;
     };
   };
 }

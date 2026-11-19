@@ -2578,6 +2578,9 @@ export const zhCN: Translations = {
     adminSetupRequiredTitle: "需要先完成管理员初始化",
     adminSetupRequiredDescription:
       "DeerFlow 需要先创建管理员账号，然后才能创建新的普通账号。",
+    externalOnlyTitle: "请从业务系统进入",
+    externalOnlyDescription:
+      "本部署已关闭账号密码登录。请返回带你过来的业务系统，从那里打开 DeerFlow —— 会话会自动建立，无需单独的账号或密码。",
     orContinueWith: "或使用以下方式登录",
     ssoHint: "如果你的账号使用单点登录（SSO），请改用下方的选项登录。",
     continueWith: (provider: string) => `使用 ${provider} 登录`,
@@ -2600,6 +2603,8 @@ export const zhCN: Translations = {
       invalid_email: "请输入有效的邮箱地址。",
       password_too_short: "密码至少需要 6 个字符。",
       registration_password_too_short: "密码至少需要 8 个字符。",
+      external_login_failed:
+        "该登录链接已失效（可能已过期或已被使用）。请返回业务系统重新进入 DeerFlow。",
     },
   },
 };

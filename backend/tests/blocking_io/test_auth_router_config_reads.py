@@ -37,6 +37,7 @@ _CONFIG_YAML = """sandbox:
 auth:
   local:
     allow_registration: false
+    password_login_enabled: false
   oidc:
     enabled: true
     frontend_base_url: https://deerflow.example.com
@@ -101,7 +102,20 @@ async def test_setup_status_reads_registration_gate_off_the_loop(client: httpx.A
     response = await client.get("/api/v1/auth/setup-status")
 
     assert response.status_code == 200
-    assert response.json() == {"needs_setup": True, "registration_enabled": False}
+    assert response.json() == {"needs_setup": True, "registration_enabled": False, "password_login_enabled": False}
+
+
+async def test_login_local_reads_password_gate_off_the_loop(client: httpx.AsyncClient, local_provider: AsyncMock) -> None:
+    """The password-login gate is a config read on an unauthenticated endpoint.
+
+    It also has to run before ``authenticate``: a closed endpoint that still checked
+    credentials would stay a password oracle.
+    """
+    response = await client.post("/api/v1/auth/login/local", data={"username": "someone@example.com", "password": "Str0ng!Passw0rd#2026"})
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "password_login_disabled"
+    local_provider.authenticate.assert_not_called()
 
 
 async def test_providers_reads_oidc_config_off_the_loop(client: httpx.AsyncClient) -> None:
