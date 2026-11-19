@@ -1,0 +1,17 @@
+# Optional override: join the application Docker network so the console can
+# address Postgres by container name instead of the published host port.
+#
+#   docker compose -f docker-compose.ops.yaml -f docker-compose.ops.appnet.yaml up -d
+#
+# Set DEER_FLOW_NETWORK in .env to the application network, for example:
+#   dev172: cece-harness-dev172-net
+#   test224: cece-harness-test224-net
+services:
+  ops:
+    networks:
+      - app
+
+networks:
+  app:
+    external: true
+    name: ${DEER_FLOW_NETWORK:?set DEER_FLOW_NETWORK in .env}

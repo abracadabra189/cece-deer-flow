@@ -27,7 +27,7 @@ const examples = [
   {
     title: "AI 算法产业企业风险分析",
     description: "企业风险识别 + 经营排查 + 风险研判，输出可溯源分析报告",
-    prompt: "帮我写一份上海市AI算法产业的企业风险分析报告",
+    prompt: "请帮我编制一份上海半导体产业分析研究报告",
     tone: "bg-[#f0ecff] text-[#7b5cff]",
     Icon: SparklesIcon,
   },

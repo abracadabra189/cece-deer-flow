@@ -1,0 +1,52 @@
+# Standalone read-only operations console.
+#
+# This file is intentionally separate from the application compose files:
+# start/stop it without touching the Gateway, frontend, Postgres or Redis.
+#
+#   cp .env.example .env
+#   docker compose -f docker-compose.ops.yaml up -d --build
+#   ssh -L 8099:127.0.0.1:8099 <user>@<host>
+#   open http://127.0.0.1:8099
+services:
+  ops:
+    build: .
+    container_name: cece-harness-ops
+    environment:
+      OPS_DATABASE_URL: ${OPS_DATABASE_URL:?set OPS_DATABASE_URL in .env}
+      OPS_DB_SCHEMA: ${OPS_DB_SCHEMA:-}
+      OPS_MYSQL_HOST: ${OPS_MYSQL_HOST:-}
+      OPS_MYSQL_PORT: ${OPS_MYSQL_PORT:-3306}
+      OPS_MYSQL_USER: ${OPS_MYSQL_USER:-}
+      OPS_MYSQL_PASSWORD: ${OPS_MYSQL_PASSWORD:-}
+      OPS_MYSQL_DB: ${OPS_MYSQL_DB:-}
+      OPS_MYSQL_TABLE: ${OPS_MYSQL_TABLE:-st_mgr_user}
+      OPS_MYSQL_CODE_COLUMN: ${OPS_MYSQL_CODE_COLUMN:-code}
+      OPS_MYSQL_MOBILE_COLUMN: ${OPS_MYSQL_MOBILE_COLUMN:-mobile}
+      OPS_CODE_CACHE_SECONDS: ${OPS_CODE_CACHE_SECONDS:-60}
+      OPS_MAP_EMAIL_DOMAIN: ${OPS_MAP_EMAIL_DOMAIN:-users.deerflow.internal}
+      OPS_TZ: ${OPS_TZ:-Asia/Shanghai}
+      OPS_MAX_DAYS: ${OPS_MAX_DAYS:-90}
+      OPS_PAGE_LIMIT: ${OPS_PAGE_LIMIT:-200}
+      OPS_STATEMENT_TIMEOUT_MS: ${OPS_STATEMENT_TIMEOUT_MS:-5000}
+    ports:
+      # Loopback only. Reach it through an SSH tunnel, never expose 8099.
+      - "127.0.0.1:${OPS_PORT:-8099}:8099"
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+# This file uses its own default network, so it runs on any Docker host.
+#
+# To reach Postgres by container name on the application host, layer the
+# override on top:
+#
+#   docker compose -f docker-compose.ops.yaml -f docker-compose.ops.appnet.yaml up -d
+#
+# The override joins the existing application network and is the recommended
+# form on the server.
