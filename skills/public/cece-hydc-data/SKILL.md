@@ -1,12 +1,12 @@
 ---
 name: cece-hydc-data
 display_name: CECE 产业数据
-description: Use when a CECE user needs enterprise, industry, market, policy, announcement, financing, or regional facts from the HYDC data service.
+description: 当需要通过 HYDC 数据服务获取企业、行业、市场、政策、公告、融资或区域事实数据时使用。
 ---
 
-# CECE HYDC Data
+# CECE HYDC 产业数据
 
-Use this Skill as the sole business-data source in the dev172 environment. It calls the CECE-managed HYDC service through a fixed wrapper; credentials, endpoint, and timeout are supplied by the operator and are not model inputs.
+本技能是 CECE 环境中唯一的业务事实数据来源。它通过固定封装调用 CECE 管理的 HYDC 服务；凭据、服务地址和超时时间由运维配置，不属于模型输入。
 
 ## Invocation
 
