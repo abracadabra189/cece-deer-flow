@@ -25,8 +25,8 @@ const examples = [
     Icon: BarChart3Icon,
   },
   {
-    title: "AI 算法产业企业风险分析",
-    description: "企业风险识别 + 经营排查 + 风险研判，输出可溯源分析报告",
+    title: "半导体产业研究",
+    description: "产业链图谱 + 企业集聚 + 发展趋势，输出产业研究报告",
     prompt: "请帮我编制一份上海半导体产业分析研究报告",
     tone: "bg-[#f0ecff] text-[#7b5cff]",
     Icon: SparklesIcon,
