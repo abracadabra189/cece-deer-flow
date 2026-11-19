@@ -44,6 +44,19 @@ _CLIENT_IP = "203.0.113.9"
 _POLICY = {"max_attempts": 5, "lockout_seconds": 3600.0}
 
 
+@pytest.fixture(autouse=True)
+def _open_local_auth_gates(monkeypatch):
+    """Pin the local-auth gates open for this module.
+
+    These cases exercise the login throttle around ``login_local``; the password
+    gate runs ahead of it and ``get_app_config()`` resolves the developer's real
+    ``config.yaml``, so an external-only checkout would 403 before the throttle code
+    under test ever runs. The gates keep their own suite
+    (``test_local_password_login_gate.py``).
+    """
+    monkeypatch.setattr(auth_router, "_local_auth_gates", lambda: (True, True))
+
+
 def _build_sqlite_engine(path: Path) -> AsyncEngine:
     """Create the schema with a sync engine and return the async one (runs in a worker thread)."""
     sync_engine = sa.create_engine(f"sqlite:///{path.as_posix()}")

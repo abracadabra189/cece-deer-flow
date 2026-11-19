@@ -23,6 +23,12 @@ transport, so they check the payload that DeerFlow sends.
   titles, summarization, subagents and the Gateway probe all call it, so the
   reasoning contract and request admission apply to every caller. A second
   construction path would skip both.
+- **`http_async_client` opts a caller out of langchain-openai's shared pool.** The
+  library caches its default async client per process on `(base_url, timeout,
+  socket_options)`, so one pool spans every event loop; a caller on a short-lived
+  loop (the auto-skill batch) passes its own client and closes it with its loop, or
+  its connections outlive the loop inside the shared client. The factory forwards
+  the field only to classes that declare it and warns when dropping it.
 - **A declared `reasoning.effort.path` is the only way effort is serialized.** A
   leftover `reasoning_effort` key on such a profile is rejected, because two
   serializations of one setting can disagree on the wire.

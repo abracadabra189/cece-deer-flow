@@ -1,160 +1,99 @@
 # Router contracts
 
-Artifact range validators and bytes come from one opened file. POSIX streams
-the descriptor. Windows copies only the selected response bytes into a
-private temporary file and closes the public handle before sending headers.
-Preserve the ZIP single-link checks and drain preparation before cancellation
-can release an artifact response's resources.
+Artifact range validators and bytes come from one opened file. POSIX streams the
+descriptor; Windows copies only the selected response bytes to a private temporary
+file and closes the public handle before sending headers. Preserve the ZIP
+single-link checks and drain preparation before cancellation can release resources.
 
-Trash listing resolves the live retention configuration off-loop before its
-best-effort sweep. Configuration failures skip automatic cleanup and preserve
-the listing; never substitute a default policy for an unreadable one. Resolve
-the policy before consuming the reconciliation throttle window.
+Trash listing resolves the live retention config off-loop before its best-effort
+sweep; config failures skip cleanup and preserve the listing — never substitute a
+default policy for an unreadable one.
 
 HTTP creation holds `goal_thread_lock` from the idempotency lookup through the
-initial checkpoint write. Same-id HTTP creates must return the existing row,
-including in memory mode; retain the native memory store's overwrite contract
-and SQL duplicate-insert recovery across workers. Release on failure/cancellation
-without blocking different thread IDs. Tests: `test_thread_create_idempotency.py`.
+initial checkpoint write. Same-id creates return the existing row, including in
+memory mode; retain the native store's overwrite contract and SQL duplicate-insert
+recovery across workers. Tests: `test_thread_create_idempotency.py`.
 
-`GET /api/plugins/diagnostics` uses `require_admin_user` before reading the
-canonical runtime diagnostic snapshot. Return bounded entry-point identifiers,
-known levels and fixed summaries; raw messages stay in logs. Never clear the
-sink or expand PAT permissions.
+`GET /api/plugins/diagnostics` is `require_admin_user` before reading the canonical
+snapshot; return bounded identifiers, levels and fixed summaries, never clear the
+sink, never expand PAT permissions.
 
-Branch metadata inherits valid `assistant_id` values verbatim. Validate with
-`custom_agent_name` and clear invalid legacy values to null in the new row;
-leave the source record unchanged.
+Branch metadata inherits valid `assistant_id` values verbatim and clears invalid
+legacy values to null in the new row, leaving the source record unchanged.
 
-Console usage attributes legacy rows without a per-model usage map to
-`model_name`, including their recorded `total_input_tokens`. Accumulate those
-inputs with newer usage buckets for the same model; do not infer cache hits.
-A counter that does not coerce to an integer contributes zero tokens instead
-of aborting the request, and non-finite pricing leaves that model's cost
-unreported; rows whose counters are all unusable still fall back to run-level
-totals. Regression coverage lives in `tests/test_console_router.py`.
+Console usage attributes legacy rows without a per-model map to `model_name`;
+counters that do not coerce to integers contribute zero and unusable rows fall back
+to run-level totals instead of aborting. Coverage: `tests/test_console_router.py`.
 
-Shared scheduled-task update validation preserves an unchanged future `once`
-instant on a live task inside `scheduler.min_once_delay_seconds`; new/changed
-instants and terminal reactivation still enforce the minimum delay.
+Scheduled tasks: shared update validation preserves an unchanged future `once`
+instant inside `scheduler.min_once_delay_seconds`; admission rejects nonexistent
+naive `run_at`/`end_at` wall times through the shared datetime resolver, but keeps
+that check out of runtime `next_run_at` so legacy tasks retain their accepted
+instant and ambiguous naive times keep their fold.
 
-Scheduled-task admission rejects nonexistent naive `run_at` and `end_at`
-wall times through the shared Gateway datetime resolver. Keep this check out
-of runtime `next_run_at`: legacy tasks retain their accepted execution time,
-including unchanged live once definitions. Explicit offsets retain their instant;
-ambiguous naive times keep the existing fold choice.
-
-The MCP task list accepts optional `TaskStatus` and `active_only` query filters.
-Pass both to the repository before its limit; preserve `threads:read`, owner
-checks, current-thread incarnation scoping, and the unfiltered array response.
-
-Custom Agent packages are strict, versioned definition-only JSON documents.
-Export explicitly projects the caller's portable `AgentConfig` fields and SOUL;
-exclude `github` installation bindings, memory contents, conversations and
-credentials. Import may rename locally but must remain owner-scoped and
-create-only: collisions return 409, never overwrite or upsert. Ordinary creation
-and import share `_persist_new_agent`, which uses `run_drained_write` so a
-cancelled request still drains the owned persistence worker.
+Custom Agent packages are versioned definition-only JSON: export projects the
+caller's portable fields and SOUL, excluding installation bindings, memory,
+conversations and credentials; import is create-only and owner-scoped, colliding
+with 409. Creation and import share `_persist_new_agent` under `run_drained_write`.
+Update guards apply legacy shared-file checks only for `FileAgentStore`; DB rollback
+files cannot veto SQL updates. `PUT` clears an inherited knowledge default when
+changed groups remove knowledge access; explicit scope/null updates still win.
 
 `GET /api/skills`, `/api/skills/custom` and `/api/skills/{name}` serve every
-signed-in user, so their unexpected-failure 500s return a fixed detail. Load
-errors (e.g. a malformed `extensions_config.json`) carry host paths and stay in
-the server log.
+signed-in user, so unexpected-failure 500s return a fixed detail; load errors (e.g.
+a malformed `extensions_config.json`) carry host paths and stay in the log. The
+same rule covers upload, upload-delete and shelf-attach 500s: name the file, not
+the cause. Operation lists return `next_cursor: null` unless a page follows.
 
-Thread upload, upload delete and shelf attach-to-thread 500s name the file but
-not the cause: staging and unlink `OSError`s carry host paths and stay in the
-server log.
+`GET /api/agent-tool-groups` projects only configured group names; never expose
+tool provider paths, credentials or raw tool configuration.
 
-Skill mutation operation lists return `next_cursor: null` when `has_more` is false, including empty pages after a supplied `after_id`. The next cursor is the final returned operation only when a further page exists.
-
-`GET /api/agent-tool-groups` projects only configured group names for the
-custom-Agent settings allowlist. Never expose tool provider paths, credentials,
-or raw tool configuration through this catalog.
-
-Custom Agent update guards apply legacy shared-file checks only when the
-resolved store is `FileAgentStore`, including the `update_agent` tool. DB
-imports retain source files for rollback; those files cannot veto SQL updates.
-Keep store resolution and filesystem checks off-loop in the HTTP route.
-Agent PUT uses `preserve_non_managed_fields(..., new_tool_groups=...)` to clear
-an inherited knowledge default when changed groups remove knowledge access.
-Explicit scope/null updates still win; unchanged groups are not a migration.
-
-Agent/profile and deployment/personal MCP mutation 500s plus the
-scheduled-task `invalid_assistant` 422 use fixed text. Log exceptions
-server-side; they can carry host paths.
-
-Committed MCP reconciliation failures are logged once by
-`fail_mcp_reconciliation`, with only the underlying exception type.
-`_run_drained_mcp_apply` passes `_McpCommittedReconciliationError` as an expected
-error to `run_drained_write` to avoid a duplicate diagnostic. It still drains
-retired-pool cleanup outside the config locks and reports the fixed-detail 500.
+MCP mutation 500s and the scheduled-task `invalid_assistant` 422 use fixed text;
+log exceptions server-side (they can carry host paths). Committed reconciliation
+failures are logged once by `fail_mcp_reconciliation` with only the exception type;
+`_run_drained_mcp_apply` passes `_McpCommittedReconciliationError` to
+`run_drained_write` as expected, still drains retired-pool cleanup outside the
+config locks, and reports the fixed-detail 500.
 
 Custom-skill edit, delete and rollback hold the owning root's process mutex and
 `.custom.mutation.lock` sidecar across predecessor read, storage mutation and
-history append. Peer Gateway processes sharing that root must use this same
-critical section to preserve history ordering. Keep the sidecar distinct from
-the nested projection lock, retain it across requests, and acquire/release both
-off-loop inside the drained worker. Unrelated users retain independent locks;
-external filesystem writers do not participate in this history guarantee.
+history append, so peers sharing the root keep history ordering; acquire and
+release both off-loop in the drained worker. Archive upload copies report the
+original size-limit or read error when temporary cleanup or its warning fails and
+return the uploaded bytes unchanged on success; the route's `finally` discards the
+archive before closing the multipart form, so cleanup failures cannot replace the
+install outcome. Coverage: `tests/test_skill_archive_upload_cleanup.py`.
 
 Plugin actions stamp `ActionContext.interaction=session` only from authenticated
-session provenance. Never accept it from payloads or propagate it to model tools;
-extensions use it to distinguish owner review from model/tool output.
+session provenance; never accept it from payloads or propagate it to model tools.
 
-Skill archive upload copies (`_copy_uploaded_skill_archive`) report the original
-size-limit or read error when temporary cleanup or its warning log fails.
-Successful copies still return the uploaded bytes unchanged. The upload route's
-`finally` discards that archive through the same helper before closing the
-multipart form. Form close is suppressed, so a close, cleanup, or warning
-failure cannot turn a successful install into a 500, replace an install
-error, or skip the discard. Coverage: `tests/test_skill_archive_upload_cleanup.py`.
-
-State updates synchronize titles into thread metadata only for the root checkpoint
-namespace. Nonroot writes preserve the conversation title, branch-title sequence
-and activity timestamp. `tests/test_threads_router.py` checks metadata/search
-isolation and root title synchronization in full and delta modes.
+State updates synchronize titles into thread metadata for the root checkpoint
+namespace only; nonroot writes preserve title, branch sequence and activity
+timestamp. Coverage: `tests/test_threads_router.py`.
 
 Unauthenticated auth routes (`/register`, `/setup-status`, `/providers`,
-`/oauth/{provider}`, `/callback/{provider}`, the `/login/local` throttle) read
-`get_app_config()` through `asyncio.to_thread`: each read stats and hashes the
-config files. Coverage: `tests/blocking_io/test_auth_router_config_reads.py`.
+`/oauth/{provider}`, `/callback/{provider}`, the `/login/local` throttle and the
+external-user gates) read `get_app_config()` through `asyncio.to_thread`: each read
+stats and hashes the config files. Coverage:
+`tests/blocking_io/test_auth_router_config_reads.py`.
 
-External user-system provisioning (`/api/v1/auth/external`, gated by
-`auth.external_user.enabled`, 404 when off) reads config the same off-loop way and
-is public in `AuthMiddleware` while self-authenticating, like the signed webhooks:
-`POST /provision` accepts only the shared `api_key` (`X-External-User-Key` or
-Bearer) and resolves-or-registers an account by phone, linked as
-`(oauth_provider=provider_id, oauth_id=phone)` with a derived reserved
-`users.email` and no password — an unrelated owner of that email is a 409, never a
-takeover. It is CSRF-exempt (a key-authenticated machine caller has no
-double-submit pair) and deliberately absent from `_AUTH_EXEMPT_PATHS`, which would
-also trigger the Origin check and CSRF-cookie issuance. `GET /login` spends a
-signed ticket exactly once — durably, via an atomic claim on the shared
-`external_login_tickets` table, so peers cannot each redeem it — and the claims
-carry `uid`, never `sub`, so a ticket can never replay as a session token. It
-then issues the ordinary session cookies and 302s
-to the frontend `/auth/callback`, so the browser flow needs no frontend change;
-every failure redirects to `/login?error=external_login_failed` without setting a
-cookie, keeping the endpoint from becoming a ticket-validity oracle. Contract:
-`backend/docs/API.md#external-user-provisioning`; trust boundary:
-`backend/docs/AUTH_DESIGN.md`. Tests: `test_external_user_auth.py` plus the
-config-read anchors named above.
+External user-system provisioning (`/api/v1/auth/external`) is public in
+`AuthMiddleware` while self-authenticating on its shared `api_key`, like the signed
+webhooks. Its ticket is single-use through an atomic DB claim and can never replay
+as a session. Contract: `backend/docs/API.md#external-user-provisioning`; trust
+boundary: `backend/docs/AUTH_DESIGN.md`. Tests: `test_external_user_auth.py`.
 
-Managed-model `/discover` and `/import` require administrator access before
-reading credentials or making outbound requests. Discovery is read-only and
-bounded (20 seconds, 2 MiB, 2,000 IDs/20 pages); it never follows redirects
-and requests identity encoding, rejecting compressed bodies before decoding.
-Import probes each new profile, saves through the drained writer, and atomically
-deduplicates retries without changing existing disabled profiles. Saved-key reuse
-requires matching connection and revision, checked again under the write lock
-after probing (409 on change); provider errors remain redacted.
+Managed-model `/discover` and `/import` require admin before reading credentials or
+going outbound. Discovery is read-only and bounded (20s, 2 MiB, 2,000 IDs/20 pages),
+never follows redirects, and rejects compressed bodies before decoding. Import
+probes each new profile, saves through the drained writer, deduplicates retries
+atomically without touching disabled profiles, and reuses a saved key only with
+matching connection and revision re-checked under the write lock (409 on change).
 
-Agent-scoped memory routes take `agent_name` and validate it with
-`AGENT_NAME_PATTERN`; the backend must also declare
-`supports_agent_scoped_management` or the route answers 501. The two routes that
-create the scope — `POST /memory/facts` and `POST /memory/import` — additionally
-reject Windows reserved device names through `windows_incompatible_segment()`.
-The scope is a host directory (`agents/{name}/facts`), so the character class
-alone let the first write fail with `FileNotFoundError` and answer 500. Keep
-reads and deletes permissive: a scope an older release stored under a reserved
-name must stay exportable and clearable. Tests: `test_memory_router.py`.
+Agent-scoped memory routes validate `agent_name` with `AGENT_NAME_PATTERN` and
+require `supports_agent_scoped_management` (else 501). The scope-creating routes
+(`POST /memory/facts`, `POST /memory/import`) also reject Windows reserved device
+names via `windows_incompatible_segment()`: the scope is a host directory, so the
+character class alone once answered 500 with `FileNotFoundError`. Keep reads and
+deletes permissive so reserved-name scopes from older releases stay exportable.
+Tests: `test_memory_router.py`.

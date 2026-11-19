@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+from typing import Any
 
 from langchain.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
@@ -539,7 +540,16 @@ def _apply_openai_responses_api_default(model_class: type, model_settings_from_c
     )
 
 
-def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *, app_config: AppConfig | None = None, attach_tracing: bool = True, model_overrides: dict | None = None, **kwargs) -> BaseChatModel:
+def create_chat_model(
+    name: str | None = None,
+    thinking_enabled: bool = False,
+    *,
+    app_config: AppConfig | None = None,
+    attach_tracing: bool = True,
+    model_overrides: dict | None = None,
+    http_async_client: Any | None = None,
+    **kwargs,
+) -> BaseChatModel:
     """Create a chat model instance from the config.
 
     Args:
@@ -557,12 +567,21 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
             that invokes the model outside a LangGraph run that already wires tracing
             at the invocation root (``MemoryUpdater``, ad-hoc utilities, etc.) — keep
             this default so the model-level callback still produces traces. Callers
-            that already attach tracing at the graph root (``make_lead_agent``, the
-            in-graph ``TitleMiddleware``) MUST pass ``attach_tracing=False``; otherwise
-            the same LLM call emits duplicate spans (one rooted at the graph, one at
-            the model) and ``session_id`` / ``user_id`` metadata never reach the trace
-            because the model becomes a nested observation whose ``langfuse_*`` keys
-            get stripped.
+        that already attach tracing at the graph root (``make_lead_agent``, the
+        in-graph ``TitleMiddleware``) MUST pass ``attach_tracing=False``; otherwise
+        the same LLM call emits duplicate spans (one rooted at the graph, one at
+        the model) and ``session_id`` / ``user_id`` metadata never reach the trace
+        because the model becomes a nested observation whose ``langfuse_*`` keys
+        get stripped.
+        http_async_client: Optional caller-owned ``httpx.AsyncClient``. Supplying it
+        bypasses langchain-openai's process-global default-client cache, which is
+        keyed only on ``(base_url, timeout, socket_options)`` and therefore shares
+        one connection pool across every event loop in the process. Callers that
+        run models on a short-lived loop (the auto-skill batch worker) MUST pass
+        their own client and close it before that loop closes, or connections bound
+        to the dead loop stay pooled and later raise ``RuntimeError: Event loop is
+        closed`` on whichever loop reuses them. Ignored, with a warning, for model
+        classes that declare no such field.
 
     Returns:
         A chat model instance.
@@ -718,6 +737,18 @@ def create_chat_model(name: str | None = None, thinking_enabled: bool = False, *
     # 先合并再展开，避免同名字段通过两个 **dict 传入时触发 TypeError。
     effective_model_settings = dict(model_settings_from_config)
     effective_model_settings.update({key: value for key, value in kwargs.items() if value is not None})
+    if http_async_client is not None:
+        if "http_async_client" in getattr(model_class, "model_fields", {}):
+            effective_model_settings["http_async_client"] = http_async_client
+        else:
+            # Providers without the field build their own HTTP client per instance,
+            # so there is no process-global pool to isolate from; dropping the client
+            # is safe, but silent dropping would hide a caller's isolation intent.
+            logger.warning(
+                "Model %r (%s) declares no http_async_client field; ignoring the caller-owned HTTP client",
+                name,
+                model_config.use,
+            )
     if (
         issubclass(model_class, BaseChatOpenAI)
         and effective_model_settings.get("model") in OPENAI_GPT6_MODELS

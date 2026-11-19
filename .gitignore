@@ -80,5 +80,12 @@ config.yaml.bak
 .gstack/
 .worktrees
 
+# CECE deployment runtime state: copied templates, the runtime home volume and its
+# dotenv. The baseline README says these must never be committed; ignoring the whole
+# directory also keeps generated trees (skills_view projections, backups) out of
+# `git ls-files --others`, which repository checks such as check_agent_guidance.py
+# walk.
+deploy/*/runtime/
+
 # Monocle agent-observability trace output (local file exporter)
 .monocle/

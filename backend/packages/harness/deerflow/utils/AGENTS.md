@@ -39,6 +39,12 @@ make test-blocking-io
   keeps that work off the event loop and off the default thread pool, and it
   preserves the request context. A new async entry point that assembles an agent
   or a model uses it too.
+- **A short-lived loop must own its HTTP client.** `oneshot_llm.new_isolated_http_client()`
+  returns a caller-owned `httpx.AsyncClient`; pass it as `http_async_client` to
+  `create_chat_model` / `run_oneshot_llm` and `aclose()` it before the loop closes.
+  langchain-openai's default client is cached per process on connection parameters
+  alone, so a model call on a temporary loop would otherwise leave that loop's
+  connections pooled for the Gateway loop to reuse after the loop is gone.
 - **Cancellation during construction must not start inference.**
 - **Resolve the agent factory before admission**, so that an import error cannot
   admit a run.

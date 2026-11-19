@@ -37,6 +37,7 @@ from deerflow.config.app_config import AppConfig, get_app_config
 from deerflow.config.auto_skill_config import AutoSkillConfig
 from deerflow.skills.auto.trajectory import RunTrajectory
 from deerflow.trace_context import ensure_trace_context
+from deerflow.utils.oneshot_llm import new_isolated_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -155,9 +156,14 @@ class AutoSkillQueue:
     def _run_batch(self, batch: list[AutoSkillRequest]) -> None:
         """Run one batch on the caller's thread with a fresh event loop.
 
-        A fresh ``asyncio.run`` per batch gives the synthesis model call and the
-        scanners their own loop-bound resources, which is the property the memory
-        backend relies on to keep a shared async HTTP pool from crossing loops.
+        A fresh ``asyncio.run`` per batch keeps the synthesis work off the Gateway
+        loop, but it also means every loop-bound resource created inside dies when
+        the batch returns. The batch therefore owns its model HTTP client
+        (``_process_batch``) instead of borrowing langchain-openai's process-global
+        default: that cache is keyed only on connection parameters, so a model call
+        made here would pool this loop's connections into a client the Gateway loop
+        reuses after ``asyncio.run`` has closed this one — surfacing later as
+        ``RuntimeError: Event loop is closed`` on an unrelated chat.
         """
         try:
             asyncio.run(self._process_batch(batch))
@@ -172,28 +178,35 @@ class AutoSkillQueue:
             logger.info("auto-skill disabled before drain; dropping %d queued trajectory(ies)", len(batch))
             return
 
-        for request in batch:
-            with ensure_trace_context(request.trace_id):
-                try:
-                    result = await self._synthesizer(
-                        trajectory=request.trajectory,
-                        user_id=request.user_id,
-                        thread_id=request.thread_id,
-                        run_id=request.run_id,
-                        config=config,
-                        app_config=app_config,
-                    )
-                except Exception:
-                    logger.warning(
-                        "auto-skill synthesis raised for thread=%s run=%s",
-                        request.thread_id,
-                        request.run_id,
-                        exc_info=True,
-                    )
-                    continue
-                if result is not None:
-                    with self._lock:
-                        self._synthesized_total += 1
+        # One HTTP client for the whole batch, bound to this loop and closed before
+        # asyncio.run() closes the loop, so no socket or asyncio primitive outlives it.
+        client = new_isolated_http_client()
+        try:
+            for request in batch:
+                with ensure_trace_context(request.trace_id):
+                    try:
+                        result = await self._synthesizer(
+                            trajectory=request.trajectory,
+                            user_id=request.user_id,
+                            thread_id=request.thread_id,
+                            run_id=request.run_id,
+                            config=config,
+                            app_config=app_config,
+                            http_async_client=client,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "auto-skill synthesis raised for thread=%s run=%s",
+                            request.thread_id,
+                            request.run_id,
+                            exc_info=True,
+                        )
+                        continue
+                    if result is not None:
+                        with self._lock:
+                            self._synthesized_total += 1
+        finally:
+            await client.aclose()
 
     # ── drain / shutdown ─────────────────────────────────────────────────────
 

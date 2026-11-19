@@ -10,7 +10,6 @@ EXPECTED_GUIDANCE_PATHS = {
     "docker/AGENTS.md",
     "skills/AGENTS.md",
     "skills/public/data-analysis/AGENTS.md",
-    "skills/public/video-generation/AGENTS.md",
     "backend/AGENTS.md",
     "backend/tests/AGENTS.md",
     "backend/scripts/benchmark/AGENTS.md",

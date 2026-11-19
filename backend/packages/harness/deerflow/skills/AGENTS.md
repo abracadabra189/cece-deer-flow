@@ -2,8 +2,8 @@
 
 Loads `SKILL.md` packages, projects them into the sandbox, scans and reviews them,
 and owns install, export, history and the mutation (skill evolution) host.
-Sub-packages: `skillscan/` is the offline deterministic scanner, `review/` the
-read-only review core and CLI, `mutations/` the evolution host. Related docs:
+Sub-packages: `skillscan/` (offline deterministic scanner), `review/` (read-only
+review core and CLI), `mutations/` (evolution host). Related docs:
 [skill evolution host](../../../../../docs/skill-evolution-host.md),
 [export API](../../../../docs/API.md#export-a-custom-skill).
 
@@ -17,10 +17,9 @@ make test-blocking-io
 
 ## Where skills live
 
-Public skills are in the repository under `skills/public/`. A user's custom skills
-are under `{DEER_FLOW_HOME}/users/{user_id}/skills/custom/`. Managed integration
-packs are global under `{DEER_FLOW_HOME}/integrations/skills/{provider}/`, while
-their credentials and enabled state stay per user.
+Public skills live in `skills/public/`; custom skills and managed integration packs
+live under `{DEER_FLOW_HOME}` per user and per provider, while their credentials
+and enabled state stay per user.
 
 ## Loading and caches
 
@@ -30,13 +29,12 @@ their credentials and enabled state stay per user.
 - **`frontmatter.py` is the only frontmatter parser.** Runtime loading,
   installation validation and review all use it, so the three cannot disagree on
   what a skill declares.
-- **Storage does not cache the catalog.** The prompt-layer caches in
-  `agents/lead_agent/prompt.py` are the only skill state that can differ between
-  Gateway processes that share a home volume. Every mutation route resets them
-  through the shared reset.
-- **`allowed-tools` is compatibility metadata.** It is parsed, validated and
-  exported for other agent frameworks. It does not filter tools, refuse calls or
-  narrow a subagent. Tool authority lives in the Agent configuration.
+- **Storage does not cache the catalog.** Only the prompt-layer caches in
+  `agents/lead_agent/prompt.py` differ between Gateway processes sharing a home
+  volume; every mutation route resets them through the shared reset.
+- **`allowed-tools` is compatibility metadata** for other agent frameworks:
+  parsed, validated, exported. It never filters tools, refuses calls or narrows a
+  subagent; authority lives in the Agent configuration.
 - **Enrolled owners need the mutation runtime.** A standalone SDK or storage
   process has no publication runtime, so it refuses reads and writes for an owner
   that is enrolled in skill evolution. Check enrollment on each access; a cached
@@ -53,33 +51,42 @@ their credentials and enabled state stay per user.
 - **A skill name is a directory name on every host.** Creation and archive install
   reject Windows reserved device names on all platforms. Reads and deletes stay
   permissive, so that skills stored by an older release can still be removed.
-- **History is JSONL split on LF only.** Unicode line separators inside a saved
-  field are data.
-- **Export is not a secret audit.** It returns raw saved files. Responses carry
-  relative paths and generic errors, and limits are reported, not silently applied
-  by truncation.
+- **History is JSONL split on LF only**; Unicode separators in a saved field are
+  data.
+- **Export is not a secret audit**: raw saved files, relative paths, generic
+  errors; limits are reported, not applied by silent truncation.
 
 ## Scanning
 
 - **SkillScan is deterministic and offline.** It runs before the model-based
   scanner on `.skill` archives and on agent-managed skill writes. Evidence in a
   finding is redacted.
-- **A rule change needs both directions tested.** Each rule has cases that must
-  trigger and look-alike cases that must stay quiet, for example a real API key
-  inside a Bearer header versus a placeholder. Keep regex alternatives disjoint so
-  that a long non-matching input cannot cause quadratic backtracking.
+- **A rule change needs both directions tested**: triggering cases and look-alike
+  quiet cases (a real API key in a Bearer header versus a placeholder). Keep regex
+  alternatives disjoint so long non-matching input cannot backtrack quadratically.
 - **The review core is read-only.** It does not import `app.*` and does not execute
   the scripts of the skill it reviews.
 
 ### Auto skill synthesis (`skills/auto/`)
 
-`auto_skill.enabled` learns a reusable skill from each **completed** run, so the next similar query matches it instead of re-deriving the path. Complements `skill_evolution` (the agent writing a skill mid-run): auto-skill spends no agent turn and sees the whole trajectory.
+`auto_skill.enabled` distils each **completed** run's whole trajectory into a
+reusable skill, off the run's critical path (the producer enqueues in
+`after_agent`; a debounced daemon worker drains). Full contract, naming and gates:
+[AUTO_SKILL.md](../../../../docs/AUTO_SKILL.md). Traps:
 
-The producer (`auto_skill_middleware.py`) runs in `after_agent`, after the answer streamed: it extracts a bounded trajectory in memory and enqueues to `queue.py`'s debounced daemon-Timer worker, so it adds no run latency, and swallows every exception (learning is purely additive). **Lead chain only** — a subagent trajectory is a fragment of the lead's. `synthesizer.py` renders `{name_prefix}-{scenario-slug}-v{n}` and writes through the *same* gates as `skill_manage`: `validate_skill_name`, `validate_skill_markdown_content`, `enforce_static_scan` over staged bytes, then `scan_skill_content` (reads `skill_evolution.*`), settling write + history + cache refresh + `publish_skills_cache_reset` as one `await_drained` unit. A repeat scenario creates `v{n+1}` and never overwrites; retention prunes only candidates whose frontmatter still carries `metadata.author: auto-skill`, so an operator's same-named skill survives. Full contract: [AUTO_SKILL.md](../../../../docs/AUTO_SKILL.md). Tests: `tests/test_auto_skill_*.py`; the end-to-end suite drives the real chain with only the model stubbed and asserts the result is discoverable and enabled — a skill written but not matchable would pass every other check and still fail the feature.
-
-A declared `update` is **verified, not trusted** (`decision.py`): it needs a substantive `update_reasons` entry (`new_tool`, `new_flow`, `answer_format`, `new_dimension`, `correction`, `fallback`), and `new_tool` is dropped unless `find_novel_tools` — the same tool diff rendered into the prompt as evidence — finds a tool absent from both the matched skills and the target package. Data-only reasons (`examples_only`, `data_values`, `wording`) and unknown tokens degrade the decision to `no_change`, so nothing is written. A reconciled `create` (existing name) passes `strict=False`: the create vocabulary carries no reasons, but declared ones are still verified.
-
-Generated bodies are **abstract** (`abstraction.py`): entities the model declares may appear only in `## 示例`, never in `scenario`/`description`/method sections. A leak gets one repair attempt, then deterministic redaction to `ENTITY_PLACEHOLDER` (`【实体】`, longest first, adjacent placeholders collapsed); examples are never redacted. Entities are bounded (2–64 chars, ≤40) so a sloppy list cannot wipe the body. Learned skills are also **matched first**: `lead_agent/prompt.py` partitions the enabled set by `auto_skill.name_prefix` (via `getattr`, so a partial config degrades to no priority block) and renders `<auto_skill_index>` before `<skill_index>` (deferred) or `<auto_skills>` before `<available_skills>` (full metadata), with an explicit "check learned skills, then decide whether another skill is needed" order. Deferred mode resolves their descriptions from the warm enabled-skills cache — a slug-only index cannot match a non-English request — bounded by `describe.py`'s `AUTO_INDEX_MAX_ENTRIES` / `AUTO_INDEX_DESCRIPTION_BUDGET`, HTML-escaped, and the prefix is part of the legacy section's `lru_cache` key.
+- Writes settle as one `await_drained` unit through the *same* gates as
+  `skill_manage`; repeats create `v{n+1}`, and retention prunes only
+  `metadata.author: auto-skill` candidates, so an operator's skill survives.
+- A declared `update` is verified, not trusted (`decision.py`): data-only reasons
+  degrade to `no_change`. Bodies are abstract (`abstraction.py`): declared entities
+  may appear only in `## 示例`, else one repair attempt then redaction.
+- The batch's `asyncio.run` closes its loop on return, so the batch owns its model
+  HTTP client (`utils.oneshot_llm.new_isolated_http_client()`, passed as
+  `http_async_client` into every model call, closed before the loop dies):
+  langchain-openai caches its default client per process on connection parameters
+  alone, and dead-loop connections pooled there resurface as `RuntimeError: Event
+  loop is closed` on unrelated chats. Tests: `tests/test_auto_skill_http_isolation.py`;
+  the e2e suite stubs only the model and asserts discoverability.
 
 ## Request-scoped secrets
 

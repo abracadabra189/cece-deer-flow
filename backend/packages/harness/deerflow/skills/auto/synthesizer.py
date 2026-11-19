@@ -521,6 +521,7 @@ async def _repair_abstraction(
     config: AutoSkillConfig,
     app_config: AppConfig,
     thread_id: str | None,
+    http_async_client: Any | None = None,
 ) -> dict[str, Any]:
     """Give the model one chance to abstract its own output.
 
@@ -538,6 +539,7 @@ async def _repair_abstraction(
             app_config=app_config,
             model_name=config.model_name,
             thread_id=thread_id,
+            http_async_client=http_async_client,
         )
     except Exception:
         logger.warning("auto-skill abstraction repair failed; redacting instead (thread=%s)", thread_id, exc_info=True)
@@ -563,7 +565,7 @@ async def _static_scan_or_raise(name: str, content: str) -> list[dict[str, Any]]
     return list(await asyncio.to_thread(_scan))
 
 
-async def _moderation_scan_or_raise(content: str, *, name: str, static_findings: list[Any]) -> str:
+async def _moderation_scan_or_raise(content: str, *, name: str, static_findings: list[Any], http_async_client: Any | None = None) -> str:
     """Run the LLM moderation scan, raising on a block decision."""
     result = await scan_skill_content(
         content,
@@ -572,6 +574,7 @@ async def _moderation_scan_or_raise(content: str, *, name: str, static_findings:
         static_findings=list(static_findings),
         # Standalone background caller outside the graph, so tracing belongs here.
         attach_tracing=True,
+        http_async_client=http_async_client,
     )
     if result.decision == "block":
         raise AutoSkillSynthesisError(f"security scan blocked the generated skill: {result.reason}")
@@ -601,12 +604,19 @@ async def synthesize_skill(
     run_id: str | None,
     config: AutoSkillConfig,
     app_config: AppConfig,
+    http_async_client: Any | None = None,
 ) -> SynthesizedSkill | None:
     """Synthesize and publish one skill from a run trajectory.
 
     Returns the published skill, or ``None`` when synthesis was skipped, judged
     unnecessary (``no_change``), rejected or failed. Never raises: this runs on a
     background worker whose failure must not surface anywhere a user can see.
+
+    ``http_async_client`` is the batch-owned HTTP client (see
+    ``utils.oneshot_llm.new_isolated_http_client``): every model call in this
+    function — synthesis, abstraction repair and the moderation scan — must use it
+    instead of langchain-openai's process-global pool, because this function runs on
+    the queue worker's short-lived event loop.
     """
     try:
         matched = resolve_matched_auto_skills(trajectory)
@@ -627,6 +637,7 @@ async def synthesize_skill(
             app_config=app_config,
             model_name=config.model_name,
             thread_id=thread_id,
+            http_async_client=http_async_client,
         )
         payload = _extract_json_object(raw)
         if payload is None:
@@ -646,6 +657,7 @@ async def synthesize_skill(
                 app_config=app_config,
                 model_name=config.model_name,
                 thread_id=thread_id,
+                http_async_client=http_async_client,
             )
             payload = _extract_json_object(raw)
         if payload is None:
@@ -721,6 +733,7 @@ async def synthesize_skill(
                 config=config,
                 app_config=app_config,
                 thread_id=thread_id,
+                http_async_client=http_async_client,
             )
             entities = collect_entities(payload.get("entities"))
             leaks = _leaked_entities(payload, entities)
@@ -774,7 +787,7 @@ async def synthesize_skill(
             logger.warning("auto-skill static scan failed for %s: %s", name, exc)
             return None
 
-        scanner_decision = await _moderation_scan_or_raise(candidate, name=name, static_findings=static_findings)
+        scanner_decision = await _moderation_scan_or_raise(candidate, name=name, static_findings=static_findings, http_async_client=http_async_client)
 
         result = await asyncio.to_thread(store.write_skill, name, render=_render, prune_keep=config.max_versions)
 

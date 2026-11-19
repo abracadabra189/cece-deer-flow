@@ -337,8 +337,18 @@ Extraction never raises: a malformed checkpoint logs and returns `None`.
   would.
 - **Bounded memory.** `queue_max_size` rejects the *new* submission when full
   rather than evicting queued work.
-- **Fresh loop per batch.** `asyncio.run` gives the model call and the scanners
-  their own loop-bound resources.
+- **Fresh loop per batch, and a batch-owned HTTP client.** `asyncio.run` gives the
+  batch its own loop, which closes when the batch returns — so every loop-bound
+  resource must die with it. langchain-openai caches its default `httpx.AsyncClient`
+  per process on `(base_url, timeout, socket_options)` alone, so a model call made
+  here would pool this loop's connections into the client the Gateway loop reuses
+  next; the affected chats then fail with `RuntimeError: Event loop is closed` a few
+  seconds after a perfectly successful synthesis (the batch itself looks fine — it
+  used connections it created). `_process_batch` therefore creates one
+  `utils.oneshot_llm.new_isolated_http_client()`, passes it as `http_async_client`
+  into every model call of the batch (synthesis, abstraction repair, moderation
+  scan), and closes it before the loop closes. Regression tests:
+  `tests/test_auto_skill_http_isolation.py`.
 - **Config re-read at drain time.** A disable landing between enqueue and drain is
   honoured.
 - **Failure isolation.** One raising synthesis does not stop the rest of the batch.
@@ -349,6 +359,13 @@ Pending trajectories are lost on a crash — the same accepted trade-off the mem
 queue makes. Graceful shutdown drains them via
 `app/gateway/app.py::_flush_auto_skill_queue`, placed **before** the memory
 backend closes because synthesis reads config and writes skills.
+
+**Operational note.** `auto_skill.enabled` is hot-reloadable, so setting it to
+`false` in `config.yaml` stops new batches immediately (no restart) and is the
+stop-bleeding switch if a synthesis-side fault ever reaches users again. Correlate
+`auto-skill-flush` thread warnings with `Event loop is closed` tracebacks in the
+same worker process when triaging: with the batch-owned client in place the two
+must no longer co-occur.
 
 ---
 
