@@ -8,6 +8,7 @@ variable for production deployments.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -204,3 +205,24 @@ def test_gateway_cors_normalizes_configured_default_port():
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "https://app.example"
+
+
+# ---------------------------------------------------------------------------
+# Deployment posture
+# ---------------------------------------------------------------------------
+
+
+def test_cece_deployment_defaults_docs_off():
+    """The CECE compose baseline must not re-expose the schema by omission.
+
+    A penetration test found ``/openapi.json`` unauthenticated on a public host.
+    nginx proxies the three doc routes to the Gateway and the auth middleware lists
+    them as public, so the only barrier between an anonymous visitor and the full
+    route catalog is ``GATEWAY_ENABLE_DOCS`` — whose harness default is ``true``.
+    The deployment file therefore pins the default to false; an operator who needs
+    the schema sets it true in the deployment dotenv and keeps it off the public
+    ingress.
+    """
+    compose = (Path(__file__).resolve().parents[2] / "docker" / "docker-compose.cece-harness-dev172.yaml").read_text(encoding="utf-8")
+
+    assert "GATEWAY_ENABLE_DOCS: ${GATEWAY_ENABLE_DOCS:-false}" in compose

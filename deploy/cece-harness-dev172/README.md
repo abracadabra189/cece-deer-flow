@@ -15,6 +15,7 @@ Two session variables belong in `.env` as well:
 
 - `AUTH_JWT_SECRET` pins the session/ticket signing key. Without it the Gateway generates `{DEER_FLOW_HOME}/.jwt_secret` and warns at startup, so losing or moving that home volume logs **every** user out at once. Set it explicitly, and use a **different value per environment** — one shared key would let a token minted by one environment pass signature checks in another.
 - `DEER_FLOW_AUTH_ALLOW_INSECURE_PERSISTENT_COOKIE=1` makes the session cookie persistent over plain HTTP. Without it, a browser that reaches this deployment by IP or hostname over HTTP receives a session-scoped cookie and is signed out the moment the browser closes (mobile browsers evict it even sooner). The alternative is terminating HTTPS in front of nginx, which is the better long-term answer.
+- `GATEWAY_ENABLE_DOCS=false` (the Compose default for this baseline) disables `/docs`, `/redoc` and `/openapi.json`. A penetration test against a public host found the OpenAPI schema reachable without authentication: nginx proxies those three routes to the Gateway and the auth middleware lists them as public, so this toggle is the only barrier. Keep it false on anything internet-reachable; if engineers need the schema, set it true in the deployment dotenv and expose it only through the internal network or a VPN.
 
 The Compose file passes both through `environment:` so this stack uses its own values even though the repository-root `.env` is also loaded as an `env_file`.
 

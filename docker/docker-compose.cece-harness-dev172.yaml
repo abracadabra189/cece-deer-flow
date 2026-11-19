@@ -78,6 +78,9 @@ services:
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
       # 公网 HTTP（按 IP/域名访问）下也持久化会话 Cookie，否则关浏览器即掉登录。
       DEER_FLOW_AUTH_ALLOW_INSECURE_PERSISTENT_COOKIE: ${DEER_FLOW_AUTH_ALLOW_INSECURE_PERSISTENT_COOKIE:-}
+      # 安全整改：Swagger/ReDoc/OpenAPI schema 默认关闭（渗透测试发现 /openapi.json
+      # 未授权访问）。确需内部查阅时在部署 .env 显式设 true，并只经内网/VPN 暴露。
+      GATEWAY_ENABLE_DOCS: ${GATEWAY_ENABLE_DOCS:-false}
       NO_PROXY: ${NO_PROXY:-}${NO_PROXY:+,}localhost,127.0.0.1,::1,gateway,frontend,nginx,postgres,redis,host.docker.internal
       no_proxy: ${no_proxy:-}${no_proxy:+,}localhost,127.0.0.1,::1,gateway,frontend,nginx,postgres,redis,host.docker.internal
     env_file:
