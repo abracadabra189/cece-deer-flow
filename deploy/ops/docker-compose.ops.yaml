@@ -29,8 +29,9 @@ services:
       OPS_PAGE_LIMIT: ${OPS_PAGE_LIMIT:-200}
       OPS_STATEMENT_TIMEOUT_MS: ${OPS_STATEMENT_TIMEOUT_MS:-5000}
     ports:
-      # Loopback only. Reach it through an SSH tunnel, never expose 8099.
-      - "127.0.0.1:${OPS_PORT:-8099}:8099"
+      # Host bind address. Keep 127.0.0.1 for tunnel-only access; set
+      # OPS_BIND_HOST to a LAN address to share it on the network.
+      - "${OPS_BIND_HOST:-127.0.0.1}:${OPS_PORT:-8099}:8099"
     read_only: true
     tmpfs:
       - /tmp
