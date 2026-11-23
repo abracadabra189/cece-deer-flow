@@ -1,5 +1,6 @@
 """Operator overlays preserve stock prompts and never format user-like braces."""
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -39,6 +40,49 @@ def test_lead_overlay_uses_explicit_snapshot_and_does_not_accumulate(monkeypatch
     assert module.apply_prompt_template(app_config=config) == stock
     monkeypatch.setattr("deerflow.config.get_app_config", lambda: configured)
     assert module.apply_prompt_template() == expected
+
+
+def test_default_lead_prompt_hides_framework_branding(monkeypatch):
+    from deerflow.agents.lead_agent import prompt as module
+    from deerflow.config.app_config import AppConfig
+    from deerflow.config.sandbox_config import SandboxConfig
+
+    for helper in (
+        "get_agent_soul",
+        "get_skills_prompt_section",
+        "get_deferred_tools_prompt_section",
+        "_build_acp_section",
+        "_build_custom_mounts_section",
+        "_build_memory_tool_section",
+    ):
+        monkeypatch.setattr(module, helper, lambda *args, **kwargs: "")
+
+    rendered = module.apply_prompt_template(app_config=AppConfig(sandbox=SandboxConfig(use="test")))
+
+    assert "You are CeCeMate." in rendered
+    assert "CECE 3.0" not in rendered
+    assert "open-source super agent" not in rendered
+    assert "DeerFlow UI" not in rendered
+    assert "DeerFlow's Agent configuration" not in rendered
+    assert "github.com/bytedance/deer-flow" not in rendered
+
+
+@pytest.mark.parametrize(
+    "deployment_config",
+    [
+        "deploy/cece-harness-dev172/config.example.yaml",
+        "deploy/cece-harness-test224/config.example.yaml",
+    ],
+)
+def test_cecemate_deployment_baselines_define_product_identity(deployment_config):
+    repository_root = Path(__file__).resolve().parents[2]
+    config_text = (repository_root / deployment_config).read_text(encoding="utf-8")
+
+    assert "<cecemate-product-identity>" in config_text
+    assert "你的产品名称是 CeCeMate。" in config_text
+    assert "依托行业洞察产业大数据底座的产业数据智能数字伙伴" in config_text
+    assert "政府产业招商、银行对公业务、创投一级市场三类场景" in config_text
+    assert "数据检索、画像分析与研究报告支持" in config_text
 
 
 @pytest.mark.parametrize("name", ["general-purpose", "bash"])
