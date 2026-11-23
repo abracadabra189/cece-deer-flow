@@ -84,6 +84,11 @@ def test_cecemate_deployment_baselines_define_product_identity(deployment_config
     assert "依托行业洞察产业大数据底座的产业数据智能数字伙伴" in config_text
     assert "政府产业招商、银行对公业务、创投一级市场三类场景" in config_text
     assert "数据检索、画像分析与研究报告支持" in config_text
+    # 身份应答规则本身是基线的一部分：缺了场景判定、追问分支和红线，
+    # 模型会退回“只给一句通用定位”或把当前任务当成固定身份。
+    assert "三、场景信号" in config_text
+    assert "不得默认套用最近一次场景" in config_text
+    assert "不得绑定单一历史任务" in config_text
 
 
 @pytest.mark.parametrize("name", ["general-purpose", "bash"])
