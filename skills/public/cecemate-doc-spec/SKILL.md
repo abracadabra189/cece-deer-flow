@@ -13,7 +13,7 @@ description: 当用户要求交付 Word、DOCX、PDF、研究报告、分析简�
 - 用户明确需要 `.docx`、PDF、打印稿或以文档形式交付的报告、方案、简报、纪要、手册、合同和附表。
 - 用户要求将已有内容整理为正式 CeCeMate 文档。
 
-纯 HTML 网页、交互式报告或网页制品请改用 `cecemate-web-spec`。
+纯 HTML 网页、交互式报告或网页制品请改用 `cecemate-html-report`。
 
 ## 工作流程
 
