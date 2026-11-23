@@ -63,6 +63,8 @@ services:
     working_dir: /app
     environment:
       CI: "true"
+      # Disable public Swagger, ReDoc, and OpenAPI endpoints in this deployed environment.
+      GATEWAY_ENABLE_DOCS: "false"
       DEER_FLOW_PROJECT_ROOT: /app
       DEER_FLOW_HOME: /app/backend/.deer-flow
       DEER_FLOW_CONFIG_PATH: /app/backend/config.yaml
