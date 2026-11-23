@@ -14,6 +14,7 @@ It reads the same tables the Gateway writes: ``users``, ``threads_meta``,
 from __future__ import annotations
 
 import html
+import json
 import os
 import re
 import time
@@ -51,6 +52,7 @@ CODE_CACHE_SECONDS = max(5, int(os.environ.get("OPS_CODE_CACHE_SECONDS", "60")))
 MAP_EMAIL_DOMAIN = os.environ.get("OPS_MAP_EMAIL_DOMAIN", "users.deerflow.internal").strip().lower()
 
 THREAD_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+RUN_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 USER_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 IDENT_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
@@ -230,6 +232,13 @@ def esc(value: Any) -> str:
     return html.escape("" if value is None else str(value))
 
 
+def pretty_json(value: Any) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, indent=2, default=str)
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def clip(value: Any, limit: int = 160) -> str:
     text_value = "" if value is None else str(value)
     text_value = " ".join(text_value.split())
@@ -317,6 +326,8 @@ tr:hover td { background: #fcfdff; }
 .msg.human { border-left: 3px solid #2563eb; }
 .msg.ai { border-left: 3px solid #10b981; }
 .msg.tool { border-left: 3px solid #f59e0b; background: #fffdf5; }
+.msg.error { border-left: 3px solid #ef4444; background: #fff5f5; }
+.msg.trace { border-left: 3px solid #9ca3af; background: #fafafa; }
 details summary { cursor: pointer; color: #4b5563; font-size: 12px; }
 pre { white-space: pre-wrap; word-break: break-word; background: #f8fafc; padding: 8px; border-radius: 6px; font-size: 12px; }
 .err { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; }
@@ -339,6 +350,20 @@ def shell(title: str, body: str) -> HTMLResponse:
 </head>
 <body>
 {body}
+<script>
+document.addEventListener('click', async (event) => {{
+  const target = event.target.closest('[data-copy]');
+  if (!target) return;
+  try {{
+    await navigator.clipboard.writeText(target.dataset.copy);
+    const previous = target.textContent;
+    target.textContent = '已复制';
+    setTimeout(() => {{ target.textContent = previous; }}, 1200);
+  }} catch (error) {{
+    target.textContent = target.dataset.copy;
+  }}
+}});
+</script>
 </body>
 </html>""",
         headers={
@@ -528,6 +553,7 @@ async def index(
         token_title = f"in {fmt_tokens(row['total_input_tokens'])} / out {fmt_tokens(row['total_output_tokens'])}"
         assistant = str(row["assistant_id"] or "")
         assistant_note = f'<div class="muted">{esc(assistant)}</div>' if assistant and assistant != "lead_agent" else ""
+        run_cell = f'<a href="/runs/{esc(run_id)}" title="{esc(run_id)}">{esc(run_id[:8])}…</a>'
         trace_cell = (
             f'<code class="trace" data-copy="{esc(trace_id)}" title="{esc(trace_id)}">{esc(trace_id[:8])}…</code>'
             if trace_id
@@ -550,7 +576,7 @@ async def index(
   <td class="nowrap">{int(row['llm_call_count'] or 0)}</td>
   <td>{tools_cell or '—'}</td>
   <td class="nowrap">{esc(row['model_name'] or '—')}{assistant_note}</td>
-  <td class="nowrap">{trace_cell}</td>
+  <td class="nowrap"><div class="muted">run</div>{run_cell}<div class="muted">trace</div>{trace_cell}</td>
 </tr>"""
         )
     if not body_rows:
@@ -600,25 +626,11 @@ async def index(
 </form>
 <div style="overflow-x:auto">
 <table>
-<thead><tr><th>时间</th><th>用户</th><th>会话 / 问题</th><th>状态</th><th>耗时</th><th>tokens</th><th>调用</th><th>工具</th><th>模型</th><th>trace</th></tr></thead>
+<thead><tr><th>时间</th><th>用户</th><th>会话 / 问题</th><th>状态</th><th>耗时</th><th>tokens</th><th>调用</th><th>工具</th><th>模型</th><th>run / trace</th></tr></thead>
 <tbody>{''.join(body_rows)}</tbody>
 </table>
 </div>
-<div class="muted" style="margin-top:8px">最多显示 {PAGE_LIMIT} 条；缩小时间范围可看到更早的记录。点击 trace 可复制。工具详情默认不查询，勾选后才会扫事件表。</div>
-<script>
-document.addEventListener('click', async (event) => {{
-  const target = event.target.closest('[data-copy]');
-  if (!target) return;
-  try {{
-    await navigator.clipboard.writeText(target.dataset.copy);
-    const previous = target.textContent;
-    target.textContent = '已复制';
-    setTimeout(() => {{ target.textContent = previous; }}, 1200);
-  }} catch (error) {{
-    target.textContent = target.dataset.copy;
-  }}
-}});
-</script>
+<div class="muted" style="margin-top:8px">最多显示 {PAGE_LIMIT} 条；缩小时间范围可看到更早的记录。点击 run 看这一轮的完整事件，点击 trace 可复制。工具详情默认不查询，勾选后才会扫事件表。</div>
 """
     return shell("运营台", body)
 
@@ -696,6 +708,140 @@ async def users(days: int = Query(7), who: str = "") -> HTMLResponse:
 </table>
 """
     return shell("用户", body)
+
+
+@app.get("/runs/{run_id}", response_class=HTMLResponse)
+async def run_detail(run_id: str) -> HTMLResponse:
+    if not RUN_ID_RE.match(run_id):
+        return shell("Run", '<div class="err">非法的 run ID</div>')
+    try:
+        rows = await fetch(
+            """
+            SELECT r.*, t.display_name, u.email
+            FROM runs r
+            LEFT JOIN threads_meta t ON t.thread_id = r.thread_id
+            LEFT JOIN users u ON u.id = r.user_id
+            WHERE r.run_id = :rid
+            """,
+            rid=run_id,
+        )
+        if not rows:
+            return shell("Run", f'<div class="err">找不到 run {esc(run_id)}</div>')
+        run = rows[0]
+        thread_id = str(run["thread_id"])
+        events = await fetch(
+            """
+            SELECT seq, event_type, category, content, event_metadata, created_at
+            FROM run_events
+            WHERE thread_id = :tid AND run_id = :rid
+            ORDER BY seq
+            """,
+            tid=thread_id,
+            rid=run_id,
+        )
+        codes_by_id, emails_by_id, names_by_id = await user_code_map()
+    except Exception as exc:  # noqa: BLE001
+        return shell("Run", error_box(exc))
+
+    user_id = str(run["user_id"] or "")
+    user_label = codes_by_id.get(user_id) or run["email"] or user_id or "—"
+    user_email = emails_by_id.get(user_id) or run["email"] or ""
+    user_name = names_by_id.get(user_id, "")
+    user_note = " · ".join(part for part in (user_name, user_email) if part)
+    trace_id = str((run.get("metadata_json") or {}).get("deerflow_trace_id") or "")
+    duration = fmt_duration(run["created_at"], run["updated_at"])
+    assistant = str(run.get("assistant_id") or "")
+    trace_cell = (
+        f'<code class="trace" data-copy="{esc(trace_id)}" title="{esc(trace_id)}">{esc(trace_id)}</code>'
+        if trace_id
+        else '<span class="muted">—</span>'
+    )
+    run_cell = f'<code class="trace" data-copy="{esc(run_id)}" title="{esc(run_id)}">{esc(run_id)}</code>'
+
+    cards = f"""
+    <div class="cards">
+      <div class="card"><div class="n">{duration}</div><div class="k">耗时</div></div>
+      <div class="card"><div class="n">{fmt_tokens(run['total_tokens'])}</div><div class="k">tokens（{fmt_tokens(run['total_input_tokens'])} in / {fmt_tokens(run['total_output_tokens'])} out）</div></div>
+      <div class="card"><div class="n">{int(run['llm_call_count'] or 0)}</div><div class="k">模型调用</div></div>
+      <div class="card"><div class="n">{int(run['message_count'] or 0)}</div><div class="k">消息数</div></div>
+      <div class="card"><div class="n">{esc(run['model_name'] or '—')}</div><div class="k">模型</div></div>
+    </div>"""
+
+    error_items: list[str] = []
+    if run["error"]:
+        error_items.append(
+            f"""<div class="msg error">
+  <div class="who">runs.error · stop_reason {esc(run['stop_reason'] or '—')}</div>
+  <div class="body">{esc(clip(run['error'], 4000))}</div>
+</div>"""
+        )
+    for event in events:
+        if event["event_type"] not in ("run.error", "llm.error"):
+            continue
+        metadata = event["event_metadata"] or {}
+        detail_lines = [
+            f"{key}: {metadata.get(key)}"
+            for key in ("error_type", "provider", "model", "caller", "request_chars", "request_message_count", "request_started_at")
+            if metadata.get(key) is not None
+        ]
+        detail = "\n".join(detail_lines) or clip(event["content"], 2000)
+        error_items.append(
+            f"""<div class="msg error">
+  <div class="who">{esc(event['event_type'])} · seq {int(event['seq'])} · {fmt_dt(event['created_at'])}</div>
+  <div class="body">{esc(detail)}</div>
+  <details><summary>原始 metadata</summary><pre>{esc(pretty_json(metadata))}</pre></details>
+</div>"""
+        )
+    error_block = (
+        '<div class="card" style="margin-bottom:12px"><div class="k">错误</div></div>' + "".join(error_items)
+        if error_items
+        else ""
+    )
+
+    rendered: list[str] = []
+    for event in events:
+        event_type = event["event_type"]
+        if event_type in ("run.error", "llm.error"):
+            continue
+        if event_type == "llm.human.input":
+            cls, who = "human", "用户"
+        elif event_type == "llm.ai.response":
+            cls, who = "ai", "助手"
+        elif event_type == "llm.tool.result":
+            cls, who = "tool", "工具结果"
+        else:
+            cls, who = "trace", event_type
+        content = event["content"] or ""
+        if cls in ("tool", "trace"):
+            body_html = f"<details><summary>展开（{len(content)} 字符）</summary><pre>{esc(clip(content, 4000))}</pre></details>"
+        else:
+            body_html = f'<div class="body">{esc(clip(content, 4000))}</div>'
+        rendered.append(
+            f"""<div class="msg {cls}">
+  <div class="who">{esc(who)} · seq {int(event['seq'])} · {fmt_dt(event['created_at'])}</div>
+  {body_html}
+</div>"""
+        )
+    if not rendered:
+        rendered.append('<div class="muted">这一轮没有可显示的事件。</div>')
+
+    title = f"Run {run_id[:12]}"
+    body = f"""
+<div class="back"><a href="/">← 返回运营台</a> · <a href="/threads/{esc(thread_id)}">完整会话</a></div>
+<div class="top">
+  <div><h1>{esc(title)}</h1>
+    <div class="muted">用户 {esc(user_label)}（{esc(user_note)}） · 会话 {esc(thread_id)} · {fmt_dt(run['created_at'])}</div>
+    <div class="muted">run {run_cell} · trace {trace_cell}</div>
+    {f'<div class="muted">agent {esc(assistant)} · 来源 {esc(origin_label(run["origin_kind"]))}</div>' if assistant else ''}
+  </div>
+  <div>{status_badge(run['status'])}</div>
+</div>
+{cards}
+{error_block}
+<h2 style="font-size:15px;margin:18px 0 10px">事件时间线（{len(events)} 条）</h2>
+{''.join(rendered)}
+"""
+    return shell(title, body)
 
 
 @app.get("/threads/{thread_id}", response_class=HTMLResponse)
