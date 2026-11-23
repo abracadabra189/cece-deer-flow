@@ -89,6 +89,10 @@ def test_cecemate_deployment_baselines_define_product_identity(deployment_config
     assert "三、场景信号" in config_text
     assert "不得默认套用最近一次场景" in config_text
     assert "不得绑定单一历史任务" in config_text
+    # 场景确认走结构化卡片，不走纯文字追问：缺了工具名和选择项，
+    # 前端渲染不出按钮，用户只能手打场景名。
+    assert "必须调用 ask_clarification 工具提问" in config_text
+    assert 'options=["政府产业招商", "银行对公业务", "一级市场投研"]' in config_text
 
 
 @pytest.mark.parametrize("name", ["general-purpose", "bash"])

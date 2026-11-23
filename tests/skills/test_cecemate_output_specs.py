@@ -83,6 +83,12 @@ def test_skill_entrypoints_are_discoverable_and_chinese() -> None:
         assert (skill_dir / "assets" / "logo.png").is_file()
 
 
+def test_web_skill_focuses_only_on_web_deliverables() -> None:
+    content = (WEB_SKILL / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "cecemate-doc-spec" not in content
+
+
 def test_document_checker_accepts_core_compliant_docx(tmp_path: Path) -> None:
     document = tmp_path / "compliant.docx"
     _write_docx(document)
