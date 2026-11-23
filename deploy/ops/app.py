@@ -59,7 +59,7 @@ app = FastAPI(title="DeerFlow Ops", docs_url=None, redoc_url=None, openapi_url=N
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker | None = None
 _mysql_engine: AsyncEngine | None = None
-_code_cache: tuple[float, tuple[dict[str, str], dict[str, tuple[str, str]]]] | None = None
+_code_cache: tuple[float, tuple[str, ...], tuple[dict[str, str], dict[str, tuple[str, str]]]] | None = None
 
 
 def _engine_or_raise() -> AsyncEngine:
@@ -75,8 +75,10 @@ def _engine_or_raise() -> AsyncEngine:
             server_settings["search_path"] = DB_SCHEMA
         _engine = create_async_engine(
             DATABASE_URL,
-            pool_size=2,
-            max_overflow=1,
+            # One connection is enough for a single-operator page, and it keeps
+            # the production connection budget untouched.
+            pool_size=1,
+            max_overflow=0,
             pool_pre_ping=True,
             connect_args={"server_settings": server_settings},
         )
@@ -115,21 +117,34 @@ def _mysql_engine_or_none() -> AsyncEngine | None:
     return _mysql_engine
 
 
-async def fetch_codes() -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
-    """Read code -> name and mobile digits -> (code, name) maps from MySQL."""
+async def fetch_codes(prefixes: list[str]) -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
+    """Read only the MySQL rows that match the PG users' email prefixes.
+
+    A full ``st_mgr_user`` read is thousands of rows across the network; the
+    console only needs the handful that belong to this deployment's users.
+    """
     engine = _mysql_engine_or_none()
     if engine is None:
+        return {}, {}
+    codes_csv = ",".join(sorted({prefix for prefix in prefixes if prefix}))
+    mobiles_csv = ",".join(sorted({prefix for prefix in prefixes if prefix.isdigit()}))
+    if not codes_csv and not mobiles_csv:
         return {}, {}
     table = MYSQL_TABLE if IDENT_RE.match(MYSQL_TABLE) else "st_mgr_user"
     column = MYSQL_CODE_COLUMN if IDENT_RE.match(MYSQL_CODE_COLUMN) else "code"
     mobile_column = MYSQL_MOBILE_COLUMN if IDENT_RE.match(MYSQL_MOBILE_COLUMN) else "mobile"
     name_column = MYSQL_NAME_COLUMN if IDENT_RE.match(MYSQL_NAME_COLUMN) else "name"
     # Identifiers are validated above; they cannot be bound as parameters.
-    sql = f"SELECT LOWER({column}) AS code, {mobile_column} AS mobile, {name_column} AS name FROM {table} WHERE {column} IS NOT NULL AND {column} <> ''"
+    sql = f"""
+        SELECT LOWER({column}) AS code, {mobile_column} AS mobile, {name_column} AS name
+        FROM {table}
+        WHERE FIND_IN_SET(LOWER({column}), :codes) > 0
+           OR FIND_IN_SET({mobile_column}, :mobiles) > 0
+    """
     code_names: dict[str, str] = {}
     by_mobile: dict[str, tuple[str, str]] = {}
     async with engine.connect() as conn:
-        result = await conn.execute(text(sql))
+        result = await conn.execute(text(sql), {"codes": codes_csv, "mobiles": mobiles_csv})
         for row in result:
             code = str(row[0] or "")
             if not code:
@@ -142,17 +157,18 @@ async def fetch_codes() -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
     return code_names, by_mobile
 
 
-async def codes_cached() -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
+async def codes_cached(prefixes: list[str]) -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
     """Cache the maps briefly; a MySQL outage falls back to the last read."""
     global _code_cache
+    key = tuple(sorted({prefix for prefix in prefixes if prefix}))
     now = time.monotonic()
-    if _code_cache is not None and now - _code_cache[0] < CODE_CACHE_SECONDS:
-        return _code_cache[1]
+    if _code_cache is not None and now - _code_cache[0] < CODE_CACHE_SECONDS and _code_cache[1] == key:
+        return _code_cache[2]
     try:
-        maps = await fetch_codes()
+        maps = await fetch_codes(prefixes)
     except Exception:  # noqa: BLE001 - mapping is optional, never break the page
-        maps = _code_cache[1] if _code_cache is not None else ({}, {})
-    _code_cache = (now, maps)
+        maps = _code_cache[2] if _code_cache is not None and _code_cache[1] == key else ({}, {})
+    _code_cache = (now, key, maps)
     return maps
 
 
@@ -165,15 +181,20 @@ async def user_code_map() -> tuple[dict[str, str], dict[str, str], dict[str, str
     lowercased code. Users without a match keep their email.
     """
     rows = await fetch("SELECT id, email FROM users")
-    code_names, by_mobile = await codes_cached()
-    by_id: dict[str, str] = {}
-    emails: dict[str, str] = {}
-    names: dict[str, str] = {}
     domain_suffix = f"@{MAP_EMAIL_DOMAIN}" if MAP_EMAIL_DOMAIN else ""
+    emails: dict[str, str] = {}
+    prefixes: list[str] = []
     for row in rows:
         user_id = str(row["id"])
         email = str(row["email"] or "").strip()
         emails[user_id] = email
+        if domain_suffix and email.lower().endswith(domain_suffix):
+            prefixes.append(email.split("@", 1)[0].lower())
+
+    code_names, by_mobile = await codes_cached(prefixes)
+    by_id: dict[str, str] = {}
+    names: dict[str, str] = {}
+    for user_id, email in emails.items():
         if not domain_suffix or not email.lower().endswith(domain_suffix):
             continue
         prefix = email.split("@", 1)[0].lower()
@@ -301,6 +322,7 @@ pre { white-space: pre-wrap; word-break: break-word; background: #f8fafc; paddin
 .err { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; }
 .back { margin-bottom: 14px; }
 .trace { cursor: pointer; font-size: 11px; color: #2563eb; }
+label.inline { flex-direction: row; align-items: center; gap: 6px; }
 """
 
 
@@ -372,6 +394,7 @@ async def index(
     origin: str = "",
     model: str = "",
     q: str = "",
+    details: int = 0,
 ) -> HTMLResponse:
     days = clamp_days(days)
     where = [
@@ -443,23 +466,25 @@ async def index(
         errors_by_run: dict[str, str] = {}
         if run_ids:
             ids = ",".join(run_ids)
-            # Tool results carry the tool name inside their JSON payload. The
-            # guard keeps one malformed legacy row from failing the page.
-            for tool_row in await fetch(
-                """
-                SELECT run_id, (content::jsonb) ->> 'name' AS tool, count(*) AS n
-                FROM run_events
-                WHERE run_id = ANY(string_to_array(:ids, ','))
-                  AND event_type = 'llm.tool.result'
-                  AND pg_input_is_valid(content, 'jsonb')
-                GROUP BY 1, 2
-                ORDER BY 1, n DESC
-                """,
-                ids=ids,
-            ):
-                tool = str(tool_row["tool"] or "").strip()
-                if tool:
-                    tools_by_run.setdefault(str(tool_row["run_id"]), []).append((tool, int(tool_row["n"])))
+            # Tool results carry the tool name inside their JSON payload. This
+            # aggregate scans run_events and parses JSON, so it is opt-in: the
+            # default page must stay cheap even when the event table grows.
+            if details:
+                for tool_row in await fetch(
+                    """
+                    SELECT run_id, (content::jsonb) ->> 'name' AS tool, count(*) AS n
+                    FROM run_events
+                    WHERE run_id = ANY(string_to_array(:ids, ','))
+                      AND event_type = 'llm.tool.result'
+                      AND pg_input_is_valid(content, 'jsonb')
+                    GROUP BY 1, 2
+                    ORDER BY 1, n DESC
+                    """,
+                    ids=ids,
+                ):
+                    tool = str(tool_row["tool"] or "").strip()
+                    if tool:
+                        tools_by_run.setdefault(str(tool_row["run_id"]), []).append((tool, int(tool_row["n"])))
             for err_row in await fetch(
                 """
                 SELECT DISTINCT ON (run_id) run_id, event_metadata::jsonb ->> 'error_type' AS error_type
@@ -496,6 +521,7 @@ async def index(
         user_name = names_by_id.get(user_id, "")
         user_note = " · ".join(part for part in (user_name, user_email) if part)
         tools = " ".join(f"{name}×{count}" for name, count in tools_by_run.get(run_id, [])[:4])
+        tools_cell = esc(clip(tools, 36)) if details else '<span class="muted">未加载</span>'
         error_type = errors_by_run.get(run_id, "")
         trace_id = str(row["trace_id"] or "")
         duration = fmt_duration(row["created_at"], row["updated_at"])
@@ -522,7 +548,7 @@ async def index(
   <td class="nowrap">{duration}</td>
   <td class="nowrap" title="{esc(token_title)}">{fmt_tokens(row['total_tokens'])}</td>
   <td class="nowrap">{int(row['llm_call_count'] or 0)}</td>
-  <td>{esc(clip(tools, 36) or '—')}</td>
+  <td>{tools_cell or '—'}</td>
   <td class="nowrap">{esc(row['model_name'] or '—')}{assistant_note}</td>
   <td class="nowrap">{trace_cell}</td>
 </tr>"""
@@ -569,6 +595,7 @@ async def index(
   <label>来源<select name="origin">{origin_options}</select></label>
   <label>模型<input name="model" value="{esc(model)}" placeholder="可留空" style="width:150px"></label>
   <label>关键词<input name="q" value="{esc(q)}" placeholder="搜索问题 / 回答" style="width:180px"></label>
+  <label class="inline"><input type="checkbox" name="details" value="1" {'checked' if details else ''}> 加载工具详情（较慢）</label>
   <button type="submit">筛选</button>
 </form>
 <div style="overflow-x:auto">
@@ -577,7 +604,7 @@ async def index(
 <tbody>{''.join(body_rows)}</tbody>
 </table>
 </div>
-<div class="muted" style="margin-top:8px">最多显示 {PAGE_LIMIT} 条；缩小时间范围可看到更早的记录。点击 trace 可复制。</div>
+<div class="muted" style="margin-top:8px">最多显示 {PAGE_LIMIT} 条；缩小时间范围可看到更早的记录。点击 trace 可复制。工具详情默认不查询，勾选后才会扫事件表。</div>
 <script>
 document.addEventListener('click', async (event) => {{
   const target = event.target.closest('[data-copy]');

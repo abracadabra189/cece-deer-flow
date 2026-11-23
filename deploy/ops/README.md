@@ -112,16 +112,35 @@ conversation page reads at most 1,000 message rows for one thread.
 
 ## Impact on production
 
+Measured on the 224 database (2026-11-21; 226 runs, ~9,000 events):
+
+| Query | Server time | Plan |
+| --- | ---: | --- |
+| Run list (200 rows) | 2.5 ms | sequential scan of `runs` + sort |
+| Error types | 5.7 ms | scan of `run_events`, 37 matches |
+| Thread page (1,000 messages) | 0.6 ms | bitmap index on `(thread_id, category, seq)` |
+| Tool aggregate | ~725 ms | **opt-in only**; scans `run_events` and parses JSON |
+
 | Concern | Measure |
 | --- | --- |
-| Query load | Only when a page is opened; each page runs 2–3 indexed/limited queries |
+| Query load | Only when a page is opened; the expensive tool aggregate needs `details=1` |
 | Slow queries | `statement_timeout=5s` on the connection |
 | Writes | Impossible: read-only role + `default_transaction_read_only` |
+| Locks | Plain `SELECT`; no `FOR UPDATE`, no advisory locks, no blocking of event writes |
+| Connections | One idle session; 27 of 100 `max_connections` in use |
 | Process isolation | Separate container, `mem_limit: 512m`, `cpus: 1`, `read_only` rootfs |
 | Blast radius | `docker compose -f docker-compose.ops.yaml down` ends it completely |
 
-The run list filters on `created_at` and reads at most 200 rows; it never scans
-`run_events`. If the keyword search becomes slow on a large `runs` table, add a
+Two honest caveats:
+
+- `runs` has no index on `created_at`, so the list query is a sequential scan.
+  It is milliseconds at 226 rows but grows with the table. If it becomes slow,
+  add an index during a quiet window (this is a production schema change):
+  `CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_runs_created_at ON deerflow.runs (created_at DESC);`
+- The tool aggregate is deliberately off by default. Enabling it adds a scan of
+  `run_events`; if you want it always on, index `(run_id, event_type)` first.
+
+If the keyword search becomes slow on a large `runs` table, add a
 trigram index during a quiet window:
 
 ```sql
