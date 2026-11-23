@@ -1,11 +1,5 @@
-import { Suspense } from "react";
-
-import { CapabilityCenter } from "@/components/workspace/capabilities/capability-center";
+import { notFound } from "next/navigation";
 
 export default function CapabilitiesPage() {
-  return (
-    <Suspense>
-      <CapabilityCenter />
-    </Suspense>
-  );
+  notFound();
 }
