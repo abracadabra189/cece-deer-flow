@@ -64,6 +64,7 @@ def test_default_lead_prompt_hides_framework_branding(monkeypatch):
     assert "open-source super agent" not in rendered
     assert "DeerFlow UI" not in rendered
     assert "DeerFlow's Agent configuration" not in rendered
+    assert "runtime configuration and authorization" in module._get_cached_skills_prompt_section((), (), None, "/mnt/skills", "")
     assert "github.com/bytedance/deer-flow" not in rendered
 
 
