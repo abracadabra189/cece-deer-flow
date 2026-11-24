@@ -1,0 +1,29 @@
+{
+  "skill_name": "cecemate-format",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "用这份季度经营数据生成一份 CeCeMate 研究报告：需要封面、目录、核心指标表、一张成交额趋势图，并同时交付 HTML、DOCX 和 PDF。",
+      "expected_output": "应生成 content.json 和 figures/*.svg，调用 render_web.py、render_docx.py、render_pdf.py；输出必须包含页头/页脚 Logo、篇尾免责声明、目录、固定表格网格和 SVG 图；三个 checker 只校验 Logo、免责、占位符、外部资源和可解析性；DOCX 目录为 Word TOC 域。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "把这份分析做成 CeCeMate 网页报告，图表请用现成 SVG，不要用 ECharts 或 Mermaid，保持离线可打开。",
+      "expected_output": "应使用 content.json 的 figure 块引用 figures/*.svg，render_web.py 内联 SVG；页头/页脚各一张 assets/logo.png，免责区在 main 最后一节；输出不得引用远程脚本、样式、图片或 iframe；不得残留模板占位符。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "这份 DOCX 报告的目录页码和正文页码对不上，另外封面不要页眉、正文页眉文档名要居中，帮我检查并修正模板。",
+      "expected_output": "应检查 templates/doc.docx：封面 section 的页眉/页脚为空，正文页眉文档名使用居中 Tab；DOCX 模板自带 TOC 域并设置 updateFields；目录页计入页码，章节从 2 开始；重新运行 build_doc_template.py 并跑 check_doc_required.py --allow-placeholders。",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "帮我把一段很长的表格放进报告，但我不确定列宽怎么给，你先告诉我应该怎么填 content.json。",
+      "expected_output": "应说明 DOCX 表格必须为每列提供 width_cm，Web 可省略；columns 需要 label/align/width_cm，rows 每行长度必须与 columns 一致，caption 和 source 必填；建议先按内容量列宽，再交给 render_docx.py。",
+      "files": []
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="360" viewBox="0 0 800 360">
+  <rect x="0" y="0" width="800" height="360" fill="#ffffff"/>
+  <line x1="60" y1="300" x2="760" y2="300" stroke="#D3DAE1" stroke-width="1"/>
+  <line x1="60" y1="60" x2="60" y2="300" stroke="#D3DAE1" stroke-width="1"/>
+  <rect x="100" y="180" width="80" height="120" fill="#016ADE"/>
+  <rect x="220" y="140" width="80" height="160" fill="#30D699"/>
+  <rect x="340" y="100" width="80" height="200" fill="#F6BD16"/>
+  <rect x="460" y="220" width="80" height="80" fill="#F6903D"/>
+  <text x="60" y="40" font-family="Noto Sans CJK SC" font-size="22" font-weight="700" fill="#282B2E">2026 年第三季度成交额趋势</text>
+  <text x="100" y="330" font-family="Noto Sans CJK SC" font-size="16" fill="#626A71">一季度</text>
+  <text x="220" y="330" font-family="Noto Sans CJK SC" font-size="16" fill="#626A71">二季度</text>
+  <text x="340" y="330" font-family="Noto Sans CJK SC" font-size="16" fill="#626A71">三季度</text>
+  <text x="460" y="330" font-family="Noto Sans CJK SC" font-size="16" fill="#626A71">四季度</text>
+</svg>

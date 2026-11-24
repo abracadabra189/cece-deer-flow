@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="generator" content="CeCeMate">
+<title>{{TITLE}}</title>
+<style>
+  :root {
+{{PRINT_VARS}}
+  }
+  @page {
+    size: A4;
+    margin: 2.4cm 1.91cm;
+    @top-left { content: element(runhead); vertical-align: middle; }
+    @top-right {
+      content: "{{DOC_NAME}}";
+      font-family: "Noto Serif CJK SC", "AR PL UMing CN", serif;
+      font-size: 9pt;
+      color: #7B838C;
+      white-space: nowrap;
+    }
+    @bottom-right {
+      content: counter(page);
+      font-family: "Noto Serif CJK SC", "AR PL UMing CN", serif;
+      font-size: 9pt;
+      color: #7B838C;
+    }
+  }
+  @page cover {
+    counter-reset: page 0;
+    @top-left { content: none; }
+    @top-right { content: none; }
+    @bottom-right { content: none; }
+  }
+  @page toc {
+    @top-right { content: "目录"; font-family: "Noto Serif CJK SC", serif; font-size: 9pt; color: #7B838C; }
+  }
+  html {
+    font-family: "Noto Serif CJK SC", "AR PL UMing CN", serif;
+    font-size: 10.5pt;
+    color: #3F4449;
+  }
+  body { margin: 0; }
+  .cover { page: cover; position: relative; height: 24.9cm; }
+  .cover-logo { height: 1.10cm; width: auto; display: block; }
+  .cover-title {
+    margin: 2.5cm 0 0;
+    font-family: "Noto Sans CJK SC", "Noto Sans CJK JP", sans-serif;
+    font-size: 26pt;
+    font-weight: 700;
+    line-height: 1.35;
+    color: #0043A0;
+  }
+  .cover-subtitle {
+    margin: 0;
+    font-family: "Noto Sans CJK SC", "Noto Sans CJK JP", sans-serif;
+    font-size: 14pt;
+    font-weight: 700;
+    line-height: 1.6;
+    color: #016ADE;
+  }
+  .cover-meta {
+    margin: 2.0cm 0 0;
+    font-size: 10.5pt;
+    line-height: 1.9;
+    color: #3F4449;
+  }
+  .cover-date {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    font-size: 9pt;
+    line-height: 1.5;
+    color: #7B838C;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .runhead { position: running(runhead); white-space: nowrap; }
+  .runhead img { height: 0.55cm; width: auto; vertical-align: middle; }
+  .body-start { break-before: page; }
+
+  h1, h2, h3 {
+    font-family: "Noto Sans CJK SC", "Noto Sans CJK JP", sans-serif;
+    font-weight: 700;
+    text-indent: 0;
+  }
+  h1 { font-size: 16pt; line-height: 1.5; color: #004FC1; margin: 24pt 0 10pt; }
+  h2 { font-size: 13pt; line-height: 1.5; color: #016ADE; margin: 14pt 0 6pt; }
+  h3 { font-size: 11.5pt; line-height: 1.55; color: #016ADE; margin: 10pt 0 4pt; }
+  p {
+    margin: 0 0 6pt;
+    font-size: 10.5pt;
+    line-height: 17.3pt;
+    text-align: justify;
+    text-indent: 2em;
+  }
+  ul, ol { margin: 0 0 6pt 1.5em; padding: 0; font-size: 10.5pt; line-height: 17.3pt; }
+  li { margin: 0 0 2pt; }
+  .callout { border: 0.5pt solid #E0E6EB; padding: 6pt 8pt; margin: 6pt 0; font-size: 10.5pt; line-height: 17.3pt; }
+
+  .table-caption, .figure-caption {
+    margin: 6pt 0;
+    font-family: "Noto Sans CJK SC", "Noto Sans CJK JP", sans-serif;
+    font-size: 9pt;
+    font-weight: 700;
+    line-height: 1.4;
+    color: #626A71;
+    text-align: center;
+    text-indent: 0;
+    break-after: avoid;
+  }
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 9pt;
+    line-height: 1.45;
+  }
+  table.data-table thead { display: table-header-group; }
+  table.data-table tr { break-inside: avoid; }
+  table.data-table th {
+    background: #FBFBFC;
+    border-top: 0.75pt solid #B3BBC3;
+    border-bottom: 0.75pt solid #B3BBC3;
+    border-left: 0.5pt solid #E0E6EB;
+    border-right: 0.5pt solid #E0E6EB;
+    padding: 2pt 4pt;
+    font-family: "Noto Sans CJK SC", "Noto Sans CJK JP", sans-serif;
+    font-weight: 600;
+    text-align: left;
+  }
+  table.data-table td {
+    border: 0.5pt solid #E0E6EB;
+    padding: 2pt 4pt;
+    vertical-align: middle;
+  }
+  table.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.data-table .text { text-align: left; }
+  .table-source, .figure-source {
+    margin: 4pt 0 0;
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: #7B838C;
+    text-indent: 0;
+  }
+  .figure { margin: 6pt 0; text-align: center; break-inside: avoid; }
+  .figure svg, .figure img { width: 100%; height: auto; display: block; }
+  .figure-caption { margin-top: 6pt; }
+  .toc {
+    page: toc;
+    break-after: page;
+    margin: 0;
+    padding: 6pt 0 0;
+    border-top: 0.5pt solid #E0E6EB;
+  }
+  .toc-title {
+    margin: 0 0 10pt;
+    font-family: "Noto Sans CJK SC", "Noto Sans CJK JP", sans-serif;
+    font-size: 16pt;
+    font-weight: 700;
+    line-height: 1.5;
+    color: #004FC1;
+  }
+  .toc-list { margin: 0; padding: 0; list-style: none; }
+  .toc-list li { margin: 0 0 5pt; font-size: 10.5pt; line-height: 17.3pt; }
+  .toc-list a { color: #3F4449; text-decoration: none; }
+  .toc-list a::after {
+    content: target-counter(attr(href), page);
+    float: right;
+    color: #7B838C;
+  }
+  .toc-level-2 { padding-left: 1.2em; }
+  .toc-level-3 { padding-left: 2.4em; }
+
+  .disclaimer {
+    margin: 12pt 0 0;
+    padding: 12pt 0 0;
+    border-top: 0.5pt solid #E0E6EB;
+    font-family: "Noto Sans CJK SC", "Noto Sans CJK JP", sans-serif;
+    font-size: 9pt;
+    font-weight: 700;
+    line-height: 1.45;
+    color: #282B2E;
+    text-indent: 0;
+    break-inside: avoid;
+  }
+  .page-break { break-before: page; }
+</style>
+</head>
+<body>
+<section class="cover">
+  <img class="cover-logo" src="{{LOGO_SRC}}" alt="行业洞察logo">
+  <div class="cover-title">{{TITLE}}</div>
+  <div class="cover-subtitle">{{SUBTITLE}}</div>
+  <div class="cover-meta">{{META}}</div>
+  <div class="cover-date"><span>{{DATE}}</span><span>{{VERSION}}</span></div>
+</section>
+<div class="runhead"><img src="{{LOGO_SRC}}" alt="行业洞察logo"></div>
+<section class="body-start">
+{{CONTENT}}
+<div class="disclaimer">{{DISCLAIMER}}</div>
+</section>
+</body>
+</html>

@@ -119,7 +119,7 @@ Measured on the 224 database (2026-11-21; 226 runs, ~9,000 events):
 | Run list (200 rows) | 2.5 ms | sequential scan of `runs` + sort |
 | Error types | 5.7 ms | scan of `run_events`, 37 matches |
 | Thread page (1,000 messages) | 0.6 ms | bitmap index on `(thread_id, category, seq)` |
-| Tool aggregate | ~725 ms | **opt-in only**; scans `run_events` and parses JSON |
+| Tool aggregate | ~725 ms | on by default; scans `run_events` and parses JSON. Use `details=0` to hide |
 
 | Concern | Measure |
 | --- | --- |
@@ -137,8 +137,9 @@ Two honest caveats:
   It is milliseconds at 226 rows but grows with the table. If it becomes slow,
   add an index during a quiet window (this is a production schema change):
   `CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_runs_created_at ON deerflow.runs (created_at DESC);`
-- The tool aggregate is deliberately off by default. Enabling it adds a scan of
-  `run_events`; if you want it always on, index `(run_id, event_type)` first.
+- The tool aggregate runs by default (about 0.4–0.8 s of database time). Use the
+  "隐藏" link or `?details=0` to skip it. If it becomes slow as the event table
+  grows, index `(run_id, event_type)` or keep it hidden by default.
 
 If the keyword search becomes slow on a large `runs` table, add a
 trigram index during a quiet window:

@@ -83,6 +83,9 @@ dev = [
     # TUI runtime dep (also declared as the deerflow-harness[tui] extra); kept in
     # the dev group so the terminal workbench can be run and tested locally / in CI.
     "textual>=0.80",
+    # CeCeMate format skill tests render DOCX and rasterize SVG figures.
+    "python-docx>=1.1,<2",
+    "pymupdf>=1.24,<2",
 ]
 
 [tool.pytest.ini_options]

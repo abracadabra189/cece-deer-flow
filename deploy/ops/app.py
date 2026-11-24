@@ -18,6 +18,7 @@ import json
 import os
 import re
 import time
+from urllib.parse import urlencode
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -419,7 +420,7 @@ async def index(
     origin: str = "",
     model: str = "",
     q: str = "",
-    details: int = 0,
+    details: int = 1,
 ) -> HTMLResponse:
     days = clamp_days(days)
     where = [
@@ -489,27 +490,31 @@ async def index(
         run_ids = [str(row["run_id"]) for row in rows]
         tools_by_run: dict[str, list[tuple[str, int]]] = {}
         errors_by_run: dict[str, str] = {}
+        tools_failed = False
         if run_ids:
             ids = ",".join(run_ids)
             # Tool results carry the tool name inside their JSON payload. This
-            # aggregate scans run_events and parses JSON, so it is opt-in: the
-            # default page must stay cheap even when the event table grows.
+            # aggregate scans run_events and parses JSON, so keep its failure
+            # local: a slow query must not take the whole page down.
             if details:
-                for tool_row in await fetch(
-                    """
-                    SELECT run_id, (content::jsonb) ->> 'name' AS tool, count(*) AS n
-                    FROM run_events
-                    WHERE run_id = ANY(string_to_array(:ids, ','))
-                      AND event_type = 'llm.tool.result'
-                      AND pg_input_is_valid(content, 'jsonb')
-                    GROUP BY 1, 2
-                    ORDER BY 1, n DESC
-                    """,
-                    ids=ids,
-                ):
-                    tool = str(tool_row["tool"] or "").strip()
-                    if tool:
-                        tools_by_run.setdefault(str(tool_row["run_id"]), []).append((tool, int(tool_row["n"])))
+                try:
+                    for tool_row in await fetch(
+                        """
+                        SELECT run_id, (content::jsonb) ->> 'name' AS tool, count(*) AS n
+                        FROM run_events
+                        WHERE run_id = ANY(string_to_array(:ids, ','))
+                          AND event_type = 'llm.tool.result'
+                          AND pg_input_is_valid(content, 'jsonb')
+                        GROUP BY 1, 2
+                        ORDER BY 1, n DESC
+                        """,
+                        ids=ids,
+                    ):
+                        tool = str(tool_row["tool"] or "").strip()
+                        if tool:
+                            tools_by_run.setdefault(str(tool_row["run_id"]), []).append((tool, int(tool_row["n"])))
+                except Exception:  # noqa: BLE001 - keep the list usable
+                    tools_failed = True
             for err_row in await fetch(
                 """
                 SELECT DISTINCT ON (run_id) run_id, event_metadata::jsonb ->> 'error_type' AS error_type
@@ -546,7 +551,12 @@ async def index(
         user_name = names_by_id.get(user_id, "")
         user_note = " · ".join(part for part in (user_name, user_email) if part)
         tools = " ".join(f"{name}×{count}" for name, count in tools_by_run.get(run_id, [])[:4])
-        tools_cell = esc(clip(tools, 36)) if details else '<span class="muted">未加载</span>'
+        if not details:
+            tools_cell = '<span class="muted">未加载</span>'
+        elif tools:
+            tools_cell = esc(clip(tools, 36))
+        else:
+            tools_cell = '<span class="muted">加载失败</span>' if tools_failed else "—"
         error_type = errors_by_run.get(run_id, "")
         trace_id = str(row["trace_id"] or "")
         duration = fmt_duration(row["created_at"], row["updated_at"])
@@ -581,6 +591,13 @@ async def index(
         )
     if not body_rows:
         body_rows.append('<tr><td colspan="10" class="muted">没有匹配的记录</td></tr>')
+
+    base_params: dict[str, Any] = {"days": days}
+    for key, value in (("user", user), ("who", who), ("status", status), ("origin", origin), ("model", model), ("q", q)):
+        if value:
+            base_params[key] = value
+    detail_href = "/?" + urlencode({**base_params, "details": 1})
+    hide_href = "/?" + urlencode({**base_params, "details": 0})
 
     who_notice = ""
     if who.strip() and not who_ids:
@@ -621,16 +638,21 @@ async def index(
   <label>来源<select name="origin">{origin_options}</select></label>
   <label>模型<input name="model" value="{esc(model)}" placeholder="可留空" style="width:150px"></label>
   <label>关键词<input name="q" value="{esc(q)}" placeholder="搜索问题 / 回答" style="width:180px"></label>
-  <label class="inline"><input type="checkbox" name="details" value="1" {'checked' if details else ''}> 加载工具详情（较慢）</label>
+  <label>工具详情
+    <select name="details">
+      <option value="1" {'selected' if details else ''}>显示（较慢）</option>
+      <option value="0" {'selected' if not details else ''}>隐藏</option>
+    </select>
+  </label>
   <button type="submit">筛选</button>
 </form>
 <div style="overflow-x:auto">
 <table>
-<thead><tr><th>时间</th><th>用户</th><th>会话 / 问题</th><th>状态</th><th>耗时</th><th>tokens</th><th>调用</th><th>工具</th><th>模型</th><th>run / trace</th></tr></thead>
+<thead><tr><th>时间</th><th>用户</th><th>会话 / 问题</th><th>状态</th><th>耗时</th><th>tokens</th><th>调用</th><th>工具 {f'<a href="{hide_href}" title="不再扫描事件表">隐藏</a>' if details else f'<a href="{detail_href}" title="扫描这一页的事件表">加载</a>'}</th><th>模型</th><th>run / trace</th></tr></thead>
 <tbody>{''.join(body_rows)}</tbody>
 </table>
 </div>
-<div class="muted" style="margin-top:8px">最多显示 {PAGE_LIMIT} 条；缩小时间范围可看到更早的记录。点击 run 看这一轮的完整事件，点击 trace 可复制。工具详情默认不查询，勾选后才会扫事件表。</div>
+<div class="muted" style="margin-top:8px">最多显示 {PAGE_LIMIT} 条；缩小时间范围可看到更早的记录。点击 run 看这一轮的完整事件，点击 trace 可复制。工具详情默认加载（会扫事件表，约 0.4–0.8 秒）；点表头「隐藏」或取消勾选可关闭。</div>
 """
     return shell("运营台", body)
 

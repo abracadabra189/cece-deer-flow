@@ -1,0 +1,306 @@
+{
+  "schema": "cecemate-format/v1",
+  "meta": {
+    "brand": "CeCeMate",
+    "spec_version": "1.1",
+    "effective": "2026-11-19",
+    "description": "CeCeMate HTML / DOCX / PDF 统一设计令牌。所有渲染器和校验器以本文件为唯一事实源。",
+    "sources": {
+      "web": "references/web-spec.md",
+      "doc": "references/doc-spec.md"
+    }
+  },
+  "assets": {
+    "logo": {
+      "path": "assets/logo.png",
+      "alt": "行业洞察logo",
+      "width": 2529,
+      "height": 480,
+      "ratio": 5.26875,
+      "sha256": "2254d17b40ecb76ea3d905488237a34da913f3757a311b014e89c66aa8c6142e"
+    }
+  },
+  "web": {
+    "page": {
+      "max_width_px": 1200,
+      "padding_x_px": 28,
+      "section_gap_px": 20,
+      "card_gap_px": 16,
+      "breakpoints_px": [1024, 720],
+      "font_stack": "\"Source Han Sans CN\",\"Noto Sans CJK SC\",\"PingFang SC\",\"Hiragino Sans GB\",\"Microsoft YaHei\",sans-serif",
+      "body_font_stack": "\"Source Han Sans CN\",\"Noto Sans CJK SC\",\"PingFang SC\",\"Hiragino Sans GB\",\"Microsoft YaHei\",sans-serif",
+      "mono_font_stack": "\"SFMono-Regular\",Consolas,\"Liberation Mono\",monospace"
+    },
+    "logo": {
+      "header_px": 34,
+      "footer_px": 22,
+      "min_visible_px": 16,
+      "share_card_px": 40,
+      "clearance_ratio": 0.5
+    },
+    "colors": {
+      "blue": {
+        "100": "#E8F3FF",
+        "200": "#C9E3FF",
+        "300": "#94C7FF",
+        "400": "#459DFF",
+        "500": "#1B84F9",
+        "600": "#016ADE",
+        "700": "#004FC1",
+        "800": "#0043A0",
+        "900": "#032D7B",
+        "1000": "#002060"
+      },
+      "gray": {
+        "000": "#FFFFFF",
+        "100": "#FBFBFC",
+        "200": "#F5F8FB",
+        "300": "#EDF2F8",
+        "400": "#E0E6EB",
+        "500": "#D3DAE1",
+        "700": "#B3BBC3",
+        "900": "#7B838C",
+        "1000": "#626A71",
+        "1100": "#3F4449",
+        "1200": "#282B2E"
+      },
+      "status": {
+        "success": "#00B877",
+        "danger": "#E62C3B",
+        "warning": "#FF7400",
+        "todo": "#FFAC00"
+      },
+      "chart": [
+        "#5B8FF9",
+        "#30D699",
+        "#F6BD16",
+        "#F6903D",
+        "#E892A6",
+        "#7A77C9",
+        "#5EC1B0",
+        "#3BA55C"
+      ]
+    },
+    "typography": {
+      "display": { "px": 32, "weight": 600, "line_height": 1.25, "usage": "页面主标题，全页仅一处" },
+      "title": { "px": 20, "weight": 600, "line_height": 1.4, "usage": "章节标题" },
+      "subtitle": { "px": 16, "weight": 600, "line_height": 1.5, "usage": "小节标题" },
+      "card_title": { "px": 14, "weight": 600, "line_height": 1.5, "usage": "卡片标题" },
+      "body": { "px": 14, "weight": 400, "line_height": 1.75, "usage": "正文" },
+      "small": { "px": 13, "weight": 400, "line_height": 1.75, "usage": "表格正文、卡片描述" },
+      "caption": { "px": 12, "weight": 400, "line_height": 1.5, "usage": "辅助说明、标签、图表轴标签" },
+      "micro": { "px": 11, "weight": 400, "line_height": 1.5, "usage": "来源、脚注；全站最小字号" },
+      "metric": { "px": 26, "weight": 600, "line_height": 1.2, "usage": "指标数值" }
+    },
+    "layout": {
+      "spacing_unit_px": 4,
+      "spacing_scale_px": [4, 8, 12, 16, 20, 24, 28, 32, 36, 48],
+      "radius_px": { "tag": 2, "input": 4, "card": 6, "container": 8 },
+      "border_width_px": 1,
+      "shadow": "none",
+      "max_columns": 12,
+      "column_gap_px": 16,
+      "body_max_chars": 38,
+      "lead_max_chars": 64
+    },
+    "tables": {
+      "max_columns": 8,
+      "header_bg": "#FBFBFC",
+      "header_border": "#EDF2F8",
+      "body_border": "#E0E6EB",
+      "numeric_align": "right",
+      "text_align": "left",
+      "vertical_borders": false,
+      "caption_position": "above",
+      "source_position": "below"
+    },
+    "charts": {
+      "palette": [
+        "#5B8FF9",
+        "#30D699",
+        "#F6BD16",
+        "#F6903D",
+        "#E892A6",
+        "#7A77C9",
+        "#5EC1B0",
+        "#3BA55C"
+      ],
+      "axis_color": "#D3DAE1",
+      "grid_color": "#EDF2F8",
+      "axis_label_color": "#626A71",
+      "tick_label_color": "#7B838C",
+      "line_width_px": 2,
+      "point_radius_px": 7,
+      "point_border_px": 2,
+      "max_lines": 3,
+      "max_pie_slices": 6,
+      "area_opacity": 0.06,
+      "runtime": "static-svg",
+      "min_height_px": { "line": 280, "bar": 280, "hbar": 280, "pie": 240, "map": 360 }
+    },
+    "disclaimer": {
+      "short": "内容由 AI 生成，请核实重要信息",
+      "long": "内容由 AI 生成，请核实重要信息。本[页/报告]由 CeCeMate 智能体生成，可能存在遗漏、滞后或理解偏差；本[页/报告]不构成决策依据，据此操作风险自担。",
+      "short_px": 13,
+      "short_weight": 600,
+      "short_color": "#3F4449",
+      "long_px": 12,
+      "long_weight": 400,
+      "long_line_height": 1.75,
+      "long_color": "#7B838C",
+      "container_bg": "#FBFBFC",
+      "container_border": "#E0E6EB",
+      "padding_top_px": 20,
+      "padding_bottom_px": 24,
+      "padding_x_px": 0,
+      "short_line_height": 1.5
+    },
+    "engineering": {
+      "single_file": true,
+      "inline_css": true,
+      "inline_js": true,
+      "allow_external_fonts": false,
+      "allow_external_chart_libs": false,
+      "logo_src": "assets/logo.png",
+      "allow_logo_base64": false,
+      "allow_remote_logo": false,
+      "allow_iframe": false,
+      "viewport": "width=device-width, initial-scale=1",
+      "lang": "zh-CN",
+      "generator": "CeCeMate"
+    }
+  },
+  "doc": {
+    "page": {
+      "size": "A4",
+      "width_mm": 210,
+      "height_mm": 297,
+      "margins_cm": { "top": 2.4, "bottom": 2.4, "left": 1.91, "right": 1.91 },
+      "content_cm": { "width": 17.18, "height": 24.9 },
+      "content_twips": 9739,
+      "header_height_cm": 1.2,
+      "header_line_width_pt": 0.5,
+      "header_line_color": "#E0E6EB"
+    },
+    "logo": {
+      "cover_cm": 1.1,
+      "header_cm": 0.55,
+      "min_total": 2,
+      "safe_zone_ratio": 0.5,
+      "cover_position": "top",
+      "header_position": "left"
+    },
+    "typography": {
+      "cover_title": { "pt": 26, "font": "黑体", "ascii_font": "Arial", "weight": 700, "line_height": 1.35, "color": "#0043A0" },
+      "cover_subtitle": { "pt": 14, "font": "黑体", "ascii_font": "Arial", "weight": 700, "line_height": 1.6, "color": "#016ADE" },
+      "h1": { "pt": 16, "font": "黑体", "ascii_font": "Arial", "weight": 700, "line_height": 1.5, "color": "#004FC1", "space_before_pt": 24, "space_after_pt": 10 },
+      "h2": { "pt": 13, "font": "黑体", "ascii_font": "Arial", "weight": 700, "line_height": 1.5, "color": "#016ADE", "space_before_pt": 14, "space_after_pt": 6 },
+      "h3": { "pt": 11.5, "font": "黑体", "ascii_font": "Arial", "weight": 700, "line_height": 1.55, "color": "#016ADE", "space_before_pt": 10, "space_after_pt": 4 },
+      "body": { "pt": 10.5, "font": "宋体", "ascii_font": "Arial", "weight": 400, "line_height": 1.65, "line_pt": 17.3, "color": "#3F4449", "first_line_chars": 2, "space_after_pt": 6 },
+      "table": { "pt": 9, "font": "宋体", "ascii_font": "Arial", "weight": 400, "line_height": 1.45, "color": "#3F4449" },
+      "table_header": { "pt": 9, "font": "黑体", "ascii_font": "Arial", "weight": 600, "line_height": 1.45, "color": "#3F4449" },
+      "caption": { "pt": 9, "font": "黑体", "ascii_font": "Arial", "weight": 700, "line_height": 1.4, "color": "#626A71" },
+      "source": { "pt": 8.5, "font": "宋体", "ascii_font": "Arial", "weight": 400, "line_height": 1.5, "color": "#7B838C" },
+      "disclaimer": { "pt": 9, "font": "黑体", "ascii_font": "Arial", "weight": 700, "line_height": 1.45, "color": "#282B2E" },
+      "header_doc_name": { "pt": 9, "font": "宋体", "ascii_font": "Arial", "weight": 400, "line_height": 1.0, "color": "#7B838C" },
+      "page_number": { "pt": 9, "font": "宋体", "ascii_font": "Arial", "weight": 400, "line_height": 1.0, "color": "#7B838C" }
+    },
+    "colors": {
+      "text": "#3F4449",
+      "text_secondary": "#626A71",
+      "text_muted": "#7B838C",
+      "disclaimer": "#282B2E",
+      "title_cover": "#0043A0",
+      "title_h1": "#004FC1",
+      "title_h2": "#016ADE",
+      "title_h3": "#016ADE",
+      "caption": "#626A71",
+      "table_header_bg": "#FBFBFC",
+      "table_border": "#E0E6EB",
+      "table_header_border": "#B3BBC3",
+      "background": "#FFFFFF"
+    },
+    "paragraph": {
+      "first_line_chars": 2,
+      "first_line_pt": 21,
+      "space_before_pt": 0,
+      "space_after_pt": 6,
+      "align": "justify",
+      "line_spacing_pt": 17.3,
+      "line_rule": "exact"
+    },
+    "tables": {
+      "content_twips": 9739,
+      "layout": "fixed",
+      "header_repeat": true,
+      "cant_split": true,
+      "cell_padding_top_pt": 2,
+      "cell_padding_bottom_pt": 2,
+      "cell_padding_left_pt": 4,
+      "cell_padding_right_pt": 4,
+      "border_pt": 0.5,
+      "header_border_pt": 0.75,
+      "outer_border_pt": 0.75,
+      "max_columns": 8,
+      "caption_position": "above",
+      "source_position": "below",
+      "allow_vertical_merge": false,
+      "require_width_cm": true
+    },
+    "header_footer": {
+      "header_doc_name_source": "meta.title",
+      "header_doc_name_max_chars": 40,
+      "header_doc_name_align": "right",
+      "footer_only_page_number": true,
+      "footer_align": "right",
+      "footer_has_disclaimer": false,
+      "page_number_field": "PAGE",
+      "page_number_start": 1,
+      "cover_has_header": false,
+      "cover_has_footer": false
+    },
+    "toc": {
+      "default_include": false,
+      "title": "目录",
+      "depth": 3
+    },
+    "cover": {
+      "separate_section": true,
+      "separator_line": false,
+      "logo_to_title_cm": 2.5,
+      "title_max_lines": 2,
+      "subtitle_to_meta_cm": 2.0,
+      "meta_lines": { "min": 2, "max": 4 },
+      "required_meta": ["report_subject", "period", "scope", "author"],
+      "date_version_position": "footer"
+    },
+    "numbering": {
+      "chapter": { "h1": "chinese_dunhao", "h2": "arabic_dot", "h3": "arabic_dot" },
+      "article": { "h1": "article", "h2": "arabic_dot" },
+      "none": {}
+    },
+    "disclaimer": {
+      "text": "内容由 AI 生成，请核实重要信息",
+      "position": "document_end",
+      "count": 1,
+      "space_before_pt": 12,
+      "border_top_pt": 0.5,
+      "border_top_color": "#E0E6EB",
+      "allow_footer_copy": false
+    }
+  },
+  "figures": {
+    "allow_svg": true,
+    "allow_png": true,
+    "raster_dpi": 300,
+    "max_width_cm": 17.18,
+    "min_font_pt": 8,
+    "sanitize_svg": true,
+    "reject_elements": ["script", "foreignObject", "iframe", "audio", "video"],
+    "reject_attributes": ["onload", "onclick", "onerror", "href", "xlink:href"],
+    "forbid_external_refs": true,
+    "html_inline_svg": true,
+    "docx_rasterize": true,
+    "pdf_inline_svg": true
+  }
+}

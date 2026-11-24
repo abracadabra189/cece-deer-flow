@@ -1,0 +1,48 @@
+{
+  "schema": "cecemate-content/v1",
+  "meta": {
+    "numbering": "chapter",
+    "title": "行业洞察人工智能企业风险研究报告",
+    "subtitle": "2026 年第三季度",
+    "report_id": "CEM-2026-Q3-001",
+    "period": "2026-10-20 至 2026-11-12",
+    "scope": "企业风险数据",
+    "author": "CeCeMate 自动生成",
+    "date": "2026-11-18",
+    "version": "v1.0"
+  },
+  "blocks": [
+    { "type": "heading", "level": 1, "text": "摘要", "numbered": false },
+    { "type": "paragraph", "text": "本报告基于行业洞察中台的企业风险数据，梳理 2026 年第三季度的整体表现、核心指标与主要风险。" },
+    { "type": "toc", "title": "目录" },
+    { "type": "heading", "level": 1, "text": "整体表现" },
+    { "type": "paragraph", "text": "大促期间全渠道支付成交额 **18,426.6 万元**，同比增长 23.8%，增速高于行业均值约 9 个百分点。" },
+    { "type": "heading", "level": 2, "text": "核心指标" },
+    {
+      "type": "table",
+      "caption": "表 1　经济核心指标情况",
+      "source": "数据来源：行业洞察中台，统计截至 2026-11-12",
+      "columns": [
+        { "label": "指标", "align": "left", "width_cm": 5.18 },
+        { "label": "本期", "align": "right", "width_cm": 4.0 },
+        { "label": "同比", "align": "right", "width_cm": 4.0 },
+        { "label": "状态", "align": "left", "width_cm": 4.0 }
+      ],
+      "rows": [
+        ["融资额（万元）", "18,426.6", "+23.8%", "达成"],
+        ["GDP（元）", "286", "+4.1%", "接近"],
+        ["同比", "3.6%", "−0.9pct", "改善"]
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "figures/chart.svg",
+      "caption": "图 1　2026 年第三季度成交额趋势",
+      "source": "数据来源：行业洞察中台",
+      "width_cm": 17.18
+    },
+    { "type": "page_break" },
+    { "type": "heading", "level": 1, "text": "结论" },
+    { "type": "paragraph", "text": "整体增长主要来自直播与内容种草渠道，私域渠道连续两期下滑，建议优先复核退款率与复购结构。" }
+  ]
+}
