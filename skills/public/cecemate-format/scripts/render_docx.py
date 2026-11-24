@@ -190,6 +190,18 @@ class DocxRenderer:
             paragraph._p.append(end)
         self._body_has_content = True
 
+    def _add_data_note(self, block: dict) -> None:
+        lines = []
+        for key, label in (("source", "来源"), ("scope", "口径"), ("period", "时间范围")):
+            if block.get(key):
+                lines.append(f"{label}：{block[key]}")
+        limitations = block.get("limitations") or []
+        if limitations:
+            lines.append("已知局限：" + "；".join(str(item) for item in limitations))
+        if lines:
+            paragraph = self.doc.add_paragraph("；".join(lines), style="Source")
+            self._insert_before_anchor(paragraph._p)
+
     def _add_list(self, items: list[str], ordered: bool) -> None:
         style = "List Number" if ordered else "List Bullet"
         for item in items:
@@ -498,6 +510,8 @@ class DocxRenderer:
                 self._add_table(block)
             elif kind == "figure":
                 self._add_figure(block)
+            elif kind == "data_note":
+                self._add_data_note(block)
             elif kind == "page_break":
                 self._add_page_break()
             elif kind == "callout":

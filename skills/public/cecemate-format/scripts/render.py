@@ -2,9 +2,10 @@
 """按需渲染 CeCeMate 产物，不默认生成三件套。
 
 用法：
+    python scripts/render.py content.json --out OUT                 # 默认只出 DOCX
     python scripts/render.py content.json --out OUT --formats docx
     python scripts/render.py content.json --out OUT --formats docx,html
-    python scripts/render.py content.json --out OUT --formats html,docx,pdf
+    python scripts/render.py content.json --out OUT --formats html,docx,pdf  # 仅明确要求时
 """
 
 from __future__ import annotations
@@ -37,7 +38,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="按需渲染 CeCeMate HTML / DOCX / PDF")
     parser.add_argument("content", type=Path, help="content.json")
     parser.add_argument("--out", type=Path, required=True, help="输出目录")
-    parser.add_argument("--formats", required=True, help="逗号分隔：html,docx,pdf")
+    parser.add_argument(
+        "--formats",
+        default="docx",
+        help="逗号分隔：html、docx、pdf；默认只生成 docx",
+    )
     parser.add_argument("--skip-check", action="store_true")
     args = parser.parse_args()
 

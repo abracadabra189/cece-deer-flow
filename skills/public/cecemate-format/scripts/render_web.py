@@ -8,6 +8,7 @@ PNG 会复制到输出目录。模板固定页头/页脚 Logo 与篇尾免责声
 from __future__ import annotations
 
 import argparse
+import base64
 import html
 import json
 import re
@@ -31,6 +32,14 @@ def _esc(value: object) -> str:
 def _inline(text: str) -> str:
     escaped = _esc(text)
     return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+
+
+def _logo_src(config: dict) -> str:
+    engineering = config["web"].get("engineering", {})
+    if engineering.get("logo_mode") == "inline" or engineering.get("allow_logo_base64"):
+        encoded = base64.b64encode((ROOT / "assets" / "logo.png").read_bytes()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+    return "assets/logo.png"
 
 
 def _css_vars(config: dict) -> str:
@@ -166,9 +175,60 @@ def _table(block: dict) -> str:
             cells.append(f'<td class="{align}">{_inline(value)}</td>')
         parts.append("<tr>" + "".join(cells) + "</tr>")
     parts.append("</tbody></table></div>")
+    parts.append('<p class="table-scroll-hint">左右滑动查看完整表格</p>')
     if source:
         parts.append(f'<p class="table-source">{_inline(source)}</p>')
     return "\n".join(parts)
+
+
+def module_issues(blocks: list[dict]) -> list[str]:
+    """Enforce the M1-M8 contract when the corresponding block is used."""
+    issues: list[str] = []
+    first_layout = next(
+        (index for index, block in enumerate(blocks) if block.get("type") not in {"toc", "page_break"}),
+        None,
+    )
+    if not any(block.get("type") == "data_note" for block in blocks):
+        issues.append("M8：Web 页面必须包含 data_note（来源/口径/时间范围/局限）。")
+
+    for index, block in enumerate(blocks):
+        kind = block.get("type")
+        if kind == "hero":
+            if index != first_layout:
+                issues.append("M1：hero 必须是正文第一个内容块。")
+            chips = block.get("chips") or []
+            if chips and not 3 <= len(chips) <= 5:
+                issues.append("M1：chips 数量应为 3–5 个。")
+        elif kind == "metrics":
+            count = len(block.get("items") or [])
+            if not 2 <= count <= 4:
+                issues.append(f"M2：metrics 必须是 2–4 张卡，当前 {count} 张。")
+        elif kind == "chart_row":
+            if not block.get("primary") or not block.get("secondary"):
+                issues.append("M3：chart_row 必须同时提供 primary 和 secondary。")
+        elif kind == "table":
+            columns = block.get("columns") or []
+            if len(columns) > 8:
+                issues.append(f"M4：表格最多 8 列，当前 {len(columns)} 列。")
+        elif kind == "conclusion":
+            findings = block.get("findings") or []
+            if not 3 <= len(findings) <= 5:
+                issues.append(f"M5：conclusion.findings 应为 3–5 条，当前 {len(findings)} 条。")
+            if not block.get("paragraphs"):
+                issues.append("M5：conclusion 至少需要一段研判正文。")
+        elif kind == "matrix":
+            count = len(block.get("items") or [])
+            if count not in {4, 6}:
+                issues.append(f"M6：matrix 应为 2×2 或 3×2，当前 {count} 张卡。")
+        elif kind == "timeline":
+            count = len(block.get("items") or [])
+            if not 4 <= count <= 7:
+                issues.append(f"M7：timeline 应为 4–7 个节点，当前 {count} 个。")
+        elif kind == "data_note":
+            for field, label in (("source", "来源"), ("scope", "口径"), ("period", "时间范围")):
+                if not str(block.get(field) or "").strip():
+                    issues.append(f"M8：data_note 缺少{label}。")
+    return issues
 
 
 def prepare_toc(blocks: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -387,7 +447,11 @@ def render(content_path: Path, out_dir: Path, config_path: Path, template_path: 
     header_bits = [meta.get("report_id"), meta.get("date")]
     header_meta = "　".join(str(bit) for bit in header_bits if bit)
     disclaimer = config["web"]["disclaimer"]
-    blocks, toc_entries = prepare_toc(content.get("blocks") or [])
+    blocks = content.get("blocks") or []
+    issues = module_issues(blocks)
+    if issues:
+        raise ValueError("\n".join(issues))
+    blocks, toc_entries = prepare_toc(blocks)
     body = _blocks(blocks, content_path.parent, out_dir, config, toc_entries)
 
     values = {
@@ -399,7 +463,7 @@ def render(content_path: Path, out_dir: Path, config_path: Path, template_path: 
         "{{DISCLAIMER_LONG}}": _esc(disclaimer["long"].replace("[页/报告]", "页面")),
         "{{FOOTER_SOURCE}}": _esc(meta.get("footer_source") or "CeCeMate 智能体生成"),
         "{{FOOTER_RIGHT}}": _esc(meta.get("version") or config["meta"]["spec_version"]),
-        "{{LOGO_SRC}}": "assets/logo.png",
+        "{{LOGO_SRC}}": _logo_src(config),
     }
     for key, value in values.items():
         template = template.replace(key, value)

@@ -117,9 +117,13 @@ models:
     display_name: Qwen3.8 Flash
     model: qwen3.8-flash
     max_tokens: 32768
-    reasoning: null
+    reasoning:
+      thinking: unsupported
+      dialect: openai_extra_body
     when_thinking_enabled: null
-    when_thinking_disabled: null
+    when_thinking_disabled:
+      extra_body:
+        enable_thinking: false
 
   - <<: *cece_model_defaults
     name: qwen3.8-max

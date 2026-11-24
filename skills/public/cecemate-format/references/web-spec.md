@@ -527,12 +527,16 @@
 
 ## 14 工程约束
 
-- **单文件自包含**：CSS、SVG 与必要的 JavaScript 均内联；行业洞察logo 使用相对路径。
+> **团队例外（cecemate-format）**：为支持单文件预览/下载，Web 输出的行业洞察 Logo
+> 以内联 base64 写入 HTML；这覆盖下文“Logo 使用相对路径”的要求。其余 Logo
+> 规则（同一文件、等比、alt、出现次数）不变。
+
+- **单文件自包含**：CSS、SVG 与必要的 JavaScript 均内联；行业洞察logo 使用内联 data URI。
 - 样式只用 `var(--token)`；`:root` 之外不得出现裸色值。
 - 不加载 ECharts 或其他外部图表库；图表必须静态 SVG/PNG。
 - 字体栈：`"Source Han Sans CN","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif`；不加载网络字体。
 - 内联 SVG favicon；`<meta name="generator" content="CeCeMate">`。
-- 行业洞察logo 用相对路径 `assets/logo.png`（或 `../assets/logo.png`），**不得内联为 base64 后省略**、不得引用远程图床。
+- 行业洞察logo 默认用相对路径 `assets/logo.png`（或 `../assets/logo.png`）；cecemate-format 为单文件交付改为内联 base64，见本节顶部团队例外。不得引用远程图床。
 - 产出物不得包含 `<iframe>`、外部追踪脚本、表单提交。
 
 ---

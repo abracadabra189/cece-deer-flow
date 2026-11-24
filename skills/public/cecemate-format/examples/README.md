@@ -5,20 +5,17 @@
 按需选择格式，不要默认三件套：
 
 ```bash
-# 只要 DOCX
-python scripts/render.py examples/sample-content.json --out /tmp/cecemate-sample --formats docx
+# 默认只出 DOCX（不传 --formats 也可以）
+python scripts/render.py examples/sample-content.json --out /tmp/cecemate-sample
 
-# DOCX + HTML
+# 明确要 DOCX + HTML
 python scripts/render.py examples/sample-content.json --out /tmp/cecemate-sample --formats docx,html
-
-# 三件套
-python scripts/render.py examples/sample-content.json --out /tmp/cecemate-sample --formats html,docx,pdf
 ```
 
-也可以继续单独调用 `render_web.py` / `render_docx.py` / `render_pdf.py`；
+只有用户明确要求三件套时，才加 `--formats html,docx,pdf`。
 `render.py` 已经自动运行所选格式的 checker，不需要再单独 review。
 
-输出：
+三件套输出示例：
 
 ```text
 /tmp/cecemate-sample/

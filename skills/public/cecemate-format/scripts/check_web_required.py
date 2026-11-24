@@ -2,7 +2,7 @@
 """CeCeMate HTML 代码校验。
 
 校验品牌与交付完整性：
-- 页头、页脚各一张 assets/logo.png，alt 非空、文件 hash 一致、未隐藏/拉伸；
+- 页头、页脚各一张 Logo（相对路径或允许的 base64），alt 非空、hash 一致、未隐藏/拉伸；
 - main 的最后一个 section 是 .disclaimer，包含逐字免责短句，页脚不重复；
 - 模板占位符未残留；
 - 无远程脚本/样式/图片/iframe；
@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import re
 import sys
@@ -74,7 +75,7 @@ class PageInspector(HTMLParser):
         attrs_dict = {key.lower(): (value or "") for key, value in attrs}
         if tag == "img":
             src = attrs_dict.get("src", "").replace("\\", "/")
-            if src.endswith("assets/logo.png"):
+            if src.endswith("assets/logo.png") or src.startswith("data:image/png;base64,"):
                 self.logo_sources.append(src)
                 self.logo_tags.append(attrs_dict)
                 if "header" in self.stack and attrs_dict.get("alt", "").strip():
@@ -132,6 +133,7 @@ def validate(page: Path, config_path: Path) -> list[str]:
     try:
         config = _load_json(config_path)
         expected_hash = config["assets"]["logo"]["sha256"]
+        allow_base64 = bool(config.get("web", {}).get("engineering", {}).get("allow_logo_base64"))
     except (OSError, KeyError, ValueError) as exc:
         return [f"W-CONFIG：无法读取 brand-config.json 的 logo.sha256：{exc}"]
 
@@ -152,9 +154,9 @@ def validate(page: Path, config_path: Path) -> list[str]:
         issues.append(f"W-EXTERNAL：产出物不得引用远程脚本、样式、图片或 iframe：{', '.join(sorted(set(external)))}")
 
     if not parser.header_logo or not parser.footer_logo:
-        issues.append("W-LOGO：页头和页脚必须使用带非空 alt 的 assets/logo.png。")
+        issues.append("W-LOGO：页头和页脚必须使用带非空 alt 的 Logo。")
     if not parser.logo_sources:
-        issues.append("W-LOGO：未找到 assets/logo.png。")
+        issues.append("W-LOGO：未找到 Logo。")
     for attrs in parser.logo_tags:
         style = attrs.get("style", "").lower().replace(" ", "")
         if any(token in style for token in ("display:none", "visibility:hidden", "opacity:0")):
@@ -162,16 +164,26 @@ def validate(page: Path, config_path: Path) -> list[str]:
         if "width" in attrs or "height" in attrs or "width:" in style or "height:" in style:
             issues.append("W-LOGO-STRETCH：Logo 不得写死宽高，应由 height + width:auto 等比缩放。")
 
-    logo_path = page.parent / "assets" / "logo.png"
-    if not logo_path.is_file():
-        issues.append("W-LOGO-FILE：页面同级缺少 assets/logo.png。")
-    else:
-        actual_hash = hashlib.sha256(logo_path.read_bytes()).hexdigest()
-        if actual_hash != expected_hash:
-            issues.append("W-LOGO-HASH：assets/logo.png 与 brand-config.json 记录的 Logo 不一致。")
-
-    if any(src.startswith("data:") for src in parser.logo_sources):
-        issues.append("W-LOGO-BASE64：Logo 不得内联为 base64。")
+    relative_sources = [src for src in parser.logo_sources if src.endswith("assets/logo.png")]
+    inline_sources = [src for src in parser.logo_sources if src.startswith("data:image/png;base64,")]
+    if relative_sources:
+        logo_path = page.parent / "assets" / "logo.png"
+        if not logo_path.is_file():
+            issues.append("W-LOGO-FILE：页面同级缺少 assets/logo.png。")
+        else:
+            actual_hash = hashlib.sha256(logo_path.read_bytes()).hexdigest()
+            if actual_hash != expected_hash:
+                issues.append("W-LOGO-HASH：assets/logo.png 与 brand-config.json 记录的 Logo 不一致。")
+    for data_uri in inline_sources:
+        if not allow_base64:
+            issues.append("W-LOGO-BASE64：brand-config.json 未允许内联 base64 Logo。")
+        try:
+            payload = base64.b64decode(data_uri.split(",", 1)[1], validate=True)
+        except (ValueError, IndexError):
+            issues.append("W-LOGO-HASH：内联 Logo 不是有效的 base64 PNG。")
+            continue
+        if hashlib.sha256(payload).hexdigest() != expected_hash:
+            issues.append("W-LOGO-HASH：内联 Logo 与品牌资产不一致。")
     if any(src.startswith(("http://", "https://", "//")) for src in parser.logo_sources):
         issues.append("W-LOGO-REMOTE：Logo 不得引用远程地址。")
 

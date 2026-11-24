@@ -23,29 +23,23 @@ description: 当用户需要交付 CeCeMate 风格的 HTML、DOCX 或 PDF 报告
    ```
 
 3. 图形只提供 SVG / PNG 文件，不要使用 ECharts、Mermaid 或外部图表库。
-4. **按用户要求选择格式，不要默认三件套。** 用户只要 DOCX 就只传
-   `docx`；要 DOCX + HTML 就传 `docx,html`。
+4. **默认只生成 DOCX，绝不默认三件套。** 用户明确要 HTML/PDF 才加格式；
+   不要同时调用三个 renderer。
 
    ```bash
+   # 默认只出 DOCX
    python /mnt/skills/public/cecemate-format/scripts/render.py \
      /mnt/user-data/workspace/<名称>/content.json \
-     --out /mnt/user-data/outputs/<名称> \
-     --formats docx
+     --out /mnt/user-data/outputs/<名称>
 
-   # 只要 DOCX + HTML
+   # 明确要 DOCX + HTML
    python /mnt/skills/public/cecemate-format/scripts/render.py \
      /mnt/user-data/workspace/<名称>/content.json \
      --out /mnt/user-data/outputs/<名称> \
      --formats docx,html
-
-   # 三件套
-   python /mnt/skills/public/cecemate-format/scripts/render.py \
-     /mnt/user-data/workspace/<名称>/content.json \
-     --out /mnt/user-data/outputs/<名称> \
-     --formats html,docx,pdf
    ```
 
-   也可以继续单独调用 `render_web.py` / `render_docx.py` / `render_pdf.py`。
+   只有用户明确要求“三件套”时，才使用 `--formats html,docx,pdf`。
 
 5. `render.py` 已自动运行所选格式的 checker，**不需要再单独 review**，
    也不要分别调用三个 checker。只有调试单个格式时，才单独调用
@@ -56,8 +50,9 @@ description: 当用户需要交付 CeCeMate 风格的 HTML、DOCX 或 PDF 报告
 
 ## 代码校验（品牌与交付完整性）
 
-- 行业洞察 Logo：Web 页头/页脚各一次，alt 非空、文件 hash 一致、未隐藏/拉伸；
-  DOCX 封面 1.10cm、页眉 0.55cm，字节与 `assets/logo.png` 一致、比例 5.27:1；
+- 行业洞察 Logo：Web 页头/页脚各一次，支持内联 base64（单文件交付例外），
+  alt 非空、hash 一致、未隐藏/拉伸；DOCX 封面 1.10cm、页眉 0.55cm，字节与
+  `assets/logo.png` 一致、比例 5.27:1；
   PDF 封面/页眉同理；
 - 免责声明：Web 在 `<main>` 最后一节；DOCX 在正文最后一个非空段落；PDF 在
   最后一页；全文仅一次，页脚不得重复，不得隐藏；
@@ -71,6 +66,8 @@ description: 当用户需要交付 CeCeMate 风格的 HTML、DOCX 或 PDF 报告
 
 ## 文本要求（模型遵守，不由脚本强制）
 
+- Web 为单文件预览/下载，行业洞察 Logo 内联 base64；这是对 web-spec §14
+  相对路径要求的团队例外；
 - 封面按团队要求不绘制 0.5pt 分隔线，只保留大 Logo；正文页眉文档名右侧；
 - DOCX 封面独立成节，A4，上下 2.40cm、左右 1.91cm，页脚只有 PAGE 域；
 - 正文 10.5pt / 17.3pt 固定行距 / 首行缩进 2 字符；
@@ -86,8 +83,10 @@ description: 当用户需要交付 CeCeMate 风格的 HTML、DOCX 或 PDF 报告
 - 目录是可选的：内容里给 `toc` 才生成；没有 `toc` 时，DOCX 模板的目录页
   会整页删除。
 - Web 已支持 M1 标题区、M2 指标卡、M3 主辅图表、M5 结论/关键发现、M6
-  矩阵卡、M7 时间线、M8 数据说明、标签、提示块、动作按钮；这些是文本要求，
-  不进入 checker。
+  矩阵卡、M7 时间线、M8 数据说明、标签、提示块、动作按钮。
+- Web 模块走渲染前预检：M2 必须 2–4 张卡、M5 findings 3–5 条、M6 4/6 张卡、
+  M7 4–7 个节点、M8 必须存在且 source/scope/period 非空；不通过直接失败。
+  不增加 checker 步骤。
 - `meta.chapter_page_break` 默认 `true`，DOCX 每个一级标题前分页；设为 `false`
   可连续排版。
 - `check_web_required.py`、`check_doc_required.py`、`check_pdf_required.py`
