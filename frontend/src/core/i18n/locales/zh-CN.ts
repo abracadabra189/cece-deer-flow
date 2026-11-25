@@ -550,6 +550,8 @@ export const zhCN: Translations = {
     voiceInputPermissionDenied: "麦克风权限被拒绝。请允许麦克风访问后重试。",
     voiceInputMicrophoneUnavailable: "未检测到麦克风。请检查设备输入后重试。",
     voiceInputTooLarge: "录音超过大小限制，请缩短录音后重试。",
+    voiceInputUnsupportedLanguage: "当前语言不支持语音识别，请切换语言后重试。",
+    voiceInputNetworkError: "语音识别服务连接失败，请稍后重试。",
     voiceInputUnavailable: "语音输入已停用，草稿已保留。",
     voiceInputNoSpeech: "没有检测到语音，请重试。",
     voiceInputFailed: "语音输入失败，请重试。",

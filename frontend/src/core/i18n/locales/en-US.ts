@@ -578,6 +578,10 @@ export const enUS: Translations = {
       "Microphone access was denied. Allow microphone access and try again.",
     voiceInputMicrophoneUnavailable:
       "No microphone was detected. Check your device input and try again.",
+    voiceInputUnsupportedLanguage:
+      "Voice recognition is not available for the selected language.",
+    voiceInputNetworkError:
+      "Voice recognition could not reach the service. Please try again.",
     voiceInputTooLarge:
       "Recording exceeds the size limit. Please try a shorter recording.",
     voiceInputUnavailable:
