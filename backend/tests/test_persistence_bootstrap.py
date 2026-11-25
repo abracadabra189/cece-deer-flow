@@ -41,10 +41,12 @@ from deerflow.persistence.bootstrap import (
     _get_alembic_config,
     _get_head_revision,
     _run_baseline_create_all_sync,
+    _stamp,
     _upgrade,
     bootstrap_schema,
 )
 from deerflow.persistence.migrations._helpers import _normalize_default
+from deerflow.persistence.migrations.check_heads import get_migration_heads
 from deerflow.persistence.postgres_schema import build_asyncpg_connect_args
 
 # Mark only async tests via the decorator below; module-level pytestmark would
@@ -54,6 +56,30 @@ asyncio_test = pytest.mark.asyncio
 
 HEAD = _get_head_revision()
 BASELINE = "0001_baseline"
+
+
+def test_migration_tree_has_one_expected_head() -> None:
+    """A deployment must never discover a forked graph at Gateway startup."""
+    heads = get_migration_heads()
+    assert len(heads) == 1, f"expected one Alembic head, found: {heads}"
+
+
+@pytest.mark.parametrize(
+    "parent_revision",
+    ("0060_coordination_run_settings", "cece_ext_ticket_merge_20261117"),
+)
+@asyncio_test
+async def test_merge_head_upgrades_from_each_parent_revision(tmp_path: Path, parent_revision: str) -> None:
+    """Both histories deployed before the merge point can advance safely."""
+    engine = create_async_engine(_url(tmp_path, f"{parent_revision}.db"))
+    try:
+        config = _get_alembic_config(engine)
+        await asyncio.to_thread(_stamp, config, parent_revision)
+        await asyncio.to_thread(_upgrade, config, HEAD)
+
+        assert await _alembic_version(engine) == HEAD
+    finally:
+        await engine.dispose()
 
 
 def _url(tmp_path: Path, name: str = "test.db") -> str:

@@ -73,6 +73,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     done; \
     UV_INDEX_URL=${UV_INDEX_URL:-https://pypi.org/simple} uv sync --locked --extra redis $extras_flags'
 
+# Refuse to build an image whose migration graph would stop Gateway at startup.
+RUN cd backend && PYTHONPATH=. uv run --no-sync python -m deerflow.persistence.migrations.check_heads
+
 # UTF-8 locale prevents UnicodeEncodeError on Chinese/emoji content in minimal
 # containers where locale configuration may be missing and the default encoding is not UTF-8.
 ENV LANG=C.UTF-8

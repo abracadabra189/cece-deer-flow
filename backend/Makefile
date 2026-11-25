@@ -91,3 +91,6 @@ detect-blocking-io:
 migrate-rev:
 	@if [ -z "$(MSG)" ]; then echo 'usage: make migrate-rev MSG="describe the change"'; exit 1; fi
 	PYTHONPATH=. PYTHONIOENCODING=utf-8 PYTHONUTF8=1 uv run python scripts/_autogen_revision.py "$(MSG)"
+
+check-migration-head:
+	uv run python -m deerflow.persistence.migrations.check_heads
