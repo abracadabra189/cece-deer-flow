@@ -92,8 +92,11 @@ Content-Type: application/json
 ```
 
 - `scopes` — subset of the route permissions: `threads:read`, `threads:write`,
-  `threads:delete`, `runs:create`, `runs:read`, `runs:cancel`. A PAT can only
-  *narrow* its owning user's permissions, never widen them.
+  `threads:delete`, `runs:create`, `runs:read`, `runs:cancel`, `projects:read`,
+  `projects:write`, `projects:delete`, `agents:read`, `agents:write`; plus the
+  PAT-only scopes `schedules:read`, `schedules:write`, `subagents:read`,
+  `subagents:write` (see [Agent configuration](#agent-configuration-by-pat)).
+  A PAT can only *narrow* its owning user's permissions, never widen them.
 - `expires_in_days` — optional (`1`–`365`); omitted means the token never expires.
 
 **Response (`201`):**
@@ -149,124 +152,52 @@ Revocation is immediate.
   `GET|POST .../runs/{run_id}/stream`), plus `POST /api/runs/stream|wait` and
   `GET /api/runs/{run_id}/messages|feedback`. A route added under `/runs` is
   denied until explicitly added to the policy.
-  Every other authenticated route — memory, agents, models, MCP/skills
+  Besides those, only the routes under [Agent configuration by
+  PAT](#agent-configuration-by-pat) are admitted, each behind its scope.
+  Every other authenticated route — memory, models, MCP/skills
   config, integrations, channels, uploads — answers `403` to PAT callers
   regardless of scopes. Scope enforcement alone only constrains
   permission-decorated routes, so the allowlist is the outer boundary;
   session-cookie callers are unaffected.
 - PAT credentials never carry admin capability, even when the owning user is
   an admin. This includes extension-contributed admin routes: the extension
-  principal projection suppresses every admin signal for PAT callers.
+  principal projection suppresses every admin signal for PAT callers. The one
+  opt-in exception is the managed-subagent writes below.
 - Revoking or deleting the owning user invalidates their PATs on the next
   request.
 
-### External User Provisioning
+### Agent configuration by PAT
 
-Integrates an operator's **existing user system**: the external backend resolves
-or registers a DeerFlow account by phone number and receives credentials that
-land that user in the UI already signed in. Gated by `auth.external_user.enabled`
-(404 while disabled) and authenticated by a shared key — see the trust boundary
-in [AUTH_DESIGN.md](AUTH_DESIGN.md#外部用户系统接入手机号开通) and the
-integration guide (flow, configuration, checklist) in
-`docs/EXTERNAL_USER_INTEGRATION.md`. The partner-facing specification (request and
-response fields, captured error bodies, redirect semantics, self-test checklist,
-FAQ) is `docs/EXTERNAL_USER_API.md`.
+A pipeline that deploys agents, their managed subagents and schedules can use a
+PAT instead of a password session. Set `agents_api.enabled` to `true` in
+`config.yaml` to use the agent management API. The deployment routes require
+the scopes and permissions below.
 
-```
-POST /api/v1/auth/external/provision
-X-External-User-Key: <auth.external_user.api_key>     # or: Authorization: Bearer <key>
-Content-Type: application/json
-
-{ "phone": "+8613800138000", "username": "张三", "next": "/workspace/chats" }
-```
-
-| Field | Required | Notes |
+| Routes | Scope | Also required |
 |---|---|---|
-| `phone` | yes | The identity key. 5–20 digits with an optional leading `+`; spaces, dashes, dots and parentheses are stripped and full-width digits are normalized, so one person cannot become two accounts |
-| `username` | no | Display name, ≤100 characters; control and bidirectional formatting characters are rejected (422). Stored as the `external_username` user preference and refreshed on every call |
-| `next` | no | Relative path the browser lands on after login; validated by the same open-redirect guard as the OIDC flow |
+| `GET /api/v1/auth/me` | any | — |
+| `GET /api/agents`, `GET /api/agents/check`, `GET /api/agents/{name}` | `agents:read` | — |
+| `POST /api/agents`, `PUT`/`DELETE /api/agents/{name}` | `agents:write` | — |
+| `GET /api/scheduled-tasks`, `GET /api/scheduled-tasks/{task_id}`, `GET .../{task_id}/runs`, `POST /api/scheduled-tasks/preview-cron` | `schedules:read` | `threads:read` |
+| `POST /api/scheduled-tasks`, `PATCH /api/scheduled-tasks/{task_id}`, `POST .../{task_id}/resume`, `POST .../{task_id}/trigger` | `schedules:write` | `threads:write`, `runs:create` |
+| `DELETE /api/scheduled-tasks/{task_id}`, `POST .../{task_id}/pause` | `schedules:write` | `threads:write` |
+| `GET /api/subagents` | `subagents:read` | — (prompts stay hidden, as for non-admins) |
+| `POST /api/subagents`, `PUT`/`DELETE /api/subagents/{name}` | `subagents:write` | the token's owner is an admin |
 
-Response `200`:
+A denied scope answers `403` with `Permission denied: <scope>`. The user
+profile (`/api/user-profile`), agent import and export stay session-only.
+`subagents:write` is the only scope that carries admin capability, and only on
+the three managed-subagent write routes: an admin's token holding it still
+gets `403` on every other admin route.
 
-```json
-{
-  "user_id": "4eaa39f9-74ff-4584-8a05-8f1fdf5a7ba2",
-  "phone": "+8613800138000",
-  "username": "张三",
-  "email": "8613800138000@users.deerflow.internal",
-  "system_role": "user",
-  "created": true,
-  "token_type": "Bearer",
-  "access_token": "<session JWT>",
-  "expires_in": 604800,
-  "login_ticket": "<one-time ticket>",
-  "base_url": "http://host:2026",
-  "url_path": "/api/v1/auth/external/login?ticket=…&next=/workspace/chats",
-  "login_url": "http://host:2026/api/v1/auth/external/login?ticket=…&next=…"
-}
-```
+### External user provisioning
 
-- `created` is `true` only for the call that registered the account; later calls
-  for the same phone return the same `user_id` with fresh credentials.
-- `email` is a **derived storage key**, not a mailbox: `users.email` is NOT NULL
-  and unique while a phone user has none. Accounts created here have no password,
-  so password login stays impossible for them.
-- `access_token` is the ordinary session JWT. The Gateway reads it **only** from
-  the `access_token` cookie — an `Authorization: Bearer <jwt>` header is *not*
-  accepted (that slot belongs to `dfp_` PATs). Use it to seed a cookie in a
-  webview/native client, or use `login_url` for browsers.
-- `expires_in` is the lifetime of **both** tokens: the `access_token` returned here
-  and the browser session the redeem step mints from `login_url`. Set
-  `auth.external_user.session_expiry_minutes` to shorten it; leaving it `null` uses
-  `auth.token_expiry_days`. Note that the session *cookie's* `Max-Age` follows the
-  shared cookie policy (`token_expiry_days`), so a shorter `session_expiry_minutes`
-  yields a cookie that outlives its token — the user is logged out when the token
-  expires, not when the cookie does. Keep the two equal on an external-only
-  deployment, where a 401 has no self-service way back.
-- `login_url` is the browser entry point: send the user there. It is also
-  returned pre-split as `base_url` (the public origin a browser must use to reach
-  this Gateway) plus `url_path` (the login path with its query), so a caller whose
-  users reach DeerFlow through a different ingress can re-base the path instead
-  of string-editing a full URL. `login_url == base_url + url_path`; the `next`
-  value inside `url_path` keeps its literal slashes.
-  `base_url` comes from `auth.external_user.frontend_base_url` when that is set,
-  and otherwise from the provisioning request's own (proxy-aware) origin. Configure
-  it whenever the integrating backend calls `provision` over an address users
-  cannot reach — a service name, a cluster-local host, its own proxy — because the
-  request-derived origin would then be unusable in a browser. That origin must
-  serve `/api/*` (the nginx entry point does).
-
-```
-GET /api/v1/auth/external/login?ticket=<login_ticket>&next=<optional>
-```
-
-Redeems the ticket once, sets `access_token` + `deerflow_session_persistent` +
-`csrf_token`, and answers `302 → {frontend_base_url}/auth/callback?next=…`, so the
-existing frontend callback page completes the login with no frontend change. Every
-failure — missing, malformed, expired, forged, replayed, or naming a
-disabled/deleted account — answers `302 → /login?error=external_login_failed`
-without setting a cookie, so the endpoint is not a ticket-validity oracle and a
-browser never sees a JSON error.
-
-Tickets are signed with `AUTH_JWT_SECRET`, carry `uid` (never `sub`, so a ticket
-can never be replayed as a session token), live `ticket_ttl_seconds` (default 120,
-max 900), and are **single-use across the whole deployment**: consumption is one
-atomic `INSERT … ON CONFLICT (jti) DO NOTHING` into `external_login_tickets`, so
-every Gateway worker and every replica sharing the application database agrees on
-"already spent". Expired rows are swept in the same transaction. If the claim
-cannot be recorded (no database, store error) the ticket is rejected — the
-endpoint fails closed rather than falling back to a process-local record.
-
-Errors: `401` missing/invalid key · `404` feature disabled · `403` account
-disabled · `409` the derived email belongs to an unrelated account (an external
-call never seizes a pre-existing local account) · `422` invalid phone or username.
-
-```bash
-curl -sS -X POST http://localhost:2026/api/v1/auth/external/provision \
-  -H "X-External-User-Key: $EXTERNAL_USER_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"phone":"+8613800138000","username":"张三"}'
-```
+When `auth.external_user.enabled` is enabled, an upstream user system can
+provision or resolve a phone-based DeerFlow account and issue a one-time browser
+login. The API is documented in [External User API](EXTERNAL_USER_API.md) and
+[External User Integration](EXTERNAL_USER_INTEGRATION.md). Its provisioning
+endpoint is `POST /api/v1/auth/external/provision`; browser login uses
+`GET /api/v1/auth/external/login?ticket=...`.
 
 ## LangGraph-compatible API
 
@@ -295,6 +226,11 @@ After trimming, lowercasing and mapping `_` to `-`, a custom name must contain
 only letters, digits and hyphens; any other value is rejected with `422`.
 Branches preserve valid stored IDs, including their original spelling. If a
 legacy source has an invalid ID, its new branch stores `null` and uses the lead agent.
+
+`metadata` is stored on the thread as sent and copied into its first
+checkpoint, except for the keys the server owns there: `step`, `source`,
+`writes`, `parents`, `created_at`, `counters_since_delta_snapshot` and
+`deerflow_agent_name`.
 
 **Response:**
 ```json
@@ -332,6 +268,12 @@ GET /api/langgraph/threads/{thread_id}/state
 POST /api/langgraph/threads/{thread_id}/history
 ```
 
+Set `before` to the last checkpoint ID from the previous page. The next page
+includes that checkpoint if it still exists, followed by older checkpoints,
+up to `limit` entries total. If checkpoint retention removed the cursor, the
+page starts with the first surviving older checkpoint, if any. Skip the first
+entry only when its `checkpoint_id` equals `before`.
+
 Only the newest entry carries `messages`, the `goal` while it is active, and
 `goal_outcome` (the latest met goal, kept until the next goal change). Older
 entries carry only `title` and `thread_data`. `goal_outcome` is server-owned:
@@ -361,6 +303,15 @@ the thread's current goal and continuation budget. A cleared or achieved goal
 is not restored from history. A valid goal explicitly supplied in run input
 still replaces it. Historical replay clears the old `goal_outcome`, because
 the previous answer's verdict does not certify the replacement answer.
+
+#### Branch and Replay Lookup
+
+`POST /api/threads/{thread_id}/branches`,
+`POST /api/threads/{thread_id}/runs/regenerate/prepare`, and
+`POST /api/threads/{thread_id}/runs/edit-regenerate/prepare` share a deadline
+for finding the replay base on the checkpoint lineage. If that lookup expires,
+the response is HTTP 504 with detail
+`Timed out resolving the checkpoint before the target user message`.
 
 ### Runs
 
@@ -464,7 +415,7 @@ does not accept this header and keeps the existing missing-stream close of
 **Run Option Compatibility:**
 - Supported concurrency strategies: `reject`, `rollback`, and `interrupt`
 - Compatibility default: `if_not_exists="create"`; this matches DeerFlow's current behavior
-- Artifact delivery is enforced automatically when a run creates or modifies regular files under `/mnt/user-data/outputs`. `present_files` or `present_shared_artifact` must present at least one path produced by the current run (or a directory containing it), and the terminal receipt must be persisted; presenting only an unrelated file does not satisfy delivery. Runs without changed outputs retain ordinary conversational behavior. `artifact_delivery` is not a client-settable run option. A run failed this way is stored as `error`, and its stream carries an `error` event (name `RunError`) with the delivery message before `end`, matching the `/wait` error envelope and the step-limit event described under `recursion_limit`.
+- Artifact delivery is enforced automatically when a run creates or modifies regular files under `/mnt/user-data/outputs`. `present_files` or `present_shared_artifact` must present at least one path produced by the current run (or a directory containing it), and the terminal receipt must be persisted; presenting only an unrelated file does not satisfy delivery. Runs without changed outputs retain ordinary conversational behavior. `artifact_delivery` is not a client-settable run option. A run failed this way is stored as `error`, and its stream carries an `error` event (name `RunError`) with the delivery message before `end`, matching the `/wait` error envelope and the step-limit event described under `recursion_limit`. Any other terminal `error` the worker commits after the graph ends — an unpersisted delivery receipt, or a scheduled-goal cleanup that failed — publishes the same event with that error message.
 - Unsupported options return `422`: `webhook`, `stream_resumable=true`, `after_seconds`, `feedback_keys`, any non-null `on_completion` value (including the SDK values `"complete"` and `"continue"`), `if_not_exists="reject"`, and `multitask_strategy="enqueue"`
 - `stream_resumable=false` is accepted: it is the LangGraph SDK's default and requests the non-resumable stream DeerFlow already serves
 - Undeclared SDK options, including `checkpoint_during` and `durability`, also return `422` instead of being silently discarded
@@ -498,9 +449,11 @@ the next request without restarting the Gateway. IM channel runs get the same
 default unless a channel `session.config` sets `recursion_limit` (GitHub channel
 runs have their own floor; see
 [CONFIGURATION.md](CONFIGURATION.md#recursion-limits)); embedded
-`DeerFlowClient` runs retain their own defaults and override paths. A run that
-reaches the limit ends with status `error` and `stop_reason: "recursion_capped"`;
-its stream `error` event and the `/wait` error envelope use the name
+`DeerFlowClient` runs retain their own defaults and override paths. When the current graph
+invocation has a terminal checkpoint at the limit, the Gateway finalizes the run
+normally. A run with work remaining at the limit ends with status `error` and
+`stop_reason: "recursion_capped"`. Its stream `error` event and the `/wait`
+error envelope use the name
 `GraphRecursionError`, and the message lists up to five outputs the run created
 but did not present.
 
@@ -618,10 +571,15 @@ Gateway API callers can attach up to three explicit references to create/stream/
 
 A reference is a valid thread ID or an absolute `/workspace/chats/{thread_id}` URL
 (also `/workspace/agents/{agent_name}/chats/{thread_id}` for custom agents)
-with the same scheme and authority as the run request, without query or fragment.
-URLs are parsed as local selectors and are never fetched. For split-origin clients
-or internal proxies, pass the thread ID. The field is separate from message text:
-links in pasted documents, tool results, or previous messages grant no access.
+on the host and port the client sent the run request to, without query or fragment.
+Gateway takes that host from `Forwarded` / `X-Forwarded-Host` / `Host`, as the CSRF
+check does, and appends `X-Forwarded-Port` when that host carries no port of its own.
+A stray `X-Forwarded-Port: 8443` therefore turns `deerflow.example` into
+`deerflow.example:8443`, and a link without that port gets a 422. The scheme is
+not compared, since behind a TLS proxy Gateway can see `http` for an `https` link. URLs are parsed as local selectors and are never fetched.
+For split-origin clients or internal proxies, pass the thread ID. The field is
+separate from message text: links in pasted documents, tool results, or previous
+messages grant no access.
 The server supplies source IDs to the model as background user-role data and
 binds the reader to this run's references and authenticated identity.
 
@@ -1874,6 +1832,8 @@ specified instant. Unchanged live once definitions keep their previously
 accepted execution time; a changed definition or a PATCH that rearms a terminal
 task is validated again. Ordinary Resume retains the admitted stored schedule
 without revalidating its wall time; a renewed `end_at` is still checked.
+Values outside the supported date-time range after UTC conversion return the
+same 422 codes, with the offending field named in the message.
 
 In a PATCH, sending `null` clears `goal_objective`, `max_runs`, `end_at` or
 `stop_condition` or `notification_group_connection_id`; for every other field `null` means unchanged (`assistant_id:
@@ -2075,11 +2035,11 @@ DeerFlow supports four HTTP identity sources. They share the same thread/run iso
 
 DeerFlow enforces authentication for all non-public HTTP routes. Public routes are limited to health/docs metadata and these public auth endpoints:
 
-- `POST /api/v1/auth/initialize` creates the first admin account when no admin exists. It stays open under both local-auth gates below, so a fresh install can never be locked out.
-- `POST /api/v1/auth/login/local` logs in with email/password and sets an HttpOnly `access_token` cookie. Answers `403 password_login_disabled` when `auth.local.password_login_enabled: false`; the gate runs ahead of the login throttle and of credential verification, so a closed deployment neither counts failures against a shared egress IP nor stays a password oracle. Already-issued session cookies are unaffected — this closes sign-in, it does not revoke sessions.
-- `POST /api/v1/auth/register` creates a regular `user` account and sets the session cookie. Answers `403 registration_disabled` when `auth.local.allow_registration: false`.
+- `POST /api/v1/auth/initialize` creates the first admin account when no admin exists.
+- `POST /api/v1/auth/login/local` logs in with email/password and sets an HttpOnly `access_token` cookie.
+- `POST /api/v1/auth/register` creates a regular `user` account and sets the session cookie.
 - `POST /api/v1/auth/logout` clears the session cookie.
-- `GET /api/v1/auth/setup-status` reports `{needs_setup, registration_enabled, password_login_enabled}`: whether the first admin still needs to be created, plus the two local-auth gates the login page renders from (the signup entry and the password form). Cached per client IP for up to 60s.
+- `GET /api/v1/auth/setup-status` reports whether the first admin still needs to be created.
 
 The authenticated auth endpoints are:
 
@@ -2390,6 +2350,38 @@ curl -X POST http://localhost:2026/api/langgraph/threads/abc123/runs/stream \
 > `config.recursion_limit` explicitly — see the [Create Run](#create-run)
 > section for details. Scheduled-task launches use
 > `scheduler.recursion_limit` from `config.yaml` instead of a client body.
+
+## Workspace search
+
+`POST /api/threads/search` additionally accepts an optional `query` (up to 256
+characters). It matches a trimmed, case-insensitive literal substring of the
+conversation title before pagination, preserving the existing array response.
+
+`POST /api/search` requires `threads:read` and returns grouped title/message
+matches for the current user. Message results additionally require `runs:read`
+and an installed `workspace_search` extension provider.
+
+```json
+{"query":"报告","types":["thread","message"],"archived":null,"limit":20,"cursor":null}
+```
+
+`types` defaults to both kinds; `limit` is 1–100. `archived` is a nullable boolean;
+`project_id` omitted includes every project, explicit null selects unassigned
+threads. Blank queries return recent titles. The response is
+`{items, cursor, indexing, messages_available}`. Each item carries `type`,
+`thread_id`, `title`, `agent_name`, `archived`, `project_id`, `updated_at` and
+`snippet` (plain-text `{text, matched?}` segments). Message hits also carry the
+canonical `message_id`, thread-global `seq` and `role`. Preserve the query and
+filters with each opaque cursor; invalid cursors return 400. When `indexing` is
+true, retry the current page until historical backfill completes. Provider errors
+return 503; without a provider, title search stays available.
+
+`GET /api/threads/{thread_id}/messages/around?message_id=...&seq=...&limit=20`
+requires `runs:read` and thread ownership. `seq` is an optional exact version hint;
+`limit` (1–50) bounds each side of the target. The response contains `messages`,
+`target_seq`, `has_before` and `has_after`. Hidden/superseded targets and stale
+version hints return 404. Earlier/later navigation uses the boundary message as
+the next anchor. The UI keeps these windows separate from live history.
 
 ## Chat archive and restore
 

@@ -24,6 +24,7 @@ from deerflow.persistence.channel_connections.model import (
 from deerflow.persistence.channel_leases.model import ChannelLeaseRow
 from deerflow.persistence.channel_runtime_configs.model import ChannelRuntimeConfigRow
 from deerflow.persistence.channel_thread_bindings.model import ChannelThreadBindingRow
+from deerflow.persistence.coordination.model import CoordinationArtifactRow, CoordinationAssignmentRow, CoordinationExecutionRow, CoordinationGrantRow, CoordinationInputRow, CoordinationTaskRow
 from deerflow.persistence.extension_leases.model import ExtensionExecutionLeaseRow
 from deerflow.persistence.external_login_tickets.model import ExternalLoginTicketRow
 from deerflow.persistence.feedback.model import FeedbackRow
@@ -63,6 +64,12 @@ __all__ = [
     "ChannelOAuthStateRow",
     "ChannelRuntimeConfigRow",
     "ChannelThreadBindingRow",
+    "CoordinationArtifactRow",
+    "CoordinationAssignmentRow",
+    "CoordinationExecutionRow",
+    "CoordinationGrantRow",
+    "CoordinationInputRow",
+    "CoordinationTaskRow",
     "FeedbackRow",
     "LoginThrottleRow",
     "McpOAuthTokenRow",
