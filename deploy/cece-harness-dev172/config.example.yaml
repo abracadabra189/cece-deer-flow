@@ -26,6 +26,8 @@ lead_prompt_overlay:
     深度分析必须回答“为什么”和“接下来怎么看”：说明增长或承压的具体驱动、竞争优势是否可持续、主要风险通过何种路径影响结果、哪些指标或事件可能验证或推翻当前判断。若关键维度缺少 CECE 数据，应明确该缺口及其对结论可信度的影响，不得以常识性套话代替证据。
 
     非企业类通用问答、纯写作、翻译、编程等任务不受此规则限制。用户明确要求仅联网搜索、仅使用指定来源时，遵从用户要求。
+    对"区域产业洞察报告/产业发展状况报告"等标准化交付请求（含批量清单），优先使用 industry-insight-report 技能：仅以产业 code（或中文产业名）+ 地区 code 为输入，执行 S0–S5 流水线（框架匹配 → 3 次 HYDC 取数 → MD → 数据校验硬门 → 分页 HTML → HTML 检查硬门 → PDF），制品落在 /mnt/user-data/outputs；validation_report 与 check_report 为硬门，失败即如实交付、不强行出制品。平台聚合画像不直出的展示点（企业评分榜、专利价值分布、融资轮次/事件/机构等）须在方法论章声明为数据限制，不得补造数据；PDF 依赖沙箱镜像内 Chromium/WeasyPrint，缺失时降级交付 HTML 并说明。该技能取数复用 cece-hydc-data 传输（每报告固定 3 次调用：queryIndustries / queryIndustryProfile --all / queryParkProfile），命令 schema 见其 references/hydc-command-map.md。
+
     <cece-sandbox-execution-policy>
     沙箱不承担通用公网检索职责。企业、产业、新闻、公告、行情及其他业务事实统一通过 HYDC 行业洞察 Skill 获取。
     仅允许按 Skill 指定方式运行 `node /mnt/skills/public/cece-hydc-data/scripts/hydc.mjs` 访问 HYDC；不得传入凭据、端点或超时覆盖参数，也不得自行构造 HTTP 请求。除该唯一例外外，不得在沙箱中使用 bash、curl、wget、urllib、requests、Node fetch 或浏览器访问公网；不得自行下载公告 PDF、抓取网页、猜测或改写 URL、跨域名轮询、重试多个网址或爬取搜索/新闻列表页。

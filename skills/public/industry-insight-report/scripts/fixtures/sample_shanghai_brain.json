@@ -1,0 +1,222 @@
+{
+  "meta": {
+    "region": {"adcode": "310000", "name": "上海市"},
+    "industry": {"code": "BRAINLIKE", "name": "类脑智能", "category": "future_industry"},
+    "as_of": "2026-11-19"
+  },
+  "datasets": {
+    "score": [
+      {"total": 93.49, "year": 2025, "grade": "A", "grade_index": 4,
+       "rank_national": [1, 337], "rank_region": [1, 77],
+       "rank_national_label": "全国城市排名", "rank_region_label": "华东地区排名",
+       "dims": [
+         {"name": "产业规模", "score": 96.84, "grade": "A"},
+         {"name": "优质企业", "score": 94.26, "grade": "A"},
+         {"name": "创新能力", "score": 86.39, "grade": "A"},
+         {"name": "融资能力", "score": 95.92, "grade": "A"},
+         {"name": "产业效益", "score": 95.79, "grade": "A"},
+         {"name": "成长能力", "score": 90.98, "grade": "A"}]}
+    ],
+    "chain": [
+      {"blocks": [
+        {"name": "上游", "count": 51, "root": "基础理论与使能技术层", "mids": [
+          {"name": "基础硬件与材料", "leaves": ["脑信号传感与交互硬件", "神经形态计算硬件", "基础材料"]},
+          {"name": "核心算法与软件", "leaves": ["脑信号处理算法", "类脑计算模型与算法", "通用开发平台与工具"]},
+          {"name": "基础科研与数据", "leaves": ["脑科学研究", "脑神经数据集"]}]},
+        {"name": "中游", "count": 47, "root": "产品开发与系统集成层", "mids": [
+          {"name": "脑机接口产品与系统", "leaves": ["医疗级脑机接口系统", "消费级/研究级BCI设备"]},
+          {"name": "类脑计算产品与系统", "leaves": ["类脑计算芯片/板", "类脑计算解决方案"]},
+          {"name": "软件与集成服务", "leaves": ["类脑智能专用软件", "类脑智能系统集成方案"]}]},
+        {"name": "下游", "count": 168, "root": "应用场景层", "mids": [
+          {"name": "医疗健康", "leaves": ["诊断与监测", "治疗与康复", "增强与替代"]},
+          {"name": "消费电子与娱乐", "leaves": ["交互与娱乐", "健康与生活"]},
+          {"name": "科研与教育", "leaves": ["注意力训练系统", "学习障碍辅助工具"]},
+          {"name": "工业制造", "leaves": ["工业人机协作系统/设备", "高危环境作业辅助系统/设备"]},
+          {"name": "国防与军事", "leaves": ["单兵作战辅助系统/设备", "脑控无人机集群协同系统/设备"]}]}]}
+    ],
+    "ent_trend": [
+      {"year": 2017, "stock": 155, "new_reg": 12},
+      {"year": 2018, "stock": 168, "new_reg": 13},
+      {"year": 2019, "stock": 183, "new_reg": 15},
+      {"year": 2020, "stock": 192, "new_reg": 9},
+      {"year": 2021, "stock": 208, "new_reg": 16},
+      {"year": 2022, "stock": 217, "new_reg": 9},
+      {"year": 2023, "stock": 225, "new_reg": 8},
+      {"year": 2024, "stock": 228, "new_reg": 10},
+      {"year": 2025, "stock": 231, "new_reg": 14},
+      {"year": 2026, "stock": 253, "new_reg": 25}
+    ],
+    "ent_structure": [
+      {"total": 253, "listed": 2, "listed_share": 0.79, "srme": 29, "srme_share": 11.46,
+       "hightech": 46, "hightech_share": 18.18}
+    ],
+    "ent_capital": [
+      {"name": "100万元以下", "count": 55, "share": 21.83},
+      {"name": "100万~500万元", "count": 97, "share": 38.49},
+      {"name": "500万~1000万元", "count": 42, "share": 16.67},
+      {"name": "1000万~3000万元", "count": 39, "share": 15.42},
+      {"name": "3000万~5000万元", "count": 2, "share": 0.79},
+      {"name": "5000万~1亿元", "count": 7, "share": 2.78},
+      {"name": "1亿元以上", "count": 11, "share": 4.36}
+    ],
+    "ent_age": [
+      {"name": "三个月内", "count": 6, "share": 2.37},
+      {"name": "半年内", "count": 18, "share": 7.11},
+      {"name": "一年内", "count": 27, "share": 10.67},
+      {"name": "1-3年", "count": 30, "share": 11.86},
+      {"name": "3-5年", "count": 17, "share": 6.72},
+      {"name": "5-10年", "count": 65, "share": 25.69},
+      {"name": "10年以上", "count": 90, "share": 35.57}
+    ],
+    "ent_region": [
+      {"name": "浦东新区", "total": 58, "listed": 2, "srme": 11, "hightech": 12},
+      {"name": "闵行区", "total": 32, "listed": 0, "srme": 5, "hightech": 7},
+      {"name": "奉贤区", "total": 22, "listed": 0, "srme": 0, "hightech": 2},
+      {"name": "杨浦区", "total": 20, "listed": 0, "srme": 2, "hightech": 4},
+      {"name": "松江区", "total": 20, "listed": 0, "srme": 2, "hightech": 4},
+      {"name": "青浦区", "total": 19, "listed": 0, "srme": 1, "hightech": 4},
+      {"name": "宝山区", "total": 15, "listed": 0, "srme": 3, "hightech": 4},
+      {"name": "徐汇区", "total": 15, "listed": 0, "srme": 0, "hightech": 1},
+      {"name": "嘉定区", "total": 13, "listed": 0, "srme": 1, "hightech": 2},
+      {"name": "黄浦区", "total": 8, "listed": 0, "srme": 2, "hightech": 2}
+    ],
+    "ent_top": [
+      {"rank": 1, "name": "上海步科自动化股份有限公司", "district": "上海市/浦东新区", "reg_cap": "9,083.22 万元", "value_yuan": 90832200, "display_unit": "万元", "patents": 6, "score": 85.17},
+      {"rank": 2, "name": "上海傅利叶智能科技股份有限公司", "district": "上海市/浦东新区", "reg_cap": "404.94 万元", "value_yuan": 4049400, "display_unit": "万元", "patents": 213, "score": 84.78},
+      {"rank": 3, "name": "上海岩山科技股份有限公司", "district": "上海市/浦东新区", "reg_cap": "56.67 亿元", "value_yuan": 5667000000, "display_unit": "亿元", "patents": 0, "score": 84.29},
+      {"rank": 4, "name": "节卡机器人股份有限公司", "district": "上海市/闵行区", "reg_cap": "6,364.08 万元", "value_yuan": 63640800, "display_unit": "万元", "patents": 80, "score": 84.01},
+      {"rank": 5, "name": "上海图灵智造机器人股份有限公司", "district": "上海市/宝山区", "reg_cap": "4.43 亿元", "value_yuan": 443000000, "display_unit": "亿元", "patents": 13, "score": 83.80}
+    ],
+    "patent_summary": [
+      {"total": 6316, "fa": 3061, "fs": 3102, "sy": 153, "wg": 0,
+       "year_new": 2076, "year_new_fa": 1272, "year_new_fs": 795, "year_new_sy": 9}
+    ],
+    "patent_trend": [
+      {"year": 2017, "fa": 110, "sy": 5, "wg": 0, "fs": 30},
+      {"year": 2018, "fa": 175, "sy": 8, "wg": 0, "fs": 45},
+      {"year": 2019, "fa": 205, "sy": 10, "wg": 0, "fs": 55},
+      {"year": 2020, "fa": 265, "sy": 12, "wg": 0, "fs": 70},
+      {"year": 2021, "fa": 335, "sy": 15, "wg": 0, "fs": 90},
+      {"year": 2022, "fa": 395, "sy": 18, "wg": 0, "fs": 110},
+      {"year": 2023, "fa": 480, "sy": 20, "wg": 0, "fs": 130},
+      {"year": 2024, "fa": 745, "sy": 25, "wg": 0, "fs": 180},
+      {"year": 2025, "fa": 815, "sy": 30, "wg": 0, "fs": 200},
+      {"year": 2026, "fa": 1272, "sy": 9, "wg": 0, "fs": 795}
+    ],
+    "patent_value": [
+      {"dims_rows": ["技术稳定性", "技术先进性", "保护范围"],
+       "cols": ["10分", "9分", "8分", "7分", "6分", "5分", "4分", "3分", "2分", "1分"],
+       "matrix": [
+         [30, 320, 60, 40, 0, 20, 2904, 60, 40, 30],
+         [60, 120, 80, 90, 40, 70, 80, 90, 80, 1080],
+         [40, 60, 50, 4312, 60, 40, 30, 20, 20, 20]],
+       "dist": [
+         {"score": 3, "count": 8, "share": 0.13}, {"score": 4, "count": 18, "share": 0.28},
+         {"score": 5, "count": 627, "share": 9.93}, {"score": 6, "count": 903, "share": 14.30},
+         {"score": 7, "count": 791, "share": 12.52}, {"score": 8, "count": 1332, "share": 21.09},
+         {"score": 9, "count": 2174, "share": 34.42}, {"score": 10, "count": 463, "share": 7.33}],
+       "top_dim": {"技术稳定性": [4, 2904, 45.98], "技术先进性": [9, 1080, 17.10], "保护范围": [7, 4312, 68.27]}}
+    ],
+    "patent_tech": [
+      {"rank": 1, "name": "程序控制机械手", "count": 2279},
+      {"rank": 2, "name": "仿真虚拟化技术", "count": 740},
+      {"rank": 3, "name": "分类模型技术", "count": 633},
+      {"rank": 4, "name": "神经网络硬件实现", "count": 563},
+      {"rank": 5, "name": "神经网络学习方法", "count": 227},
+      {"rank": 6, "name": "神经网络架构", "count": 223},
+      {"rank": 7, "name": "语音识别技术", "count": 187},
+      {"rank": 8, "name": "心理术测试装置", "count": 176},
+      {"rank": 9, "name": "虚拟生命模拟技术", "count": 152},
+      {"rank": 10, "name": "神经网络组合结构", "count": 131}
+    ],
+    "patent_region": [
+      {"rank": 1, "name": "浦东新区", "total": 2121, "fa": 883, "fs": 1193, "sy": 45, "wg": 0},
+      {"rank": 2, "name": "闵行区", "total": 1216, "fa": 619, "fs": 572, "sy": 25, "wg": 0},
+      {"rank": 3, "name": "杨浦区", "total": 667, "fa": 317, "fs": 340, "sy": 10, "wg": 0},
+      {"rank": 4, "name": "徐汇区", "total": 643, "fa": 314, "fs": 316, "sy": 13, "wg": 0},
+      {"rank": 5, "name": "嘉定区", "total": 297, "fa": 159, "fs": 123, "sy": 15, "wg": 0}
+    ],
+    "patent_applicant": [
+      {"rank": 1, "name": "上海交通大学", "total": 424, "fa": 191, "fs": 230, "sy": 3, "wg": 0},
+      {"rank": 2, "name": "上海寒武纪信息科技有限公司", "total": 291, "fa": 34, "fs": 252, "sy": 5, "wg": 0},
+      {"rank": 3, "name": "同济大学", "total": 231, "fa": 89, "fs": 142, "sy": 0, "wg": 0},
+      {"rank": 4, "name": "复旦大学", "total": 205, "fa": 105, "fs": 99, "sy": 1, "wg": 0},
+      {"rank": 5, "name": "上海大学", "total": 142, "fa": 64, "fs": 78, "sy": 0, "wg": 0}
+    ],
+    "fin_summary": [
+      {"count": 15328, "amount_yi": 3215.27, "active_year": 2026, "active_count": 2396,
+       "top_year": 2025, "top_amount_yi": 595.28, "last_year_count": 2774, "last_year_amount_yi": 667.16}
+    ],
+    "fin_index": [
+      {"year": 2020, "revenue_index": 100, "asset_index": 100},
+      {"year": 2021, "revenue_index": 115, "asset_index": 108},
+      {"year": 2022, "revenue_index": 82, "asset_index": 85},
+      {"year": 2023, "revenue_index": 112, "asset_index": 115},
+      {"year": 2024, "revenue_index": 112, "asset_index": 115},
+      {"year": 2025, "revenue_index": 111.98, "asset_index": 114.92}
+    ],
+    "fin_trend": [
+      {"year": 2017, "amount_yi": 290, "count": 220},
+      {"year": 2018, "amount_yi": 130, "count": 400},
+      {"year": 2019, "amount_yi": 460, "count": 620},
+      {"year": 2020, "amount_yi": 360, "count": 1050},
+      {"year": 2021, "amount_yi": 370, "count": 2380},
+      {"year": 2022, "amount_yi": 178, "count": 1880},
+      {"year": 2023, "amount_yi": 165, "count": 2150},
+      {"year": 2024, "amount_yi": 198, "count": 1900},
+      {"year": 2025, "amount_yi": 595.28, "count": 2332},
+      {"year": 2026, "amount_yi": 468.99, "count": 2396}
+    ],
+    "fin_type": [
+      {"name": "应收账款融资", "amount_wan": 4524034.4, "share": 67.81},
+      {"name": "创投融资", "amount_wan": 1613197.63, "share": 24.18},
+      {"name": "股票融资", "amount_wan": 277600, "share": 4.16},
+      {"name": "债券融资", "amount_wan": 245000, "share": 3.67},
+      {"name": "银行借款", "amount_wan": 11805, "share": 0.18}
+    ],
+    "fin_round": [
+      {"name": "种子/天使轮", "count": 35, "share": 28.46},
+      {"name": "其他", "count": 37, "share": 30.08},
+      {"name": "A轮", "count": 21, "share": 17.07},
+      {"name": "B轮", "count": 17, "share": 13.82},
+      {"name": "C轮", "count": 5, "share": 4.07},
+      {"name": "战略投资", "count": 4, "share": 3.25},
+      {"name": "D轮", "count": 3, "share": 2.44},
+      {"name": "E轮及以上", "count": 1, "share": 0.81}
+    ],
+    "fin_region": [
+      {"name": "浦东新区", "count": 32}, {"name": "徐汇区", "count": 23},
+      {"name": "松江区", "count": 13}, {"name": "闵行区", "count": 12},
+      {"name": "奉贤区", "count": 9}, {"name": "嘉定区", "count": 5},
+      {"name": "杨浦区", "count": 5}, {"name": "黄浦区", "count": 4},
+      {"name": "宝山区", "count": 4}, {"name": "青浦区", "count": 4}
+    ],
+    "fin_events": [
+      {"rank": 1, "name": "上海新微科技集团有限公司", "amount_wan": 257000.00, "value_yuan": 2570000000, "display_unit": "万元", "round": "B 轮", "date": "2025-12-30", "investors": "深投控资本、中电科投资、工银投资、国家绿色发展基金等"},
+      {"rank": 2, "name": "上海图灵智算量子科技股份有限公司", "amount_wan": 12920.00, "value_yuan": 129200000, "display_unit": "万元", "round": "B 轮", "date": "2026-06-15", "investors": "上海金浦二期、共青城慕华二十号等"},
+      {"rank": 3, "name": "上海朋熙半导体股份有限公司", "amount_wan": 4260.00, "value_yuan": 42600000, "display_unit": "万元", "round": "A 轮", "date": "2025-11-24", "investors": "佛山金醇陆号、央视融媒体产业投资基金等"},
+      {"rank": 4, "name": "上海主动科技有限公司", "amount_wan": 33000.00, "value_yuan": 330000000, "display_unit": "万元", "round": "种子/天使轮", "date": "2026-08-03", "investors": "华大松禾生科一号、英诺天使、九合创投等"}
+    ],
+    "fin_inst": [
+      {"rank": 1, "name": "上海科技创业投资有限公司", "stages": "扩张期,初创期,成熟期,种子期", "count": 14, "amount_yi": 1.87},
+      {"rank": 2, "name": "上海科技创业投资(集团)有限公司", "stages": "扩张期,初创期,种子期,成熟期", "count": 8, "amount_yi": 0.06},
+      {"rank": 3, "name": "深圳市创新投资集团有限公司", "stages": "扩张期,成熟期,初创期,种子期", "count": 7, "amount_yi": 4.00},
+      {"rank": 4, "name": "上海浦东引领区投资中心(有限合伙)", "stages": "", "count": 6, "amount_yi": 18.05},
+      {"rank": 5, "name": "上海联和投资有限公司", "stages": "扩张期,初创期,种子期,成熟期", "count": 6, "amount_yi": 6.16}
+    ],
+    "parks": [
+      {"rank": 1, "name": "上海张江高新技术产业开发区", "region": "上海市", "level": "国家级", "park_total": 1210554, "entered": 162, "ratio": 0.01},
+      {"rank": 2, "name": "浦东新区", "region": "上海市/浦东新区", "level": "国家级", "park_total": 510573, "entered": 67, "ratio": 0.01},
+      {"rank": 3, "name": "中国(上海)自由贸易试验区", "region": "上海市/浦东新区", "level": "国家级", "park_total": 542077, "entered": 55, "ratio": 0.01},
+      {"rank": 4, "name": "中国(上海)自由贸易试验区临港新片区", "region": "上海市/浦东新区", "level": "省级", "park_total": 393077, "entered": 26, "ratio": 0.01},
+      {"rank": 5, "name": "张江高新区核心园", "region": "上海市/浦东新区", "level": "省级", "park_total": 57839, "entered": 25, "ratio": 0.04}
+    ],
+    "parks_ratio": [
+      {"rank": 1, "name": "Xin Park 新园(新展城园区)", "region": "上海市/浦东新区", "level": "其他", "park_total": 29, "entered": 1, "ratio": 3.45},
+      {"rank": 2, "name": "富友科技园", "region": "上海市/浦东新区", "level": "其他", "park_total": 32, "entered": 1, "ratio": 3.13},
+      {"rank": 3, "name": "金桥出口加工区 22 号", "region": "上海市/浦东新区", "level": "其他", "park_total": 32, "entered": 1, "ratio": 3.13},
+      {"rank": 4, "name": "尧谷·创空间", "region": "上海市/闵行区", "level": "其他", "park_total": 32, "entered": 1, "ratio": 3.13},
+      {"rank": 5, "name": "颛桥科技绿洲", "region": "上海市/闵行区", "level": "其他", "park_total": 32, "entered": 1, "ratio": 3.13}
+    ]
+  }
+}

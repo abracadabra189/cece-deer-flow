@@ -80,6 +80,17 @@ This baseline sets `skills.deferred_discovery: true`, so the system prompt conta
 
 To roll back, set `auto_skill.enabled: false` (effective next run) and delete `{DEER_FLOW_HOME}/integrations/skills/auto-skill` plus `{DEER_FLOW_HOME}/auto-skill-backup`. Individual scenarios can be restored from `auto-skill-backup/{name}/v{n}/`.
 
+## Industry insight report pipeline (`industry-insight-report`)
+
+- 触发："区域产业洞察报告 / 产业发展状况报告"等标准化交付请求（含批量清单）；输入仅产业 code（或中文产业名）+ 地区 code。策略段见 `config.example.yaml` 的 `lead_prompt_overlay`。
+- Composer `@` 提及：技能为 public 且默认 enabled，`GET /api/skills` 即列出；description 内含中文触发词（产业洞察/产业报告/区域产业/行业发展状况/批量报告）供 picker 搜索与 deferred discovery 匹配。若中文命中弱，可按上文 `skills.deferred_discovery` 一节切换为全描述注入。
+- 流水线与硬门见技能 `skills/public/industry-insight-report/SKILL.md`：S0–S5（框架匹配 → 取数 → MD → 数据校验 → 分页 HTML → HTML 检查 → PDF），validation/check 失败即如实交付。
+- 取数复用 cece-hydc-data 传输与本文的 `HYDC_API_KEY` 沙箱注入；每报告固定 3 次调用（queryIndustries / queryIndustryProfile --all / queryParkProfile），命令 schema 见技能 `references/hydc-command-map.md`。
+- 制品落 `/mnt/user-data/outputs`（report.md / report.html / report.pdf）。`cece-harness-sandbox:base-v1` 内置 WeasyPrint 与 Noto CJK 字体（无 Chromium），S5 走 WeasyPrint 回退路径出 PDF（页数由 render API 直取）；两者皆缺时才降级交付 HTML 并在 `pdf_check.json` 声明。
+- 展示点边界：平台聚合画像不直出 ent_top / patent_value / patent_tech / patent_region / patent_applicant / fin_round / fin_events / fin_inst 八类展示点，技能登记 limitation 并在方法论章声明，不补造数据。
+- 部署后验证（沙箱 prewarm 完成后）：
+  `docker exec <cece-harness-sandbox-*> sh -c 'printenv HYDC_API_KEY | wc -c; node /mnt/skills/public/cece-hydc-data/scripts/hydc.mjs help | head -c 80'`
+
 ## Recursion limit
 
 The template sets `recursion_limit: 1000` (equal to the default `max_recursion_limit`). The middleware chain consumes several LangGraph super-steps per logical turn, and HYDC research often needs `help` plus several `query` calls; the previous default could exhaust the step budget before a final answer was produced, and a truncated run has no learnable answer for auto-skill. Cost remains bounded by `token_budget.max_tokens`.

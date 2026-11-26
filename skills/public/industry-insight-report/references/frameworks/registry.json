@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "updated": "2026-11-20",
+  "note": "产业分析框架库。categories<=20；frameworks 含来源引用；combination_rules 定义多框架合成新框架的规则。运行时只读；入库变更走 PR。",
+  "categories": [
+    {"id": "next_gen_it", "name": "新一代信息技术", "keywords": ["软件", "信息服务", "通信", "物联网", "云计算"], "examples": ["工业软件", "5G通信"], "default_combo": "regional_industry_composite", "chain_hint": "基础软硬件→平台与服务→行业应用"},
+    {"id": "integrated_circuit", "name": "集成电路与半导体", "keywords": ["芯片", "半导体", "集成电路", "封装"], "examples": ["芯片设计", "第三代半导体"], "default_combo": "regional_industry_composite", "chain_hint": "材料/设备/EDA→设计/制造/封测→整机与系统应用"},
+    {"id": "ai", "name": "人工智能", "keywords": ["人工智能", "大模型", "智能机器人", "机器视觉"], "examples": ["生成式AI", "智能网联"], "default_combo": "regional_industry_composite", "chain_hint": "算力/数据/算法→模型与平台→行业应用"},
+    {"id": "future_industry", "name": "未来产业", "keywords": ["类脑", "量子", "合成生物", "脑机接口", "未来网络"], "examples": ["类脑智能", "量子信息"], "default_combo": "future_industry_composite", "chain_hint": "基础理论与使能技术→产品开发与系统集成→应用场景"},
+    {"id": "biomedicine", "name": "生物医药", "keywords": ["生物药", "化学药", "疫苗", "CXO"], "examples": ["创新药", "生物制品"], "default_combo": "regional_industry_composite", "chain_hint": "原料/研发服务→研发/生产→流通/医疗终端"},
+    {"id": "life_health", "name": "生命健康与医疗器械", "keywords": ["医疗器械", "医疗服务", "康复", "诊断"], "examples": ["高端影像设备", "脑机医疗"], "default_combo": "regional_industry_composite", "chain_hint": "核心部件/材料→整机与试剂→医院/家庭场景"},
+    {"id": "high_end_equipment", "name": "高端装备与机器人", "keywords": ["机器人", "数控机床", "智能装备", "激光"], "examples": ["工业机器人", "人形机器人"], "default_combo": "regional_industry_composite", "chain_hint": "核心零部件→本体/整机→系统集成与应用"},
+    {"id": "aerospace", "name": "航空航天", "keywords": ["航空", "航天", "卫星", "无人机"], "examples": ["商业航天", "低空经济"], "default_combo": "regional_industry_composite", "chain_hint": "材料/元器件→分系统/总装→运营与服务"},
+    {"id": "new_energy", "name": "新能源与储能", "keywords": ["光伏", "风电", "氢能", "储能", "核电"], "examples": ["新型储能", "氢能"], "default_combo": "regional_industry_composite", "chain_hint": "材料/设备→制造/电站→并网/应用服务"},
+    {"id": "nev", "name": "新能源汽车与智能网联", "keywords": ["新能源汽车", "动力电池", "智能网联", "充电桩"], "examples": ["整车", "三电系统"], "default_combo": "regional_industry_composite", "chain_hint": "材料/三电/芯片→整车制造→销售/补能/后市场"},
+    {"id": "new_materials", "name": "新材料", "keywords": ["新材料", "特钢", "复合材料", "电子化学品"], "examples": ["碳纤维", "半导体材料"], "default_combo": "regional_industry_composite", "chain_hint": "原料/制备装备→材料生产→下游制品应用"},
+    {"id": "green_env", "name": "节能环保与绿色低碳", "keywords": ["环保", "节能", "资源循环", "双碳"], "examples": ["固废处理", "碳捕集"], "default_combo": "regional_industry_composite", "chain_hint": "装备/药剂→工程/运营→监测与交易服务"},
+    {"id": "digital_economy", "name": "数字经济核心产业", "keywords": ["大数据", "区块链", "平台经济", "元宇宙"], "examples": ["数据要素", "数字内容"], "default_combo": "regional_industry_composite", "chain_hint": "基础设施/数据资源→平台与工具→数字化应用"},
+    {"id": "smart_mfg", "name": "智能制造与工业互联网", "keywords": ["工业互联网", "智能制造", "数字孪生"], "examples": ["智能工厂", "工业软件"], "default_combo": "regional_industry_composite", "chain_hint": "网络/平台/安全→解决方案→行业赋能"},
+    {"id": "marine", "name": "海洋经济与海工装备", "keywords": ["海洋", "船舶", "海工", "港口"], "examples": ["海洋工程装备", "海洋生物"], "default_combo": "regional_industry_composite", "chain_hint": "配套/材料→总装/工程→航运/资源开发服务"},
+    {"id": "modern_agri", "name": "现代农业与食品", "keywords": ["农业", "种业", "食品", "智慧农业"], "examples": ["生物育种", "预制菜"], "default_combo": "regional_industry_composite", "chain_hint": "种业/农资→种养/加工→流通/品牌消费"},
+    {"id": "culture_tourism", "name": "文旅与创意产业", "keywords": ["文旅", "文创", "影视", "游戏", "演艺"], "examples": ["数字文创", "演艺经济"], "default_combo": "demand_side_composite", "chain_hint": "内容创作/IP→制作/运营→传播/消费场景"},
+    {"id": "modern_finance", "name": "现代金融与金融科技", "keywords": ["金融", "金融科技", "支付", "资管"], "examples": ["金融科技", "绿色金融"], "default_combo": "demand_side_composite", "chain_hint": "基础设施/数据→产品/机构→服务场景"},
+    {"id": "logistics", "name": "商贸物流与供应链", "keywords": ["物流", "供应链", "电商", "冷链"], "examples": ["智慧物流", "跨境电商"], "default_combo": "demand_side_composite", "chain_hint": "运力/仓储/系统→网络运营→行业供应链服务"},
+    {"id": "construction", "name": "建筑与智能建造", "keywords": ["建筑", "建材", "智能建造", "装配式"], "examples": ["装配式建筑", "城市更新"], "default_combo": "demand_side_composite", "chain_hint": "材料/装备/设计→施工/总装→运维/更新服务"}
+  ],
+  "frameworks": [
+    {"id": "scorecard6", "name": "六维产业评分卡", "source": "行业洞察平台产业综合评分模型（样张方法论）", "applies_to": ["*"], "required_data": ["score"], "typical_charts": ["score_bar", "radar"], "reasoning_chain": ["综合分与排名定位", "六维强弱项识别", "短板归因"]},
+    {"id": "value_chain", "name": "产业价值链（上中下游）", "source": "Porter, M. Competitive Advantage (1985)；产业链分析通用范式", "applies_to": ["*"], "required_data": ["chain"], "typical_charts": ["tree"], "reasoning_chain": ["环节拆解", "企业/专利在环节的分布", "高附加值环节识别"]},
+    {"id": "porter_diamond", "name": "波特钻石模型（区域竞争力）", "source": "Porter, M. The Competitive Advantage of Nations (1990)", "source_url": "https://mdpi.com/2079-8954/14/4/338", "applies_to": ["*"], "required_data": ["score", "ent_region", "ent_top"], "typical_charts": ["radar", "hbar"], "reasoning_chain": ["要素条件", "需求条件", "相关与支持产业", "企业战略与同业竞争"]},
+    {"id": "porter_five", "name": "波特五力", "source": "Porter, M. How Competitive Forces Shape Strategy (1979)", "applies_to": ["integrated_circuit", "nev", "biomedicine", "high_end_equipment"], "required_data": ["ent_top", "ent_structure"], "typical_charts": ["table"], "reasoning_chain": ["进入壁垒", "供方/买方议价", "替代品", "同业竞争强度"]},
+    {"id": "pestel", "name": "PESTEL 宏观环境", "source": "Aguilar, F. Scanning Business Environments (1967) 扩展范式", "applies_to": ["*"], "required_data": [], "typical_charts": ["table"], "reasoning_chain": ["政策", "经济", "社会", "技术", "环境", "法律"], "note": "定性框架；联网开关开启时用于政策线索收集，不产数字"},
+    {"id": "lifecycle", "name": "产业生命周期/技术采用周期", "source": "Vernon, R. (1966)；Rogers, E. Diffusion of Innovations", "applies_to": ["*"], "required_data": ["ent_trend", "patent_trend", "fin_trend"], "typical_charts": ["bar_grouped", "line_index"], "reasoning_chain": ["阶段判定（导入/成长/成熟/衰退）", "增速与进入者结构", "阶段策略含义"]},
+    {"id": "four_chains", "name": "四链融合评价（创新链产业链资金链人才链）", "source": "聂常虹等. 中国科学院院刊, 2024, 39(2): 262-269", "source_url": "http://old2022.bulletin.cas.cn/zgkxyyk/ch/reader/view_abstract.aspx?file_no=20260116", "applies_to": ["*"], "required_data": ["patent_trend", "chain", "fin_trend", "ent_top"], "typical_charts": ["bar_stacked", "dual_bar_line"], "reasoning_chain": ["创新链（专利/申请人）", "产业链（环节完整度）", "资金链（融资趋势/轮次）", "人才链（高校/科研机构申请人占比作代理）"]},
+    {"id": "chain_resilience", "name": "产业链韧性评价", "source": "统计与信息论坛：产业链基础能力/抵御能力/控制力/创新能力多维指标体系", "source_url": "https://tjlt.cbpt.cnki.net/portal/journal/portal/client/paper/0fd7dbc067d92e227cc5143e3f263297", "applies_to": ["integrated_circuit", "high_end_equipment", "aerospace", "nev"], "required_data": ["chain", "ent_region", "patent_tech"], "typical_charts": ["tree", "hbar"], "reasoning_chain": ["基础能力", "抵御能力（区域/环节集中度风险）", "控制力（龙头与关键技术）", "创新能力"]},
+    {"id": "tam_sam_som", "name": "TAM-SAM-SOM 市场空间", "source": "通用市场测算范式（McKinsey/BCG 实践）", "applies_to": ["ai", "nev", "biomedicine", "digital_economy"], "required_data": [], "typical_charts": ["funnel"], "reasoning_chain": ["总市场", "可服务市场", "可获得市场"], "note": "需外部市场规模数据；HYDC 无则降级为定性"},
+    {"id": "bcg", "name": "BCG 增长-份额矩阵", "source": "BCG Growth-Share Matrix (1970)", "applies_to": ["*"], "required_data": ["ent_trend", "fin_region"], "typical_charts": ["scatter"], "reasoning_chain": ["细分环节增速×份额定位", "资源投放含义"]},
+    {"id": "ge_mckinsey", "name": "GE-McKinsey 九宫格", "source": "GE/McKinsey Portfolio Matrix", "applies_to": ["*"], "required_data": ["score", "ent_region"], "typical_charts": ["scatter"], "reasoning_chain": ["产业吸引力×区域竞争强度", "优先序"]},
+    {"id": "gartner", "name": "Gartner 技术成熟度曲线", "source": "Gartner Hype Cycle", "applies_to": ["future_industry", "ai", "digital_economy"], "required_data": ["patent_trend"], "typical_charts": ["line_index"], "reasoning_chain": ["技术触发/期望峰值/幻灭/启蒙/ plateau 定位", "专利增速佐证"]},
+    {"id": "patent_value", "name": "专利价值三维模型", "source": "行业洞察平台专利价值模型（技术稳定性/先进性/保护范围，0-10 分）", "applies_to": ["*"], "required_data": ["patent_value"], "typical_charts": ["donut", "bubble_grid"], "reasoning_chain": ["综合价值分布", "三维分项结构", "高价值专利集中度"]},
+    {"id": "swot", "name": "SWOT", "source": "Learned/Kennedy/Andrews/Christensen (1965)", "applies_to": ["*"], "required_data": ["score"], "typical_charts": ["table"], "reasoning_chain": ["优势/劣势（六维）", "机会/威胁（趋势与竞争）"]},
+    {"id": "mckinsey_arenas", "name": "McKinsey MGI 未来竞争赛道", "source": "McKinsey Global Institute, The race takes off in the next big arenas of competition (18 future arenas)", "source_url": "https://mckinsey.com/mgi/our-research/the-race-takes-off-in-the-next-big-arenas-of-competition", "applies_to": ["future_industry", "ai", "new_energy"], "required_data": ["fin_trend", "patent_trend"], "typical_charts": ["dual_bar_line"], "reasoning_chain": ["赛道全球资本/技术热度对照", "本地位势"]}
+  ],
+  "combination_rules": [
+    {"id": "regional_industry_composite", "name": "区域产业洞察复合框架", "members": ["scorecard6", "value_chain", "porter_diamond", "four_chains"], "when": "默认：地区×产业综合洞察报告", "merged_logic": "评分定位（scorecard6）→ 结构拆解（value_chain）→ 区域竞争力归因（porter_diamond）→ 创新/资金支撑度（four_chains）；章→框架映射：一=scorecard6，二=value_chain，三=porter_diamond+scorecard6，四=four_chains(创新链)+patent_value，五=four_chains(资金链)+lifecycle"},
+    {"id": "future_industry_composite", "name": "未来产业复合框架", "members": ["regional_industry_composite", "gartner", "mckinsey_arenas"], "when": "category=future_industry 或产业处于导入期", "merged_logic": "在复合框架上叠加成熟度定位（gartner）与全球赛道热度对照（mckinsey_arenas），四章增'成熟度与赛道位势'小节"},
+    {"id": "demand_side_composite", "name": "需求侧产业复合框架", "members": ["scorecard6", "value_chain", "lifecycle", "swot"], "when": "category ∈ {culture_tourism, modern_finance, logistics, construction}", "merged_logic": "评分+链条基础上以生命周期判阶段、SWOT 收口；投融资章权重下调、载体章权重上调"}
+  ],
+  "matching": {
+    "rule": "industry_code → category：先查外部产业字典；未命中时用 keywords 对产业名做包含匹配；仍未命中落 future_industry 并在 framework.json 登记 assumed=true。",
+    "framework_count": "每报告 2-4 个互补框架；组合框架按 members 展开计数。",
+    "data_feasible": "框架 required_data 中 P0 数据集缺失时降级或替换为同章备选框架，并在 framework.json 记录 downgrade 原因。"
+  }
+}

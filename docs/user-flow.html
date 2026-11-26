@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeerFlow 2.0 用户输入到输出全流程</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:#f4f5f7;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+    color:#3c4043;
+    padding:28px 20px 48px;
+  }
+  .sheet{
+    max-width:1120px;margin:0 auto;background:#ffffff;
+    border:1px solid #dcdfe3;border-radius:6px;
+    padding:0 26px 44px;position:relative;
+  }
+  .tab{
+    display:inline-block;background:#eceff1;border:1px solid #dcdfe3;
+    border-top:none;border-radius:0 0 4px 4px;
+    font-size:13px;color:#5f6368;padding:5px 18px;margin-left:-6px;
+  }
+  h1{
+    text-align:center;font-size:17px;font-weight:700;color:#3c4043;
+    margin:32px 0 8px;letter-spacing:.02em;
+  }
+  .subtitle{text-align:center;font-size:12.5px;color:#80868b;margin-bottom:26px}
+
+  /* 阶段布局：左侧编号 + 右侧内容带 */
+  .stage{display:grid;grid-template-columns:46px 1fr;margin-bottom:2px}
+  .stage-no{
+    writing-mode:vertical-rl;text-orientation:mixed;
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;letter-spacing:.18em;color:#ffffff;
+    border-radius:6px;margin:0 8px 10px 0;padding:10px 0;
+  }
+  .stage-no small{letter-spacing:.05em;font-weight:400;opacity:.85;margin-top:6px;font-size:10px}
+  .stage-body{min-width:0}
+
+  .band{
+    border-radius:8px;padding:12px 16px 14px;margin-bottom:10px;position:relative;
+  }
+  .band .bt{
+    text-align:center;font-size:13px;font-weight:600;color:#4a4f54;
+    padding:0 0 10px;
+  }
+  .band .bt small{font-weight:400;color:#80868b;font-size:11.5px}
+  .b-green {background:#e0f2e3;border:1px solid #c4e4ca}
+  .b-indigo{background:#e8eaf9;border:1px solid #ccd0ee}
+  .b-pink  {background:#fce6f0;border:1px solid #f0c8de}
+  .b-yellow{background:#fdf6dc;border:1px solid #efe2b0}
+  .b-peach {background:#fdeede;border:1px solid #f1d7b8}
+  .b-orange{background:#fbe9e2;border:1px solid #f0cfc0}
+  .b-teal  {background:#ddf3ee;border:1px solid #bde0d6}
+  .b-blue  {background:#e9f1fc;border:1px solid #c9dbf2}
+  .b-purple{background:#f0e7f8;border:1px solid #dbccea}
+  .b-gray  {background:#f1f3f4;border:1px dashed #c3c8cd}
+
+  .boxes{display:flex;flex-wrap:wrap;gap:9px;justify-content:center}
+  .box{
+    background:#ffffff;border:1px solid #c3c8cd;border-radius:3px;
+    font-size:12.5px;color:#3c4043;text-align:center;
+    padding:7px 13px;line-height:1.45;
+  }
+  .box small{display:block;font-size:10.5px;color:#80868b}
+  .box.dash{border-style:dashed;color:#80868b}
+  .box.core{border-color:#7a9cc6;box-shadow:0 0 0 1px #d7e3f3}
+  .box.decision{border-color:#d8a94e;box-shadow:0 0 0 1px #f2e5bd;background:#fffdf5}
+  .box.loop{border-color:#c58fd6;box-shadow:0 0 0 1px #ead9f2}
+
+  /* 箭头 */
+  .flow-arrow{display:flex;justify-content:center;margin:-4px 0 2px;position:relative;z-index:2}
+  .flow-note{
+    display:flex;justify-content:center;gap:14px;flex-wrap:wrap;
+    font-size:11px;color:#80868b;margin:-2px 0 4px;
+  }
+  .flow-note span{background:#f7f8f9;border:1px solid #e3e5e8;border-radius:10px;padding:2px 10px}
+
+  /* 分支容器 */
+  .branch-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:9px}
+  .branch{
+    background:#ffffff;border:1px solid #c3c8cd;border-radius:6px;padding:9px 10px;
+    font-size:12px;line-height:1.5;
+  }
+  .branch .bh{font-weight:600;font-size:12.5px;text-align:center;margin-bottom:5px;color:#4a4f54}
+  .branch .bd{font-size:11px;color:#80868b;text-align:center}
+  .branch.core{border-color:#7a9cc6;box-shadow:0 0 0 1px #d7e3f3}
+  .branch.decision{border-color:#d8a94e;box-shadow:0 0 0 1px #f2e5bd;background:#fffdf5}
+  .branch.loop{border-color:#c58fd6;box-shadow:0 0 0 1px #ead9f2}
+
+  /* 回环标注 */
+  .loopback{
+    margin:-2px auto 10px;max-width:560px;
+    border:1px dashed #c58fd6;border-radius:8px;background:#faf5fd;
+    font-size:11.5px;color:#7a5a86;text-align:center;padding:6px 12px;line-height:1.6;
+  }
+
+  .note{
+    margin-top:14px;font-size:11.5px;color:#80868b;text-align:center;line-height:1.8;
+  }
+  footer{max-width:1120px;margin:18px auto 0;font-size:12px;color:#80868b;text-align:center}
+  .navlinks{max-width:1120px;margin:0 auto 14px;font-size:12.5px}
+  .navlinks a{color:#5f7fbe;text-decoration:none;margin-right:20px}
+  .navlinks a:hover{text-decoration:underline}
+
+  @media (max-width:720px){
+    .stage{grid-template-columns:1fr}
+    .stage-no{writing-mode:horizontal-tb;letter-spacing:.2em;padding:6px;margin:0 0 8px}
+  }
+</style>
+</head>
+<body>
+
+<div class="navlinks">
+  <span>DeerFlow 2.0 · 端到端流程图</span>
+</div>
+
+<div class="sheet">
+  <div class="tab">DeerFlow 2.0</div>
+  <h1>用户输入 → 输出生成 全流程</h1>
+  <p class="subtitle">七个阶段 · 与《FEATURES.md》功能点颗粒度一一对应 · 核心模块蓝色描边 · 决策点金色 · 循环回路边紫色</p>
+
+  <!-- ══════ 阶段 0：输入准备 ══════ -->
+  <div class="stage">
+    <div class="stage-no" style="background:#7f9d76">阶段 0<small>INPUT</small></div>
+    <div class="stage-body">
+      <div class="band b-green">
+        <div class="bt">用户输入 <small>多渠道 · 多形式 · 可修饰</small></div>
+        <div class="boxes">
+          <div class="box core">Web 工作台<br><small>Next.js · 输入框</small></div>
+          <div class="box">IM 渠道<br><small>飞书 / 企微 / 钉钉 / Slack</small></div>
+          <div class="box">Python Client<br><small>client.chat() 嵌入式</small></div>
+        </div>
+        <div class="boxes" style="margin-top:9px">
+          <div class="box">输入形式<br><small>文本 · 语音 · 文件 · 图片</small></div>
+          <div class="box">指令修饰<br><small>/skill 技能 · @提及 · /goal · /compact</small></div>
+          <div class="box">输入优化<br><small>Input Polish · LLM 润色草稿</small></div>
+          <div class="box">文件引用<br><small>PDF/PPT/Excel/Word → Markdown</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow">
+    <svg width="14" height="26"><line x1="7" y1="0" x2="7" y2="20" stroke="#7a9cc6" stroke-width="1.5"/><polygon points="7,26 2,18 12,18" fill="#7a9cc6"/></svg>
+  </div>
+
+  <!-- ══════ 阶段 1：接入 ══════ -->
+  <div class="stage">
+    <div class="stage-no" style="background:#8a8fc0">阶段 1<small>ACCESS</small></div>
+    <div class="stage-body">
+      <div class="band b-indigo">
+        <div class="bt">Nginx 统一接入 <small>Port 2026 · 按路径路由 · SSE 不缓冲不压缩</small></div>
+        <div class="boxes">
+          <div class="box">/api/langgraph/*<br><small>重写 → Gateway /api/*</small></div>
+          <div class="box">/api/* 管理面<br><small>models · skills · mcp · memory</small></div>
+          <div class="box">/* → Frontend<br><small>Next.js · WebSocket 透传</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow">
+    <svg width="14" height="26"><line x1="7" y1="0" x2="7" y2="20" stroke="#7a9cc6" stroke-width="1.5"/><polygon points="7,26 2,18 12,18" fill="#7a9cc6"/></svg>
+  </div>
+
+  <!-- ══════ 阶段 2：鉴权受理 ══════ -->
+  <div class="stage">
+    <div class="stage-no" style="background:#c07d9d">阶段 2<small>GATEWAY</small></div>
+    <div class="stage-body">
+      <div class="band b-pink">
+        <div class="bt">Gateway 鉴权与受理 <small>FastAPI · Port 8001</small></div>
+        <div class="boxes">
+          <div class="box">AuthMiddleware<br><small>HttpOnly Cookie · 未认证拒绝</small></div>
+          <div class="box">CSRF 双提交<br><small>+ Trace 中间件</small></div>
+          <div class="box">参数白名单<br><small>mode → thinking/plan/subagent</small></div>
+          <div class="box core">RunManager 准入<br><small>幂等键 · 多任务策略 · 租约心跳</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow">
+    <svg width="14" height="26"><line x1="7" y1="0" x2="7" y2="20" stroke="#7a9cc6" stroke-width="1.5"/><polygon points="7,26 2,18 12,18" fill="#7a9cc6"/></svg>
+  </div>
+
+  <!-- ══════ 阶段 3：Agent 装配 ══════ -->
+  <div class="stage">
+    <div class="stage-no" style="background:#c2a04e">阶段 3<small>ASSEMBLE</small></div>
+    <div class="stage-body">
+      <div class="band b-yellow">
+        <div class="bt">Lead Agent 装配 <small>assemble_lead_agent()</small></div>
+        <div class="branch-grid">
+          <div class="branch core">
+            <div class="bh">① 模型解析</div>
+            <div class="bd">名称回退 models[0] · 授权回退<br>四级容错 · thinking 契约协商</div>
+          </div>
+          <div class="branch core">
+            <div class="bh">② 工具装配</div>
+            <div class="bd">内置工具 + MCP 缓存<br>+ task（ultra）+ write_todos（pro/ultra）</div>
+          </div>
+          <div class="branch core">
+            <div class="bh">③ 提示词渲染</div>
+            <div class="bd">SOUL.md · 技能目录<br>子代理目录 · 记忆工具段</div>
+          </div>
+          <div class="branch core">
+            <div class="bh">④ 中间件链</div>
+            <div class="bd">30+ 钩子按序组装<br>扩展中间件最后合入</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow">
+    <svg width="14" height="26"><line x1="7" y1="0" x2="7" y2="20" stroke="#7a9cc6" stroke-width="1.5"/><polygon points="7,26 2,18 12,18" fill="#7a9cc6"/></svg>
+  </div>
+
+  <!-- ══════ 阶段 4：执行循环 ══════ -->
+  <div class="stage">
+    <div class="stage-no" style="background:#c98a6b">阶段 4<small>EXECUTE</small></div>
+    <div class="stage-body">
+
+      <!-- 4.1 before -->
+      <div class="band b-peach" style="margin-bottom:8px">
+        <div class="bt">执行前置 <small>before_agent · 每轮一次</small></div>
+        <div class="boxes">
+          <div class="box">沙箱获取<br><small>授权门 → 独立容器/目录</small></div>
+          <div class="box">技能投影<br><small>技能文件同步进沙箱</small></div>
+          <div class="box">记忆注入<br><small>三层记忆 → &lt;system-reminder&gt;</small></div>
+          <div class="box">上传注入<br><small>文件大纲入上下文</small></div>
+        </div>
+      </div>
+
+      <!-- 4.2 模型调用 -->
+      <div class="band b-orange" style="margin-bottom:8px">
+        <div class="bt">模型调用 <small>wrap_model_call 中间件包裹</small></div>
+        <div class="boxes">
+          <div class="box">输入消毒<br><small>边界标记防注入</small></div>
+          <div class="box">上下文压缩<br><small>阈值触发自动摘要</small></div>
+          <div class="box">Todo 提醒<br><small>计划模式防丢防停</small></div>
+          <div class="box">Token 预算<br><small>超支熔断</small></div>
+          <div class="box">MCP 路由<br><small>关键词自动晋升工具</small></div>
+          <div class="box">循环检测<br><small>死循环自动熔断</small></div>
+        </div>
+      </div>
+
+      <!-- 4.3 工具分派 -->
+      <div class="band b-purple" style="margin-bottom:8px">
+        <div class="bt">工具分发 <small>模型自主决策 → 六类执行路径</small></div>
+        <div class="branch-grid">
+          <div class="branch core">
+            <div class="bh">沙箱工具</div>
+            <div class="bd">bash / write_file / read_file<br>虚拟路径映射 → 容器内执行<br>输出超预算自动落盘</div>
+          </div>
+          <div class="branch core">
+            <div class="bh">MCP 工具</div>
+            <div class="bd">stdio/SSE/HTTP 会话池<br>OAuth 自动刷新<br>finance/enterprise/person/NER</div>
+          </div>
+          <div class="branch loop">
+            <div class="bh">task → 子代理</div>
+            <div class="bd">隔离上下文并行执行<br>容量准入（并发 3）<br>task_* 事件实时回传</div>
+          </div>
+          <div class="branch">
+            <div class="bh">批处理 batch_task</div>
+            <div class="bd">持久化队列<br>暂停/恢复/取消/重试<br>JSONL 结果导出</div>
+          </div>
+          <div class="branch decision">
+            <div class="bh">ask_clarification</div>
+            <div class="bd">澄清卡片（单选/表单）<br>暂停执行 → 等用户回答<br>回答后接续运行</div>
+          </div>
+          <div class="branch">
+            <div class="bh">write_todos / 内置工具</div>
+            <div class="bd">计划清单更新<br>present_file 制品呈现<br>view_image 图片理解</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="loopback">
+        ⟲ 工具结果回传模型 → 继续下一轮「模型调用 → 工具分派」循环<br>
+        沙箱执行报错 → 模型读错误 → 改写代码 → 重跑（自我纠错闭环）
+      </div>
+
+      <!-- 4.4 after -->
+      <div class="band b-peach">
+        <div class="bt">轮次收尾 <small>after_model / after_agent</small></div>
+        <div class="boxes">
+          <div class="box">记忆写入门<br><small>三标签校验 · 异步队列 · 防抖</small></div>
+          <div class="box">标题生成<br><small>首轮自动命名线程</small></div>
+          <div class="box">Token 统计<br><small>用量与成本记录</small></div>
+          <div class="box">沙箱租约释放<br><small>暖池回收 · 零污染</small></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="flow-arrow">
+    <svg width="14" height="26"><line x1="7" y1="0" x2="7" y2="20" stroke="#7a9cc6" stroke-width="1.5"/><polygon points="7,26 2,18 12,18" fill="#7a9cc6"/></svg>
+  </div>
+
+  <!-- ══════ 阶段 5：流式输出 ══════ -->
+  <div class="stage">
+    <div class="stage-no" style="background:#5f9ea0">阶段 5<small>STREAM</small></div>
+    <div class="stage-body">
+      <div class="band b-teal">
+        <div class="bt">SSE 流式输出 <small>StreamBridge → sse_consumer → 前端</small></div>
+        <div class="boxes">
+          <div class="box core">实时推送<br><small>消息增量 · 工具步骤 · 子代理进度</small></div>
+          <div class="box">文件流式<br><small>write_file 分块合并<br>制品实时预览</small></div>
+          <div class="box">断线续传<br><small>Last-Event-ID 重连<br>gap 帧 → 持久态恢复</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow">
+    <svg width="14" height="26"><line x1="7" y1="0" x2="7" y2="20" stroke="#7a9cc6" stroke-width="1.5"/><polygon points="7,26 2,18 12,18" fill="#7a9cc6"/></svg>
+  </div>
+
+  <!-- ══════ 阶段 6：最终交付 ══════ -->
+  <div class="stage">
+    <div class="stage-no" style="background:#6a8fbf">阶段 6<small>DELIVER</small></div>
+    <div class="stage-body">
+      <div class="band b-blue">
+        <div class="bt">最终交付 <small>面向用户的完整产出</small></div>
+        <div class="branch-grid">
+          <div class="branch core">
+            <div class="bh">消息渲染</div>
+            <div class="bd">Markdown · 代码高亮<br>图表 · 引用链接</div>
+          </div>
+          <div class="branch core">
+            <div class="bh">制品落盘</div>
+            <div class="bd">/mnt/user-data/outputs<br>报告/PPT/代码 → 制品面板<br>在线预览与编辑</div>
+          </div>
+          <div class="branch">
+            <div class="bh">记忆沉淀</div>
+            <div class="bd">Markdown 事实 + FTS5 索引<br>跨会话生效</div>
+          </div>
+          <div class="branch">
+            <div class="bh">追问建议</div>
+            <div class="bd">自动生成下一步建议<br>点击即继续深挖</div>
+          </div>
+          <div class="branch">
+            <div class="bh">IM 回投</div>
+            <div class="bd">渠道消息队列<br>飞书/钉钉群自动回复</div>
+          </div>
+          <div class="branch">
+            <div class="bh">目标判定</div>
+            <div class="bd">/goal 达成自检<br>未达成持续推进</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 横切说明 -->
+  <div class="band b-gray" style="margin-top:4px">
+    <div class="bt">全程横切保障</div>
+    <div class="boxes">
+      <div class="box">安全<br><small>容器隔离 · 消毒脱敏 · 写前读 · SSRF 防护</small></div>
+      <div class="box">可观测<br><small>LangSmith/Langfuse Trace · Token 成本</small></div>
+      <div class="box">容错<br><small>模型四级容错 · 限流熔断 · 断线续传</small></div>
+      <div class="box">治理<br><small>记忆写入门 · 技能扫描 · 授权策略</small></div>
+    </div>
+  </div>
+
+  <p class="note">
+    主流程自上而下：输入（阶段0）→ 接入（阶段1）→ 受理（阶段2）→ 装配（阶段3）→ 执行循环（阶段4）→ 流式输出（阶段5）→ 交付（阶段6）。<br>
+    阶段 4 内部为「模型 ⇄ 工具」多轮循环；澄清卡片会把控制权短暂交还用户；子代理在隔离循环内嵌套执行同样的流程。
+  </p>
+</div>
+
+<footer>
+  DeerFlow 2.0 · 用户输入到输出全流程 · 配套《FEATURES.md 功能点全景手册》《FEATURE_MAP.md 代码实现全景图》
+</footer>
+
+</body>
+</html>

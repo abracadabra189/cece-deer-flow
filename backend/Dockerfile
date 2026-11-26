@@ -73,6 +73,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     done; \
     UV_INDEX_URL=${UV_INDEX_URL:-https://pypi.org/simple} uv sync --locked --extra redis $extras_flags'
 
+# PDF export for report skills (WeasyPrint): install into the project venv.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /app/backend/.venv/bin/python "weasyprint>=62"
+
 # UTF-8 locale prevents UnicodeEncodeError on Chinese/emoji content in minimal
 # containers where locale configuration may be missing and the default encoding is not UTF-8.
 ENV LANG=C.UTF-8
@@ -95,6 +99,16 @@ CMD ["sh", "-c", "cd backend && PYTHONPATH=. exec uv run --no-sync uvicorn app.g
 # ── Stage 3: Runtime ──────────────────────────────────────────────────────────
 # Clean image without build-essential — reduces size (~200 MB) and attack surface.
 FROM python:3.12-slim-bookworm
+
+# WeasyPrint runtime libraries + CJK fonts for report PDF export.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libharfbuzz0b \
+    libharfbuzz-subset0 \
+    libfontconfig1 \
+    fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8

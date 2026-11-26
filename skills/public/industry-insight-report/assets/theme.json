@@ -1,0 +1,19 @@
+{
+  "page": {"w_mm": 210, "h_mm": 297, "margin_x_mm": 16, "content_h_mm": 243, "bg": "#F5F7FA"},
+  "colors": {
+    "brand_blue": "#0B5CAD",
+    "title_blue": "#1667B8",
+    "text": "#333333",
+    "text_dark": "#333E48",
+    "gray": "#8A94A6",
+    "gray_light": "#9AA5B1",
+    "rule": "#D9DDE3",
+    "risk_red": "#E64545",
+    "table_head": "#EFF3F8",
+    "url_purple": "#9C27B0"
+  },
+  "chart_palette": ["#5B8FF9", "#A3B8F0", "#30BF78", "#9FE3BC", "#7B6FE0", "#B4A7F0", "#4FC3E8", "#F6903D"],
+  "grade_colors": ["#E64545", "#F6903D", "#7BC96F", "#19B99E", "#0FA0A0"],
+  "fonts": {"cn": "'Source Han Sans SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif", "num": "Arial,sans-serif"},
+  "sizes_pt": {"h1": 16, "h2": 13, "h3": 11.5, "para": 10.5, "table": 10, "note": 9, "page_no": 9, "cover_title": 40, "cover_subject": 20}
+}

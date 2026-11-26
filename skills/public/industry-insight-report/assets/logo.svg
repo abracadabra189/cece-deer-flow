@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1B7FD4"/><stop offset="1" stop-color="#0FA0E0"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="64" height="64" rx="10" fill="url(#lg)"/>
+  <text x="32" y="26" text-anchor="middle" font-family="SimSun,serif" font-size="17" font-weight="bold" fill="#ffffff">新华社</text>
+  <text x="32" y="35" text-anchor="middle" font-family="Arial,sans-serif" font-size="6" fill="#ffffff">XINHUA NEWS</text>
+  <g stroke="#ffffff" stroke-width="1" fill="none" opacity="0.95">
+    <path d="M14 50 L24 44 L34 50 L44 43 L52 49"/>
+    <path d="M24 44 L30 54 L44 43"/>
+  </g>
+  <g fill="#ffffff">
+    <circle cx="14" cy="50" r="2.2"/><circle cx="24" cy="44" r="2.2"/><circle cx="34" cy="50" r="2.2"/>
+    <circle cx="44" cy="43" r="2.2"/><circle cx="52" cy="49" r="2.2"/><circle cx="30" cy="54" r="2.2"/>
+  </g>
+</svg>
