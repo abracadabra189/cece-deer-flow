@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "catalog/cecemate-manual",
+  "locales": {
+    "en-US": {
+      "title": "CeCeMate product manual",
+      "description": "Search the packaged Chinese product manual locally and return exact evidence with chapter and manual version citations. No network or model calls.",
+      "usage": [{"title": "Ask about platform features", "description": "Ask about industry chains, regional companies, customer leads, company information or policy search. Inspect the cited manual excerpts and their limitations."}],
+      "requirements": ["The operator must enable knowledge_search with provider cecemate-manual and restart Gateway. The corpus is shared by all users of this provider; dataset and document selection are unsupported."]
+    },
+    "zh-CN": {
+      "title": "CeCeMate 产品手册",
+      "description": "本地检索打包的中文产品手册，返回含章节、手册版本的原文证据。无需网络或模型调用。",
+      "usage": [{"title": "查询平台功能", "description": "可询问产业链、区域企业、潜客商机、企业信息或政策检索；请结合来源原文和限制说明阅读。"}],
+      "requirements": ["管理员须将 knowledge_search 配置为 cecemate-manual 并重启 Gateway。此手册向该 Provider 的全部用户共享，不支持按知识库或文档筛选。"]
+    }
+  }
+}
