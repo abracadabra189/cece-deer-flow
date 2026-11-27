@@ -184,6 +184,8 @@ def test_list_skills_returns_display_name(monkeypatch):
             "display_name": "企业风险分析",
             "description": "Skill enterprise-risk-analysis",
             "example_queries": [],
+            "display_description": None,
+            "icon_path": None,
             "license": None,
             "category": "public",
             "enabled": True,
@@ -195,7 +197,7 @@ def test_list_skills_returns_display_name(monkeypatch):
 def test_list_skills_returns_example_queries(monkeypatch):
     from dataclasses import replace
 
-    skill = replace(_skill("enterprise-risk-analysis"), example_queries=("Query one", "Query two"))
+    skill = replace(_skill("enterprise-risk-analysis"), example_queries=("Query one", "Query two"), display_description="Card summary", icon_path="/images/skills/example.svg")
     _stub_user(monkeypatch, _user())
     _stub_storage(monkeypatch, _FakeStorage([skill]))
 
@@ -204,6 +206,8 @@ def test_list_skills_returns_example_queries(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["skills"][0]["example_queries"] == ["Query one", "Query two"]
+    assert response.json()["skills"][0]["display_description"] == "Card summary"
+    assert response.json()["skills"][0]["icon_path"] == "/images/skills/example.svg"
 
 
 def test_list_skills_anonymous_user_returns_all(monkeypatch):

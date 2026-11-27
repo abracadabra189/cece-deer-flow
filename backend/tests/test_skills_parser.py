@@ -87,13 +87,15 @@ def test_parse_display_name_returned(tmp_path):
 def test_parse_example_queries_returns_trimmed_values(tmp_path):
     skill_file = _write_skill(
         tmp_path,
-        "name: my-skill\ndescription: A test skill\nexample_queries:\n  - '  Query one  '\n  - Query two",
+        "name: my-skill\ndescription: A test skill\nexample_queries:\n  - '  Query one  '\n  - Query two\ndisplay_description: ' Card summary '\nicon_path: /images/skills/example.svg",
     )
 
     skill = parse_skill_file(skill_file, category="custom")
 
     assert skill is not None
     assert skill.example_queries == ("Query one", "Query two")
+    assert skill.display_description == "Card summary"
+    assert skill.icon_path == "/images/skills/example.svg"
 
 
 @pytest.mark.parametrize(

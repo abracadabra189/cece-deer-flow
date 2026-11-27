@@ -50,6 +50,8 @@ class Skill:
     category: SkillCategory  # 'public' or 'custom'
     display_name: str | None = None  # Optional user-facing, localized title
     example_queries: tuple[str, ...] = field(default_factory=tuple, kw_only=True)
+    display_description: str | None = field(default=None, kw_only=True)
+    icon_path: str | None = field(default=None, kw_only=True)
     allowed_tools: tuple[str, ...] | None = None
     enabled: bool = False  # Whether this skill is enabled
     required_secrets: tuple[SecretRequirement, ...] = field(default_factory=tuple)

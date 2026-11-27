@@ -1145,8 +1145,10 @@ GET /api/skills
 up to three nonempty strings, trims surrounding whitespace, and returns `[]`
 when omitted or null. Invalid values fail installation validation and cause the
 runtime loader to skip the skill. List and metadata-detail responses share this
-field. `display_description` and `icon_path` are accepted frontmatter metadata
-but are not currently returned by these endpoints.
+field. `display_description` and `icon_path` are also returned from frontmatter;
+both accept strings with surrounding whitespace trimmed and return null when
+missing or blank. Non-string values fail validation. Icon paths are metadata
+only: these endpoints do not fetch or serve the referenced image.
 
 #### Get Skill Details
 

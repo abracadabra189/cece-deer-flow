@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 from .diagnostics import SkillLoadDiagnostic, yaml_load_diagnostic
-from .frontmatter import _FRONTMATTER_RE, parse_display_name, parse_example_queries
+from .frontmatter import _FRONTMATTER_RE, parse_display_name, parse_example_queries, parse_optional_display_text
 from .types import SKILL_MD_FILE, SecretRequirement, Skill, SkillCategory
 
 logger = logging.getLogger(__name__)
@@ -273,8 +273,10 @@ def parse_skill_file(skill_file: Path, category: SkillCategory, relative_path: P
 
         try:
             example_queries = parse_example_queries(metadata.get("example_queries"))
+            display_description = parse_optional_display_text(metadata.get("display_description"), "display_description")
+            icon_path = parse_optional_display_text(metadata.get("icon_path"), "icon_path")
         except ValueError as exc:
-            logger.error("Invalid example_queries in %s: %s", skill_file, exc)
+            logger.error("Invalid presentation metadata in %s: %s", skill_file, exc)
             return None
 
         try:
@@ -301,6 +303,8 @@ def parse_skill_file(skill_file: Path, category: SkillCategory, relative_path: P
             category=category,
             display_name=display_name,
             example_queries=example_queries,
+            display_description=display_description,
+            icon_path=icon_path,
             allowed_tools=allowed_tools,
             enabled=True,  # Actual state comes from the extensions config file.
             required_secrets=required_secrets,

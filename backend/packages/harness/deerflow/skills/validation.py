@@ -6,7 +6,7 @@ Pure-logic validation of SKILL.md frontmatter — no FastAPI or HTTP dependencie
 import re
 from pathlib import Path
 
-from deerflow.skills.frontmatter import ALLOWED_FRONTMATTER_PROPERTIES, parse_display_name, parse_example_queries, split_skill_markdown
+from deerflow.skills.frontmatter import ALLOWED_FRONTMATTER_PROPERTIES, parse_display_name, parse_example_queries, parse_optional_display_text, split_skill_markdown
 from deerflow.skills.parser import parse_allowed_tools
 from deerflow.skills.types import SKILL_MD_FILE
 
@@ -86,6 +86,8 @@ def validate_skill_frontmatter_text(content: str) -> tuple[bool, str, str | None
 
     try:
         parse_example_queries(frontmatter.get("example_queries"))
+        parse_optional_display_text(frontmatter.get("display_description"), "display_description")
+        parse_optional_display_text(frontmatter.get("icon_path"), "icon_path")
     except ValueError as e:
         return False, str(e), None
 

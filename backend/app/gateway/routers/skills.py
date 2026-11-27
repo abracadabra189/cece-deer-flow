@@ -105,6 +105,8 @@ class SkillResponse(BaseModel):
     display_name: str | None = Field(None, description="Optional user-facing name of the skill")
     description: str = Field(..., description="Description of what the skill does")
     example_queries: list[str] = Field(default_factory=list, description="Optional example prompts shown for the skill")
+    display_description: str | None = Field(None, description="Optional user-facing skill summary")
+    icon_path: str | None = Field(None, description="Optional frontend static image path")
     license: str | None = Field(None, description="License information")
     category: SkillCategory = Field(..., description="Category of the skill (public, custom, or legacy)")
     enabled: bool = Field(default=True, description="Whether this skill is enabled")
@@ -263,6 +265,8 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
         display_name=skill.display_name,
         description=skill.description,
         example_queries=list(skill.example_queries),
+        display_description=skill.display_description,
+        icon_path=skill.icon_path,
         license=skill.license,
         category=skill.category,
         enabled=skill.enabled,

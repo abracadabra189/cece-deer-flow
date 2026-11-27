@@ -34,6 +34,15 @@ DISPLAY_NAME_MAX_LENGTH = 100
 EXAMPLE_QUERIES_MAX_COUNT = 3
 
 
+def parse_optional_display_text(value: Any, field_name: str) -> str | None:
+    """Normalize optional presentation strings without coercing YAML values."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    return value.strip() or None
+
+
 def parse_display_name(value: Any) -> str | None:
     """Validate and normalize an optional user-facing skill name.
 
