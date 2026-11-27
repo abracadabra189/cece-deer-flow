@@ -183,12 +183,27 @@ def test_list_skills_returns_display_name(monkeypatch):
             "name": "enterprise-risk-analysis",
             "display_name": "企业风险分析",
             "description": "Skill enterprise-risk-analysis",
+            "example_queries": [],
             "license": None,
             "category": "public",
             "enabled": True,
             "editable": False,
         }
     ]
+
+
+def test_list_skills_returns_example_queries(monkeypatch):
+    from dataclasses import replace
+
+    skill = replace(_skill("enterprise-risk-analysis"), example_queries=("Query one", "Query two"))
+    _stub_user(monkeypatch, _user())
+    _stub_storage(monkeypatch, _FakeStorage([skill]))
+
+    with TestClient(_make_skills_app(_make_app_config())) as client:
+        response = client.get("/api/skills")
+
+    assert response.status_code == 200
+    assert response.json()["skills"][0]["example_queries"] == ["Query one", "Query two"]
 
 
 def test_list_skills_anonymous_user_returns_all(monkeypatch):

@@ -84,6 +84,28 @@ def test_parse_display_name_returned(tmp_path):
     assert skill.display_name == "企业风险分析"
 
 
+def test_parse_example_queries_returns_trimmed_values(tmp_path):
+    skill_file = _write_skill(
+        tmp_path,
+        "name: my-skill\ndescription: A test skill\nexample_queries:\n  - '  Query one  '\n  - Query two",
+    )
+
+    skill = parse_skill_file(skill_file, category="custom")
+
+    assert skill is not None
+    assert skill.example_queries == ("Query one", "Query two")
+
+
+@pytest.mark.parametrize(
+    "example_queries",
+    ["example_queries: not-a-list", "example_queries: [query, 1]", "example_queries: ['']", "example_queries: [one, two, three, four]"],
+)
+def test_parse_invalid_example_queries_skips_skill(tmp_path, example_queries):
+    skill_file = _write_skill(tmp_path, f"name: my-skill\ndescription: A test skill\n{example_queries}")
+
+    assert parse_skill_file(skill_file, category="custom") is None
+
+
 def test_bundled_public_skills_define_display_names():
     """Every currently bundled skill has a user-facing name for the catalog."""
     public_root = Path(__file__).parents[2] / "skills" / "public"

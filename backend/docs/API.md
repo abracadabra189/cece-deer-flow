@@ -1122,6 +1122,7 @@ GET /api/skills
     {
       "name": "pdf-processing",
       "description": "Handle PDF documents efficiently",
+      "example_queries": [],
       "license": "MIT",
       "category": "public",
       "enabled": true,
@@ -1130,6 +1131,7 @@ GET /api/skills
     {
       "name": "frontend-design",
       "description": "Design and build frontend interfaces",
+      "example_queries": [],
       "license": "MIT",
       "category": "public",
       "enabled": false,
@@ -1138,6 +1140,13 @@ GET /api/skills
   ]
 }
 ```
+
+`example_queries` comes from the optional `SKILL.md` frontmatter list. It accepts
+up to three nonempty strings, trims surrounding whitespace, and returns `[]`
+when omitted or null. Invalid values fail installation validation and cause the
+runtime loader to skip the skill. List and metadata-detail responses share this
+field. `display_description` and `icon_path` are accepted frontmatter metadata
+but are not currently returned by these endpoints.
 
 #### Get Skill Details
 

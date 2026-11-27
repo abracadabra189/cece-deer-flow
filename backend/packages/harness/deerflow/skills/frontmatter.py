@@ -15,6 +15,9 @@ import yaml
 ALLOWED_FRONTMATTER_PROPERTIES = {
     "name",
     "display_name",
+    "display_description",
+    "icon_path",
+    "example_queries",
     "description",
     "license",
     "allowed-tools",
@@ -28,6 +31,7 @@ ALLOWED_FRONTMATTER_PROPERTIES = {
 }
 
 DISPLAY_NAME_MAX_LENGTH = 100
+EXAMPLE_QUERIES_MAX_COUNT = 3
 
 
 def parse_display_name(value: Any) -> str | None:
@@ -50,6 +54,26 @@ def parse_display_name(value: Any) -> str | None:
     if len(display_name) > DISPLAY_NAME_MAX_LENGTH:
         raise ValueError(f"display_name is too long ({len(display_name)} characters). Maximum is {DISPLAY_NAME_MAX_LENGTH} characters.")
     return display_name
+
+
+def parse_example_queries(value: Any) -> tuple[str, ...]:
+    """Validate optional user-facing example prompts for a skill card."""
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("example_queries must be a list of strings")
+    if len(value) > EXAMPLE_QUERIES_MAX_COUNT:
+        raise ValueError(f"example_queries cannot contain more than {EXAMPLE_QUERIES_MAX_COUNT} items")
+
+    queries: list[str] = []
+    for query in value:
+        if not isinstance(query, str):
+            raise ValueError("example_queries must contain only strings")
+        normalized = query.strip()
+        if not normalized:
+            raise ValueError("example_queries cannot contain empty strings")
+        queries.append(normalized)
+    return tuple(queries)
 
 
 # `\ufeff` is the UTF-8 byte-order mark that Windows Notepad and PowerShell's

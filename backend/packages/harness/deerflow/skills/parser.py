@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 from .diagnostics import SkillLoadDiagnostic, yaml_load_diagnostic
-from .frontmatter import _FRONTMATTER_RE, parse_display_name
+from .frontmatter import _FRONTMATTER_RE, parse_display_name, parse_example_queries
 from .types import SKILL_MD_FILE, SecretRequirement, Skill, SkillCategory
 
 logger = logging.getLogger(__name__)
@@ -272,6 +272,12 @@ def parse_skill_file(skill_file: Path, category: SkillCategory, relative_path: P
             return None
 
         try:
+            example_queries = parse_example_queries(metadata.get("example_queries"))
+        except ValueError as exc:
+            logger.error("Invalid example_queries in %s: %s", skill_file, exc)
+            return None
+
+        try:
             allowed_tools = parse_allowed_tools(metadata.get("allowed-tools"), skill_file)
         except ValueError as exc:
             logger.error("Invalid allowed-tools in %s: %s", skill_file, exc)
@@ -294,6 +300,7 @@ def parse_skill_file(skill_file: Path, category: SkillCategory, relative_path: P
             relative_path=relative_path or Path(skill_file.parent.name),
             category=category,
             display_name=display_name,
+            example_queries=example_queries,
             allowed_tools=allowed_tools,
             enabled=True,  # Actual state comes from the extensions config file.
             required_secrets=required_secrets,

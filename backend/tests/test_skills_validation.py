@@ -40,6 +40,30 @@ class TestValidateSkillFrontmatter:
         assert msg == "Skill is valid!"
         assert name == "enterprise-risk-analysis"
 
+    def test_valid_example_queries(self, tmp_path):
+        skill_dir = _write_skill(
+            tmp_path,
+            "---\nname: my-skill\ndescription: A skill\nexample_queries: [one, two, three]\n---\n",
+        )
+        assert _validate_skill_frontmatter(skill_dir) == (True, "Skill is valid!", "my-skill")
+
+    def test_accepts_current_skill_card_metadata(self, tmp_path):
+        skill_dir = _write_skill(
+            tmp_path,
+            "---\nname: my-skill\ndescription: A skill\ndisplay_description: A short card summary\nicon_path: /images/skills/my-skill.svg\nexample_queries: [one, two]\n---\n",
+        )
+        assert _validate_skill_frontmatter(skill_dir) == (True, "Skill is valid!", "my-skill")
+
+    def test_rejects_more_than_three_example_queries(self, tmp_path):
+        skill_dir = _write_skill(
+            tmp_path,
+            "---\nname: my-skill\ndescription: A skill\nexample_queries: [one, two, three, four]\n---\n",
+        )
+        valid, message, name = _validate_skill_frontmatter(skill_dir)
+        assert valid is False
+        assert "example_queries" in message
+        assert name is None
+
     def test_rejects_non_string_display_name(self, tmp_path):
         skill_dir = _write_skill(
             tmp_path,

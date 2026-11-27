@@ -49,6 +49,7 @@ class Skill:
     relative_path: Path  # Relative path from category root to skill directory
     category: SkillCategory  # 'public' or 'custom'
     display_name: str | None = None  # Optional user-facing, localized title
+    example_queries: tuple[str, ...] = field(default_factory=tuple, kw_only=True)
     allowed_tools: tuple[str, ...] | None = None
     enabled: bool = False  # Whether this skill is enabled
     required_secrets: tuple[SecretRequirement, ...] = field(default_factory=tuple)
