@@ -1,4 +1,4 @@
-{
+﻿{
   "middlewares": [],
   "mcpInterceptors": [],
   "mcpServers": {
@@ -7,7 +7,7 @@
       "type": "http",
       "url": "http://172.20.28.224:18907/cece-mcp-servers/enterprise/stream",
       "headers": {
-        "Authorization": "Bearer $MCP_AUTH_TOKEN"
+        "Authorization": "Bearer $CECE_MCP_AUTHORIZATION"
       },
       "tool_name_prefix": true,
       "session_init_timeout": 60,
@@ -15,7 +15,7 @@
       "routing": {
         "mode": "prefer",
         "priority": 100,
-        "keywords": ["enterprise", "company", "business", "企业", "公司", "上市公司", "企业画像", "企业报告", "发展前景", "经营", "业绩", "财务", "竞争力", "主营业务", "股东", "高管", "招投标", "投资"]
+        "keywords": ["enterprise", "company", "business", "浼佷笟", "鍏徃", "涓婂競鍏徃", "浼佷笟鐢诲儚", "浼佷笟鎶ュ憡", "鍙戝睍鍓嶆櫙", "缁忚惀", "涓氱哗", "璐㈠姟", "绔炰簤鍔?, "涓昏惀涓氬姟", "鑲′笢", "楂樼", "鎷涙姇鏍?, "鎶曡祫"]
       }
     },
     "entity_resolve": {
@@ -23,7 +23,7 @@
       "type": "http",
       "url": "http://172.20.28.224:18906/cece-mcp-servers/NER/stream",
       "headers": {
-        "Authorization": "Bearer $MCP_AUTH_TOKEN"
+        "Authorization": "Bearer $CECE_MCP_AUTHORIZATION"
       },
       "tool_name_prefix": true,
       "session_init_timeout": 60,
@@ -31,7 +31,7 @@
       "routing": {
         "mode": "prefer",
         "priority": 95,
-        "keywords": ["entity", "主体", "实体", "企业名称", "公司名称", "上市公司", "证券代码", "简称", "人名", "企业", "行业", "区域"]
+        "keywords": ["entity", "涓讳綋", "瀹炰綋", "浼佷笟鍚嶇О", "鍏徃鍚嶇О", "涓婂競鍏徃", "璇佸埜浠ｇ爜", "绠€绉?, "浜哄悕", "浼佷笟", "琛屼笟", "鍖哄煙"]
       }
     },
     "pevc": {
@@ -39,7 +39,7 @@
       "type": "http",
       "url": "http://172.20.28.224:18910/cece-mcp-servers/PEVC/stream",
       "headers": {
-        "Authorization": "Bearer $MCP_AUTH_TOKEN"
+        "Authorization": "Bearer $CECE_MCP_AUTHORIZATION"
       },
       "tool_name_prefix": true,
       "session_init_timeout": 60,
@@ -47,7 +47,7 @@
       "routing": {
         "mode": "prefer",
         "priority": 90,
-        "keywords": ["financing", "fund", "investment", "融资", "创投", "基金", "私募", "风投", "融资事件", "投资机构", "估值"]
+        "keywords": ["financing", "fund", "investment", "铻嶈祫", "鍒涙姇", "鍩洪噾", "绉佸嫙", "椋庢姇", "铻嶈祫浜嬩欢", "鎶曡祫鏈烘瀯", "浼板€?]
       }
     },
     "person": {
@@ -55,7 +55,7 @@
       "type": "http",
       "url": "http://172.20.28.224:18911/cece-mcp-servers/person/stream",
       "headers": {
-        "Authorization": "Bearer $MCP_AUTH_TOKEN"
+        "Authorization": "Bearer $CECE_MCP_AUTHORIZATION"
       },
       "tool_name_prefix": true,
       "session_init_timeout": 60,
@@ -63,7 +63,7 @@
       "routing": {
         "mode": "prefer",
         "priority": 90,
-        "keywords": ["person", "人物", "人物画像", "高管", "企业家", "简历", "任职", "履历"]
+        "keywords": ["person", "浜虹墿", "浜虹墿鐢诲儚", "楂樼", "浼佷笟瀹?, "绠€鍘?, "浠昏亴", "灞ュ巻"]
       }
     },
     "industry": {
@@ -71,7 +71,7 @@
       "type": "http",
       "url": "http://172.20.28.224:18908/cece-mcp-servers/industry/stream",
       "headers": {
-        "Authorization": "Bearer $MCP_AUTH_TOKEN"
+        "Authorization": "Bearer $CECE_MCP_AUTHORIZATION"
       },
       "tool_name_prefix": true,
       "session_init_timeout": 60,
@@ -79,7 +79,7 @@
       "routing": {
         "mode": "prefer",
         "priority": 90,
-        "keywords": ["industry", "产业", "行业", "赛道", "产业链", "产业园区", "市场规模", "竞争格局"]
+        "keywords": ["industry", "浜т笟", "琛屼笟", "璧涢亾", "浜т笟閾?, "浜т笟鍥尯", "甯傚満瑙勬ā", "绔炰簤鏍煎眬"]
       }
     },
     "github": {
@@ -130,15 +130,15 @@
           "market",
           "price",
           "search",
-          "最新",
-          "今日",
-          "新闻",
-          "政策",
-          "公告",
-          "实时",
-          "市场",
-          "价格",
-          "联网搜索"
+          "鏈€鏂?,
+          "浠婃棩",
+          "鏂伴椈",
+          "鏀跨瓥",
+          "鍏憡",
+          "瀹炴椂",
+          "甯傚満",
+          "浠锋牸",
+          "鑱旂綉鎼滅储"
         ]
       }
     },
@@ -169,8 +169,8 @@
           "database",
           "SQL",
           "table",
-          "订单",
-          "用户"
+          "璁㈠崟",
+          "鐢ㄦ埛"
         ]
       },
       "tools": {
@@ -179,9 +179,9 @@
             "mode": "prefer",
             "priority": 100,
             "keywords": [
-              "查库",
-              "订单表",
-              "指标"
+              "鏌ュ簱",
+              "璁㈠崟琛?,
+              "鎸囨爣"
             ]
           }
         }
@@ -206,3 +206,4 @@
   },
   "skills": {}
 }
+
