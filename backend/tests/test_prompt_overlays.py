@@ -91,8 +91,11 @@ def test_cecemate_deployment_baselines_define_product_identity(deployment_config
     assert "不得绑定单一历史任务" in config_text
     # 场景确认走结构化卡片，不走纯文字追问：缺了工具名和选择项，
     # 前端渲染不出按钮，用户只能手打场景名。
-    assert "必须调用 ask_clarification 工具提问" in config_text
+    assert "仅在可交互网页会话且 ask_clarification 工具可用时，必须调用该工具提问" in config_text
     assert 'options=["政府产业招商", "银行对公业务", "一级市场投研"]' in config_text
+    # 定时、Webhook 等非交互运行没有澄清工具；身份规则不能要求它们
+    # 等待用户回复，否则会和运行时的自主执行策略相冲突。
+    assert "非交互运行中，不得等待场景确认" in config_text
 
 
 @pytest.mark.parametrize("name", ["general-purpose", "bash"])
