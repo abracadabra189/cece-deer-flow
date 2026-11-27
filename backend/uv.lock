@@ -952,6 +952,7 @@ dev = [
     { name = "textual" },
 ]
 extensions = [
+    { name = "deerflow-extension-cecemate-manual" },
     { name = "deerflow-extension-office-preview" },
 ]
 
@@ -1006,12 +1007,33 @@ dev = [
     { name = "ruff", specifier = ">=0.14.11" },
     { name = "textual", specifier = ">=0.80" },
 ]
-extensions = [{ name = "deerflow-extension-office-preview", directory = "extensions/sources/deerflow-extension-office-preview" }]
+extensions = [
+    { name = "deerflow-extension-cecemate-manual", directory = "extensions/sources/deerflow-extension-cecemate-manual" },
+    { name = "deerflow-extension-office-preview", directory = "extensions/sources/deerflow-extension-office-preview" },
+]
 
 [[package]]
 name = "deerflow-extension-api"
 version = "0.2.13"
 source = { editable = "packages/extension-api" }
+
+[[package]]
+name = "deerflow-extension-cecemate-manual"
+version = "0.1.0"
+source = { directory = "extensions/sources/deerflow-extension-cecemate-manual" }
+dependencies = [
+    { name = "deerflow-extension-api" },
+    { name = "deerflow-harness" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "deerflow-extension-api", specifier = ">=0.2.7,<0.3" },
+    { name = "deerflow-harness", specifier = ">=2.1,<3" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "deerflow-extension-office-preview"
@@ -4904,8 +4926,8 @@ name = "standard-aifc"
 version = "3.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "audioop-lts" },
-    { name = "standard-chunk" },
+    { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
+    { name = "standard-chunk", marker = "python_full_version >= '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c4/53/6050dc3dde1671eb3db592c13b55a8005e5040131f7509cef0215212cb84/standard_aifc-3.13.0.tar.gz", hash = "sha256:64e249c7cb4b3daf2fdba4e95721f811bde8bdfc43ad9f936589b7bb2fae2e43", size = 15240, upload-time = "2024-10-30T16:01:31.772Z" }
 wheels = [

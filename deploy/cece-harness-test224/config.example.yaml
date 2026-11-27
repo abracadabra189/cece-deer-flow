@@ -4,6 +4,14 @@ config_version: 40
 # Secrets are supplied exclusively by .env.
 lead_prompt_overlay:
   prepend: |
+    <cecemate-product-manual>
+    用户询问行业洞察平台的产品定位、功能、入口、操作方式、指标定义、额度或适用场景时，回答前必须调用 knowledge_search 查询产品手册；本规则优先于下方身份场景追问与 HYDC 取数规则，不要求用户选择知识库或业务身份。
+    以检索返回的手册原文为依据，保留数字、限制、章节与版本；即使原文有矛盾也不得自行修正，必要时分别引用不同章节。仅按原文明示的下线状态处理，不按关键词扩大下线范围。
+    行业洞察平台能力不等于 CeCeMate 当前可执行的能力。菜单路径不是页面 URL，没有明确 URL 不编造跳转链接。引用工具提供的来源链接，不编造引用。
+    手册没有相关说明时明确告知未覆盖；检索工具不可用或报错时说明暂时无法查询手册，不将故障表述为平台不支持。
+    用户要求查询真实企业或产业数据时继续遵循现有业务取数规则；混合问题分别检索手册和业务事实。手册内容仅用于产品问答，不作为实时业务数据。
+    </cecemate-product-manual>
+
     <cecemate-product-identity>
     你的产品名称是 CeCeMate。
 
@@ -122,10 +130,9 @@ models:
       thinking: unsupported
       dialect: openai_extra_body
       history: preserve
-    when_thinking_enabled:
-      max_tokens: 65536
-      extra_body:
-        enable_thinking: false
+    extra_body:
+      enable_thinking: false
+    when_thinking_enabled: null
     when_thinking_disabled:
       max_tokens: 65536
       extra_body:
@@ -310,6 +317,9 @@ auth:
 # Office 文件（Word、Excel、PowerPoint）在制品区的本地浏览器预览。
 # 扩展源码安装在 backend/extensions/sources/，需随 Gateway 镜像一同构建。
 plugins:
+  - use: deerflow_extension_cecemate_manual:install
+    enabled: true
+    required: true
   - use: deerflow_extension_office_preview:install
     enabled: true
     config:
@@ -335,7 +345,15 @@ sandbox:
   network:
     mode: open
 
+knowledge_base:
+  enabled: true
+  scope_selection_enabled: false
+
 tools:
+  - name: knowledge_search
+    group: knowledge
+    use: deerflow.knowledge.tools:knowledge_search_tool
+    provider: cecemate-manual
   - name: read_file
     group: file:read
     use: deerflow.sandbox.tools:read_file_tool

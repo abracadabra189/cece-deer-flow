@@ -57,6 +57,7 @@ memory-zh = ["deerflow-harness[memory-zh]"]
 # Keeping them separate from development tooling lets every startup mode sync
 # the same locked runtime set without promoting those packages to core deps.
 extensions = [
+    "deerflow-extension-cecemate-manual",
     "deerflow-extension-office-preview",
 ]
 dev = [
@@ -125,3 +126,4 @@ members = ["packages/harness", "packages/extension-api"]
 deerflow-harness = { workspace = true }
 deerflow-extension-api = { workspace = true }
 deerflow-extension-office-preview = { path = "extensions/sources/deerflow-extension-office-preview" }
+deerflow-extension-cecemate-manual = { path = "extensions/sources/deerflow-extension-cecemate-manual" }
