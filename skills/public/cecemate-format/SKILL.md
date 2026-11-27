@@ -1,5 +1,10 @@
 ---
 name: cecemate-format
+display_description: display_description_cecemate-format_ABC
+example_queries:
+  - cecemate-format_query1
+  - cecemate-format_query2
+  - cecemate-format_query3
 display_name: CeCeMate 格式交付
 description: 当用户需要交付 CeCeMate 风格的 HTML、DOCX 或 PDF 报告、简报、方案、会议纪要、产品手册或财务附表时使用；适用于需要统一品牌格式与交付校验的正式制品。
 ---

@@ -1,5 +1,10 @@
 ---
 name: consulting-analysis
+display_description: display_description_consulting-analysis_ABC
+example_queries:
+  - consulting-analysis_query1
+  - consulting-analysis_query2
+  - consulting-analysis_query3
 display_name: 咨询分析报告
 description: Use this skill when the user requests to generate, create, or write professional research reports including but not limited to market analysis, consumer insights, brand analysis, financial analysis, industry research, competitive intelligence, investment due diligence, or any consulting-grade analytical report. This skill operates in two phases — (1) generating a structured analysis framework with chapter skeleton, data query requirements, and analysis logic, and (2) after data collection by other skills, producing the final consulting-grade report with structured narratives, embedded charts, and strategic insights.
 ---

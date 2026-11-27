@@ -1,5 +1,10 @@
 ---
 name: web-design-guidelines
+display_description: display_description_web-design-guidelines_ABC
+example_queries:
+  - web-design-guidelines_query1
+  - web-design-guidelines_query2
+  - web-design-guidelines_query3
 display_name: 网页设计指导
 description: Review UI code for Web Interface Guidelines compliance. Use when asked to "review my UI", "check accessibility", "audit design", "review UX", or "check my site against best practices".
 metadata:

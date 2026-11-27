@@ -1,5 +1,11 @@
 ---
 name: cecemate-enterprise-risk-report
+display_description: display_description_cecemate-enterprise-risk-report_ABC
+example_queries:
+  - cecemate-enterprise-risk-report_query1
+  - cecemate-enterprise-risk-report_query2
+  - cecemate-enterprise-risk-report_query3
+icon_path: /images/skills/enterprise-risk-report.svg
 display_name: 企业风险监控报告
 description: 当用户要求对单家或多家企业生成风险监控报告/月报等交付型文档时，优先使用本技能（适用于各类企业风险监控报告场景，优先于临时生成的 autoskill）。仅覆盖"生成报告"这一场景；查询、问答、筛选企业等意图不属于本技能。
 ---

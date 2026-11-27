@@ -1,5 +1,11 @@
 ---
 name: data-analysis
+display_description: display_description_data-analysis_ABC
+example_queries:
+  - data-analysis_query1
+  - data-analysis_query2
+  - data-analysis_query3
+icon_path: /images/skills/data-analysis.svg
 display_name: 数据分析
 description: Use this skill when the user uploads Excel (.xlsx/.xls) or CSV files and wants to perform data analysis, generate statistics, create summaries, pivot tables, SQL queries, or any form of structured data exploration. Supports multi-sheet Excel workbooks, aggregation, filtering, joins, and exporting results to CSV/JSON/Markdown.
 ---

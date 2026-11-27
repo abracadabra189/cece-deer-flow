@@ -1,5 +1,11 @@
 ---
 name: deep-research
+display_description: display_description_deep-research_ABC
+example_queries:
+  - deep-research_query1
+  - deep-research_query2
+  - deep-research_query3
+icon_path: /images/skills/deep-research.svg
 display_name: 深度研究
 description: Use for substantial investigations needing current evidence, source comparison, or synthesis across several dimensions. Scale research to the question and requested depth.
 ---

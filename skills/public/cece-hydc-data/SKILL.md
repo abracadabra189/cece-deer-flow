@@ -1,5 +1,10 @@
 ---
 name: cece-hydc-data
+display_description: display_description_cece-hydc-data_ABC
+example_queries:
+  - cece-hydc-data_query1
+  - cece-hydc-data_query2
+  - cece-hydc-data_query3
 display_name: CECE 产业数据
 description: 当需要通过 HYDC 数据服务获取企业、行业、市场、政策、公告、融资或区域事实数据时使用。
 ---

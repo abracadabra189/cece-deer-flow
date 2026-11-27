@@ -1,5 +1,11 @@
 ---
 name: cecemate-early-stage-project-weekly
+display_description: display_description_cecemate-early-stage-project-weekly_ABC
+example_queries:
+  - cecemate-early-stage-project-weekly_query1
+  - cecemate-early-stage-project-weekly_query2
+  - cecemate-early-stage-project-weekly_query3
+icon_path: /images/skills/early-stage-project-weekly.svg
 display_name: 早期项目投资周报
 description: 当用户需要生成天使轮、Pre-A、A 或 A+ 轮融资的早期科技项目投资周报、早期融资盘点或一级市场早期项目监测报告时使用。
 ---
