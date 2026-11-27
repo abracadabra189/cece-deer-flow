@@ -2,6 +2,7 @@ export interface Skill {
   name: string;
   display_name?: string | null;
   description: string;
+  icon_path?: string | null;
   category: string;
   license: string;
   enabled: boolean;

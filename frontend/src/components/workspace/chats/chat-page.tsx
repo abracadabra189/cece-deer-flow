@@ -28,7 +28,7 @@ import { ThreadRunInputs } from "@/components/workspace/thread-run-inputs";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { useActiveGoal } from "@/components/workspace/use-active-goal";
-import { Welcome } from "@/components/workspace/welcome";
+import { Welcome, WelcomeExamples } from "@/components/workspace/welcome";
 import { WorkspaceSidebarTrigger } from "@/components/workspace/workspace-sidebar-trigger";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { hasPermission, PERMISSIONS } from "@/core/auth/permissions";
@@ -524,6 +524,8 @@ export default function ChatPage() {
     },
     [handleSubmit],
   );
+  const skillWelcome = searchParams.get("mode") === "skill";
+  const showHome = isWelcomeMode && !hasGoal && !hasTodos && !skillWelcome;
   const affiliatedProjectId =
     !isNewThread && !isMock && threadMetadata.data
       ? projectIdOfThread(threadMetadata.data)
@@ -547,13 +549,30 @@ export default function ChatPage() {
         context={settings.context}
         isMock={isMock}
       >
-        <ChatBox threadId={threadId} browserEnabled={browserEnabled}>
-          <div className="relative flex size-full min-h-0 justify-between bg-[#f5f7fa]">
+        <ChatBox
+          threadId={threadId}
+          browserEnabled={browserEnabled}
+          ceceLayout={!showHome}
+        >
+          <div
+            className={cn(
+              "cece-ui relative flex size-full min-h-0 justify-between bg-white",
+              showHome && "cece-home",
+              !showHome && "cecemate-chat-page",
+            )}
+          >
+            {showHome && (
+              <WorkspaceSidebarTrigger
+                ceceMate
+                className="absolute top-[10px] left-[18px] z-40 size-7 text-[#344155] opacity-100"
+              />
+            )}
             {!isWelcomeMode && (
-              <header className="absolute top-0 right-0 left-0 z-30 flex h-[46px] shrink-0 items-center gap-2 border-b border-[#e7ebf3] bg-white px-4">
-                {!isMock && <WorkspaceSidebarTrigger className="md:hidden" />}
-                <div className="flex min-w-0 flex-1 items-center gap-2 text-sm font-bold">
+              <header className="cecemate-chat-header absolute top-0 right-0 left-0 z-30 flex h-12 shrink-0 items-center gap-2 bg-white px-6">
+                {!isMock && <WorkspaceSidebarTrigger ceceMate />}
+                <div className="flex min-w-0 flex-1 items-center gap-2">
                   <ThreadTitle
+                    className="cecemate-chat-title"
                     threadId={threadId}
                     thread={thread}
                     canonicalTitle={threadMetadata.data?.values?.title}
@@ -562,14 +581,14 @@ export default function ChatPage() {
                 <div className="flex shrink-0 items-center gap-2">
                   <SidecarTrigger />
                   {browserEnabled && <BrowserTrigger />}
-                  <ArtifactTrigger />
+                  <ArtifactTrigger ceceMate />
                 </div>
               </header>
             )}
             <main className="flex min-h-0 max-w-full grow flex-col">
               <div className="flex min-h-0 flex-1 justify-center">
                 {isWelcomeMode && !hasGoal && !hasTodos ? (
-                  <Welcome onStartTask={handleWelcomeTask} />
+                  <Welcome skillMode={skillWelcome} />
                 ) : (
                   <MessageList
                     activeRunId={activeRunId}
@@ -577,7 +596,7 @@ export default function ChatPage() {
                     archiveDownloadsEnabled={
                       isNewThread || isMock || threadMetadata.data != null
                     }
-                    className="size-full pt-[46px]"
+                    className="size-full bg-white pt-12"
                     testId="main-message-list"
                     threadId={threadId}
                     thread={thread}
@@ -632,10 +651,12 @@ export default function ChatPage() {
               </div>
               <div
                 className={cn(
-                  "relative right-0 bottom-0 left-0 z-30 flex shrink-0 justify-center px-4 pt-2 pb-5",
+                  "relative right-0 bottom-0 left-0 z-30 flex shrink-0 justify-center bg-white px-4 pt-2 pb-5",
+                  !showHome && "cecemate-chat-composer-wrap",
+                  showHome && "home-input-wrap",
                 )}
               >
-                <div className={cn("relative w-full", "max-w-[820px]")}>
+                <div className={cn("relative w-full", "max-w-[920px]")}>
                   {(hasGoal || goalOutcome !== null || hasTodos) && (
                     <div className={cn("right-0 left-0 z-0", "relative")}>
                       <div
@@ -658,7 +679,7 @@ export default function ChatPage() {
                         />
                         {hasTodos && (
                           <TodoList
-                            className="bg-background/5"
+                            className="bg-white"
                             todos={thread.values.todos ?? []}
                             hidden={false}
                           />
@@ -683,7 +704,7 @@ export default function ChatPage() {
                     </p>
                   )}
                   {mountedRef.current ? (
-                    <div className="w-full">
+                    <div className="chat-composer-shell relative w-full">
                       <ThreadRunInputs
                         inputs={runInputs}
                         threadId={isNewThread || isMock ? undefined : threadId}
@@ -691,8 +712,15 @@ export default function ChatPage() {
                         canCreate={canCreateRuns}
                         canCancel={canStopStreaming}
                       />
+                      {!isWelcomeMode && (
+                        <span
+                          aria-hidden="true"
+                          className="cecemate-chat-composer-avatar"
+                        />
+                      )}
                       <InputBox
                         className="w-full"
+                        homeLayout
                         isWelcomeMode={isWelcomeMode}
                         threadId={threadId}
                         projectId={projectParam ?? affiliatedProjectId}
@@ -756,18 +784,24 @@ export default function ChatPage() {
                     <div
                       aria-hidden="true"
                       className={cn(
-                        "bg-background/5 h-32 w-full rounded-2xl",
+                        "h-32 w-full rounded-2xl bg-white",
                         isWelcomeMode && "-translate-y-2 sm:-translate-y-4",
                       )}
                     />
                   )}
                   {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
-                    <div className="text-muted-foreground/67 w-full translate-y-12 text-center text-xs">
+                    <div
+                      className={cn(
+                        "text-muted-foreground/67 w-full text-center text-xs",
+                        showHome ? "absolute top-full mt-2" : "translate-y-12",
+                      )}
+                    >
                       {t.common.notAvailableInDemoMode}
                     </div>
                   )}
                 </div>
               </div>
+              {showHome && <WelcomeExamples onStartTask={handleWelcomeTask} />}
             </main>
           </div>
         </ChatBox>

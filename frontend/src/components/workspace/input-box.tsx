@@ -58,9 +58,21 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { fetch } from "@/core/api/fetcher";
+import {
+  collectThreadArtifactPaths,
+  urlOfArtifact,
+} from "@/core/artifacts/utils";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { getBackendBaseURL } from "@/core/config";
 import {
@@ -74,6 +86,7 @@ import {
 import { useConversationReferencesCapability } from "@/core/features/hooks";
 import { useI18n } from "@/core/i18n/hooks";
 import { polishInputDraft } from "@/core/input-polish/api";
+import { formatTokenCount } from "@/core/messages/usage";
 import {
   isHiddenFromUIMessage,
   type FileInMessage,
@@ -100,7 +113,11 @@ import { useSkills } from "@/core/skills/hooks";
 import { skillDisplayName } from "@/core/skills/visibility";
 import { DEFAULT_MAX_SUGGESTIONS } from "@/core/suggestions/api";
 import { useSuggestionsConfig } from "@/core/suggestions/hooks";
-import type { AgentThreadContext, GoalState } from "@/core/threads";
+import type {
+  AgentThreadContext,
+  ArtifactEntry,
+  GoalState,
+} from "@/core/threads";
 import { compactThreadContext } from "@/core/threads/api";
 import {
   buildComposerDraftKey,
@@ -112,8 +129,12 @@ import {
   type ComposerDraft,
   writeComposerDraft,
 } from "@/core/threads/composer-draft";
+import { useThreadTokenUsage } from "@/core/threads/hooks";
 import type { RunInputMode } from "@/core/threads/run-inputs";
-import { threadTokenUsageQueryKey } from "@/core/threads/token-usage";
+import {
+  selectContextUsage,
+  threadTokenUsageQueryKey,
+} from "@/core/threads/token-usage";
 import { textOfMessage } from "@/core/threads/utils";
 import {
   formatUploadSize,
@@ -123,6 +144,7 @@ import {
   type UploadLimits,
   type UploadLimitViolation,
 } from "@/core/uploads";
+import { getFileName } from "@/core/utils/files";
 import {
   appendSpeechTranscript,
   getSpeechRecognitionConstructor,
@@ -138,6 +160,13 @@ import { cn } from "@/lib/utils";
 
 import { Suggestion, Suggestions } from "../ai-elements/suggestion";
 
+import {
+  CECE_COMPOSER_ASSET_ROOT,
+  ComposerAssetIcon,
+  composerFileIcon,
+  composerModelIcon,
+} from "./cecemate/composer-assets";
+import { formatContextUsagePercentage } from "./context-usage-format";
 import {
   abortGoalRequest,
   beginGoalRequest,
@@ -170,6 +199,8 @@ import {
   focusReferenceAt,
   renderReferenceEditor,
   selectReferenceForDeletion,
+  textWithoutReferences,
+  type InlineReference,
 } from "./mentions/inline-references";
 import {
   MentionPicker,
@@ -191,21 +222,37 @@ import {
 
 const COMPOSER_DRAFT_SAVE_DELAY_MS = 300;
 
+const IMAGE_FILE_EXTENSION = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i;
+
+function isImageFile(filename: string, mediaType?: string | null) {
+  return mediaType?.toLowerCase().startsWith("image/") === true
+    ? true
+    : IMAGE_FILE_EXTENSION.test(filename);
+}
+
 const CECE_MATE_MODE_OPTIONS: ReadonlyArray<{
   value: InputMode;
   label: string;
   description: string;
+  icon: "mode-fast.svg" | "mode-thinking.svg" | "mode-research.svg";
 }> = [
-  { value: "flash", label: "快速响应", description: "适合轻量问答和快速处理" },
+  {
+    value: "flash",
+    label: "快速响应",
+    description: "适合轻量问答和快速处理",
+    icon: "mode-fast.svg" as const,
+  },
   {
     value: "thinking",
     label: "思考模式",
     description: "先分析再回答，兼顾速度与质量",
+    icon: "mode-thinking.svg" as const,
   },
   {
     value: "pro",
     label: "深度研究",
     description: "适合需要多步推理的复杂任务",
+    icon: "mode-research.svg" as const,
   },
 ];
 
@@ -328,6 +375,7 @@ export function InputBox({
   context,
   extraHeader,
   isWelcomeMode,
+  homeLayout = false,
   threadId,
   draftThreadId = threadId,
   projectId,
@@ -366,6 +414,7 @@ export function InputBox({
    * decoupled from "the backend has created the thread" — see issue #2746.
    */
   isWelcomeMode?: boolean;
+  homeLayout?: boolean;
   threadId: string;
   draftThreadId?: string;
   projectId?: string | null;
@@ -456,9 +505,43 @@ export function InputBox({
   const mentionInFlight = useRef(false);
   const dismissedMention = useRef<string | null>(null);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [welcomeModeSelection, setWelcomeModeSelection] =
+    useState<InputMode | null>(null);
   const { models } = useModels();
   const { user } = useAuth();
   const { thread, isMock } = useThread();
+  const threadTokenUsage = useThreadTokenUsage(threadId, {
+    enabled: homeLayout && !isMock,
+  });
+  const contextUsage = selectContextUsage(threadTokenUsage.data);
+  const artifacts = useMemo<ArtifactEntry[]>(() => {
+    const toolArtifacts = thread.values?.tool_artifacts ?? [];
+    const artifactPaths = collectThreadArtifactPaths(
+      Array.isArray(thread.values?.artifacts) ? thread.values.artifacts : [],
+      thread.messages,
+    );
+    const knownPaths = new Set(
+      toolArtifacts.map((artifact) => artifact.real_ref),
+    );
+    return [
+      ...toolArtifacts,
+      ...artifactPaths
+        .filter((filepath) => !knownPaths.has(filepath))
+        .map((filepath, index) => ({
+          handle: `legacy:${filepath}`,
+          tool_name: "present_files",
+          tool_call_id: "",
+          call_index: index,
+          artifact_type: "file",
+          display_name: getFileName(filepath),
+          real_ref: filepath,
+        })),
+    ];
+  }, [
+    thread.messages,
+    thread.values?.artifacts,
+    thread.values?.tool_artifacts,
+  ]);
   const { attachments, textInput } = usePromptInputController();
   const setTextInput = textInput.setInput;
   const sidecar = useMaybeSidecar();
@@ -503,6 +586,59 @@ export function InputBox({
   const inlineRefs = useMemo(
     () => inlineReferences(textInput.value),
     [textInput.value],
+  );
+  const inlineAttachmentItems = useMemo(
+    () => [
+      ...attachmentParts.map((attachment) => ({
+        id: `local:${attachment.id}`,
+        label: attachment.filename || "附件",
+      })),
+      ...projectAttachments
+        .filter((attachment) => !attachment.source_document_id)
+        .map((attachment) => ({
+          id: `project:${attachment.virtual_path}`,
+          label: attachment.filename,
+        })),
+    ],
+    [attachmentParts, projectAttachments],
+  );
+  const inlineReferenceImagePreviews = useMemo(() => {
+    const previews = new Map<string, string>();
+    for (const attachment of attachmentParts) {
+      if (
+        attachment.url &&
+        isImageFile(attachment.filename ?? "", attachment.mediaType)
+      ) {
+        previews.set(`attachment:local:${attachment.id}`, attachment.url);
+      }
+    }
+    for (const attachment of projectAttachments) {
+      if (!isImageFile(attachment.filename)) continue;
+      const referenceKind = attachment.source_document_id
+        ? "file"
+        : "attachment";
+      const referenceId =
+        attachment.source_document_id ?? `project:${attachment.virtual_path}`;
+      previews.set(`${referenceKind}:${referenceId}`, attachment.artifact_url);
+    }
+    for (const artifact of artifacts) {
+      if (!isImageFile(artifact.display_name, artifact.mime_type)) continue;
+      previews.set(
+        `artifact:${artifact.handle}`,
+        urlOfArtifact({
+          filepath: artifact.real_ref,
+          threadId,
+          isMock,
+        }),
+      );
+    }
+    return previews;
+  }, [artifacts, attachmentParts, isMock, projectAttachments, threadId]);
+  const resolveInlineReferenceImagePreview = useCallback(
+    (reference: InlineReference) =>
+      inlineReferenceImagePreviews.get(`${reference.kind}:${reference.id}`) ??
+      null,
+    [inlineReferenceImagePreviews],
   );
   const hasInlineReferences = inlineRefs.length > 0;
   const conversationReferencesUnavailable =
@@ -770,9 +906,21 @@ export function InputBox({
     const agentDefaultModel = defaultModelName
       ? models.find((m) => m.name === defaultModelName)
       : undefined;
-    const fallbackModel = currentModel ?? agentDefaultModel ?? models[0]!;
+    const ceceDefaultModel = homeLayout
+      ? models.find((model) => {
+          const identity =
+            `${model.name} ${model.model} ${model.display_name}`.toLowerCase();
+          return identity.includes("deepseek") && identity.includes("flash");
+        })
+      : undefined;
+    const fallbackModel =
+      currentModel ?? agentDefaultModel ?? ceceDefaultModel ?? models[0]!;
     const nextModelName = fallbackModel.name;
-    const nextMode = getResolvedMode(context.mode, fallbackModel);
+    const requestedMode =
+      homeLayout && isWelcomeMode
+        ? (welcomeModeSelection ?? "thinking")
+        : (context.mode ?? (homeLayout ? "thinking" : undefined));
+    const nextMode = getResolvedMode(requestedMode, fallbackModel);
     // A remembered effort may not exist in this model's contract (issue #5073);
     // map it through the aliases / default instead of sending it verbatim.
     const nextEffort = resolveReasoningEffort(
@@ -797,17 +945,40 @@ export function InputBox({
       },
       { automatic: true },
     );
-  }, [context, models, defaultModelName, onContextChange]);
+  }, [
+    context,
+    models,
+    defaultModelName,
+    homeLayout,
+    isWelcomeMode,
+    onContextChange,
+    welcomeModeSelection,
+  ]);
 
   const selectedModel = useMemo(() => {
     if (models.length === 0) {
       return undefined;
     }
-    return models.find((m) => m.name === context.model_name) ?? models[0];
-  }, [context.model_name, models]);
+    const ceceDefaultModel = homeLayout
+      ? models.find((model) => {
+          const identity =
+            `${model.name} ${model.model} ${model.display_name}`.toLowerCase();
+          return identity.includes("deepseek") && identity.includes("flash");
+        })
+      : undefined;
+    return (
+      models.find((m) => m.name === context.model_name) ??
+      ceceDefaultModel ??
+      models[0]
+    );
+  }, [context.model_name, homeLayout, models]);
 
   const resolvedModelName = selectedModel?.name;
-  const resolvedMode = getResolvedMode(context.mode, selectedModel);
+  const requestedMode =
+    homeLayout && isWelcomeMode
+      ? (welcomeModeSelection ?? "thinking")
+      : (context.mode ?? (homeLayout ? "thinking" : undefined));
+  const resolvedMode = getResolvedMode(requestedMode, selectedModel);
   const selectedModeOption = CECE_MATE_MODE_OPTIONS.find(
     (option) => option.value === resolvedMode,
   );
@@ -1114,7 +1285,7 @@ export function InputBox({
       if (!model) {
         return;
       }
-      const mode = getResolvedMode(context.mode, model);
+      const mode = getResolvedMode(requestedMode, model);
       const reasoning_effort = resolveReasoningEffort(
         model,
         context.reasoning_effort,
@@ -1128,7 +1299,7 @@ export function InputBox({
       });
       setModelDialogOpen(false);
     },
-    [disabled, onContextChange, context, models, polishingInput],
+    [disabled, onContextChange, context, models, polishingInput, requestedMode],
   );
 
   const handleModeSelect = useCallback(
@@ -1136,13 +1307,23 @@ export function InputBox({
       if (disabled || polishingInput) {
         return;
       }
+      if (homeLayout && isWelcomeMode) {
+        setWelcomeModeSelection(mode);
+      }
       const nextMode = getResolvedMode(mode, selectedModel);
       onContextChange?.({
         mode: nextMode,
         reasoning_effort: reasoningEffortForMode(nextMode, selectedModel),
       });
     },
-    [disabled, onContextChange, polishingInput, selectedModel],
+    [
+      disabled,
+      homeLayout,
+      isWelcomeMode,
+      onContextChange,
+      polishingInput,
+      selectedModel,
+    ],
   );
 
   const handleGoalCommand = useCallback(
@@ -1393,21 +1574,41 @@ export function InputBox({
       // they join ``additional_kwargs.files`` as completed uploads without a
       // re-upload, and merge with any files uploaded in this send
       // (buildThreadSubmitMessages concatenates the two lists).
-      const stagedFiles: FileInMessage[] = projectAttachments
-        .filter(
-          (file) =>
-            !file.source_document_id ||
-            currentReferences.some(
-              (ref) =>
-                ref.kind === "file" && ref.id === file.source_document_id,
-            ),
-        )
-        .map((attachment) => ({
-          filename: attachment.filename,
-          size: attachment.size_bytes,
-          path: attachment.virtual_path,
-          status: "uploaded" as const,
-        }));
+      const artifactFiles: FileInMessage[] = currentReferences
+        .filter((reference) => reference.kind === "artifact")
+        .flatMap((reference) => {
+          const artifact = artifacts.find(
+            (candidate) => candidate.handle === reference.id,
+          );
+          return artifact
+            ? [
+                {
+                  filename: artifact.display_name,
+                  size: 0,
+                  path: artifact.real_ref,
+                  status: "uploaded" as const,
+                },
+              ]
+            : [];
+        });
+      const stagedFiles: FileInMessage[] = [
+        ...projectAttachments
+          .filter(
+            (file) =>
+              !file.source_document_id ||
+              currentReferences.some(
+                (ref) =>
+                  ref.kind === "file" && ref.id === file.source_document_id,
+              ),
+          )
+          .map((attachment) => ({
+            filename: attachment.filename,
+            size: attachment.size_bytes,
+            path: attachment.virtual_path,
+            status: "uploaded" as const,
+          })),
+        ...artifactFiles,
+      ];
       const skillReferences = [
         ...new Set(
           inlineReferences(textInput.value)
@@ -1526,6 +1727,7 @@ export function InputBox({
     },
     [
       context,
+      artifacts,
       textInput.value,
       conversationReferences,
       draftKey,
@@ -1797,14 +1999,15 @@ export function InputBox({
     !disabled &&
     !polishingInput &&
     (mentionButtonOpen || mentionQuery !== null);
+  const showIntegratedSkillPicker = homeLayout && mentionButtonOpen;
   useLayoutEffect(() => {
-    if (!showMentions) return;
+    if (!showMentions || showIntegratedSkillPicker) return;
     const place = () => {
       const box = promptRootRef.current?.getBoundingClientRect();
       if (!box) return;
       const top = box.top - 12;
       const bottom = window.innerHeight - box.bottom - 12;
-      const above = top >= bottom;
+      const above = homeLayout ? !isWelcomeMode : top >= bottom;
       setMentionPlacement({
         above,
         maxHeight: Math.max(100, above ? top : bottom),
@@ -1817,7 +2020,7 @@ export function InputBox({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [showMentions]);
+  }, [homeLayout, isWelcomeMode, showIntegratedSkillPicker, showMentions]);
   const closeMentions = useCallback(() => {
     if (mentionInFlight.current) return;
     dismissedMention.current = `${textInput.value}:${mentionQuery?.end}`;
@@ -1835,6 +2038,14 @@ export function InputBox({
     setMentionButtonOpen(true);
     setMentionError(null);
   }, []);
+  const openAttachmentDialog = useCallback(() => {
+    const caret = inlineSkillTextRef.current
+      ? referenceCaret(inlineSkillTextRef.current)
+      : textareaRef.current?.selectionStart;
+    composerCaretRef.current =
+      caret ?? Math.min(composerCaretRef.current, textInput.value.length);
+    attachments.openFileDialog();
+  }, [attachments, textInput.value.length]);
   const updateMentionQuery = useCallback(
     (value: string, caret: number | null) => {
       if (caret !== null) composerCaretRef.current = caret;
@@ -1854,6 +2065,88 @@ export function InputBox({
     } else if (inlineSkillTextRef.current)
       focusReferenceAt(inlineSkillTextRef.current, offset);
   }, []);
+  const insertArtifactReference = useCallback(
+    (artifact: (typeof artifacts)[number]) => {
+      const originalText = textInput.value ?? "";
+      if (
+        inlineReferences(originalText).some(
+          (reference) =>
+            reference.kind === "artifact" && reference.id === artifact.handle,
+        )
+      ) {
+        return;
+      }
+      const caret = Math.min(
+        inlineSkillTextRef.current
+          ? (referenceCaret(inlineSkillTextRef.current) ??
+              composerCaretRef.current)
+          : (textareaRef.current?.selectionStart ?? originalText.length),
+        originalText.length,
+      );
+      const inserted = `${referenceToken(
+        "artifact",
+        artifact.handle,
+        artifact.display_name,
+      )} `;
+      const nextText =
+        originalText.slice(0, caret) + inserted + originalText.slice(caret);
+      flushSync(() => {
+        textInput.setInput(nextText);
+        setInlineEditorActive(true);
+      });
+      focusComposerAt(caret + inserted.length);
+    },
+    [artifacts, focusComposerAt, textInput],
+  );
+  useEffect(() => {
+    if (!homeLayout) {
+      return;
+    }
+    const originalText = textInput.value ?? "";
+    const attachmentReferences = inlineReferences(originalText).filter(
+      (reference) => reference.kind === "attachment",
+    );
+    const availableIds = new Set(
+      inlineAttachmentItems.map((attachment) => attachment.id),
+    );
+    let nextText = originalText;
+    for (const reference of attachmentReferences.reverse()) {
+      if (!availableIds.has(reference.id)) {
+        nextText =
+          nextText.slice(0, reference.start) + nextText.slice(reference.end);
+      }
+    }
+    const existingIds = new Set(
+      inlineReferences(nextText)
+        .filter((reference) => reference.kind === "attachment")
+        .map((reference) => reference.id),
+    );
+    const missing = inlineAttachmentItems.filter(
+      (attachment) => !existingIds.has(attachment.id),
+    );
+    if (missing.length === 0 && nextText === originalText) {
+      return;
+    }
+    const caret = Math.min(composerCaretRef.current, nextText.length);
+    const inserted = missing.length
+      ? `${missing
+          .map((attachment) =>
+            referenceToken("attachment", attachment.id, attachment.label),
+          )
+          .join(" ")} `
+      : "";
+    nextText = nextText.slice(0, caret) + inserted + nextText.slice(caret);
+    textInput.setInput(nextText);
+    setInlineEditorActive(true);
+    scheduleDraftSave({ text: nextText, skillName: null });
+    requestAnimationFrame(() => focusComposerAt(caret + inserted.length));
+  }, [
+    focusComposerAt,
+    homeLayout,
+    inlineAttachmentItems,
+    scheduleDraftSave,
+    textInput,
+  ]);
   const selectMention = useCallback(
     async (selection: MentionSelection) => {
       if (mentionInFlight.current || disabled || polishingInput) return;
@@ -2084,6 +2377,9 @@ export function InputBox({
     !polishingInput &&
     inputPolishUndo !== null &&
     (textInput.value ?? "") === inputPolishUndo.rewrittenText;
+  const polishableInputText = homeLayout
+    ? textWithoutReferences(textInput.value ?? "")
+    : (textInput.value ?? "");
   const inputPolishDisabled =
     isComposerDisabled ||
     isMockThread ||
@@ -2091,7 +2387,7 @@ export function InputBox({
     (!inputPolishUndoAvailable &&
       (status === "streaming" ||
         slashCommandQuery !== null ||
-        !canPolishInput(textInput.value ?? "")));
+        !canPolishInput(polishableInputText)));
   const speechRecognitionConstructor = useMemo(
     () =>
       typeof window === "undefined"
@@ -2541,6 +2837,14 @@ export function InputBox({
       promptHistoryDraftRef.current = "";
       const nextText = readReferenceEditor(element);
       const refs = inlineReferences(nextText);
+      const attachmentIds = new Set(
+        refs.filter((ref) => ref.kind === "attachment").map((ref) => ref.id),
+      );
+      for (const attachment of attachmentParts) {
+        if (!attachmentIds.has(`local:${attachment.id}`)) {
+          attachments.remove(attachment.id);
+        }
+      }
       setConversationReferences((previous) => {
         const known = new Map(conversationReferenceCache.current);
         for (const reference of previous)
@@ -2557,7 +2861,11 @@ export function InputBox({
           refs.filter((ref) => ref.kind === "file").map((ref) => ref.id),
         );
         return [
-          ...previous.filter((file) => !file.source_document_id),
+          ...previous.filter(
+            (file) =>
+              !file.source_document_id &&
+              attachmentIds.has(`project:${file.virtual_path}`),
+          ),
           ...[...ids].flatMap((id) => {
             const file = projectReferenceCache.current.get(id);
             return file ? [file] : [];
@@ -2580,6 +2888,8 @@ export function InputBox({
     [
       conversationCapability,
       threadId,
+      attachmentParts,
+      attachments,
       abortVoiceInput,
       abortInputPolishRequest,
       setProjectAttachments,
@@ -2594,8 +2904,16 @@ export function InputBox({
     if (hasInlineReferences) setInlineEditorActive(true);
     const element = inlineSkillTextRef.current;
     if (element && !inlineSkillComposingRef.current)
-      renderReferenceEditor(element, textInput.value);
-  }, [hasInlineReferences, textInput.value]);
+      renderReferenceEditor(
+        element,
+        textInput.value,
+        resolveInlineReferenceImagePreview,
+      );
+  }, [
+    hasInlineReferences,
+    resolveInlineReferenceImagePreview,
+    textInput.value,
+  ]);
 
   const handleInlineSkillInput = useCallback(
     (event: FormEvent<HTMLSpanElement>) => {
@@ -2819,6 +3137,175 @@ export function InputBox({
     threadId,
   ]);
 
+  const contextPercentage = Math.max(
+    0,
+    Math.min(100, contextUsage?.percentage ?? 0),
+  );
+  const formattedContextPercentage =
+    formatContextUsagePercentage(contextUsage?.percentage) ?? "0";
+  const contextNearLimit = contextPercentage >= 85;
+  const contextUsageControl = homeLayout ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={`上下文已使用 ${formattedContextPercentage}%`}
+          className="cecemate-context-usage"
+          type="button"
+        >
+          <span
+            className="cecemate-context-usage-ring"
+            data-warning={contextNearLimit ? "true" : undefined}
+            style={{
+              background: `conic-gradient(${contextNearLimit ? "#e62c3b" : "#528bff"} ${contextPercentage}%, ${contextNearLimit ? "#ffd0d0" : "#d0e0ff"} 0)`,
+            }}
+          >
+            <span />
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        align="center"
+        className="cecemate-context-tooltip"
+        side="top"
+        sideOffset={10}
+      >
+        <p className="cecemate-context-tooltip-summary">
+          <span>上下文已使用</span>
+          <span className="cecemate-context-tooltip-tokens">
+            {formatTokenCount(contextUsage?.tokenCount ?? 0)}/
+            {contextUsage?.maxContextTokens
+              ? formatTokenCount(contextUsage.maxContextTokens)
+              : "--"}
+          </span>
+          <strong data-warning={contextNearLimit ? "true" : undefined}>
+            {formattedContextPercentage}%
+          </strong>
+        </p>
+        {contextNearLimit ? (
+          <p className="cecemate-context-tooltip-warning">
+            接近上限，继续对话将自动压缩早期内容
+          </p>
+        ) : null}
+      </TooltipContent>
+    </Tooltip>
+  ) : null;
+  const modeMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <PromptInputButton
+          aria-label="选择任务模式"
+          title={homeLayout ? selectedModeOption?.label : undefined}
+          className={cn(
+            "h-7 gap-1 rounded-lg border border-[#e7ebf3] bg-[#fafbfe] px-2.5! text-xs text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]",
+            homeLayout &&
+              "cecemate-mode-trigger border-0 bg-transparent text-sm text-[#282b2e]",
+            resolvedMode === "pro" &&
+              !homeLayout &&
+              "border-[#c9dcfb] bg-[#edf3ff] text-[#2563eb]",
+          )}
+          disabled={composerLocked}
+        >
+          {!homeLayout && <GaugeIcon className="size-3.5" />}
+          {selectedModeOption?.label ?? "思考模式"}
+          {homeLayout && (
+            <ComposerAssetIcon
+              className="cecemate-mode-chevron"
+              name="chevron-down.svg"
+              size={12}
+            />
+          )}
+        </PromptInputButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align={homeLayout ? "end" : "start"}
+        className={cn(
+          "w-60 rounded-xl border-[#dde6fa] bg-white p-1.5 shadow-[0_8px_24px_rgb(20_32_64_/_0.12)]",
+          homeLayout && "cecemate-mode-menu w-[292px]",
+        )}
+        side={homeLayout ? (isWelcomeMode ? "bottom" : "top") : undefined}
+        sideOffset={6}
+      >
+        {CECE_MATE_MODE_OPTIONS.map((option) => (
+          <DropdownMenuItem
+            key={option.value}
+            className={cn(
+              "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[#3f4a5e] focus:bg-[#f2f6ff] focus:text-[#2563eb]",
+              homeLayout && "cecemate-mode-option",
+            )}
+            data-current-mode={
+              option.value === resolvedMode ? "true" : undefined
+            }
+            onSelect={() => handleModeSelect(option.value)}
+          >
+            {homeLayout ? (
+              <span
+                aria-hidden="true"
+                className="cecemate-mode-option-icon"
+                style={{
+                  WebkitMaskImage: `url(${CECE_COMPOSER_ASSET_ROOT}/${option.icon})`,
+                  maskImage: `url(${CECE_COMPOSER_ASSET_ROOT}/${option.icon})`,
+                }}
+              />
+            ) : (
+              <GaugeIcon className="size-4 shrink-0" />
+            )}
+            <span className="cecemate-mode-option-copy min-w-0 flex-1">
+              <span className="cecemate-mode-option-label block">
+                {option.label}
+              </span>
+              <span className="cecemate-mode-option-description block">
+                {option.description}
+              </span>
+            </span>
+            {option.value === resolvedMode ? (
+              homeLayout ? (
+                <ComposerAssetIcon name="composer-check.svg" size={14} />
+              ) : (
+                <CheckIcon className="size-4 shrink-0 text-[#2563eb]" />
+              )
+            ) : null}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const placeholder = homeLayout
+    ? "请描述你的需求，@引用对话历史文件/调用技能与指令，支持Shift+回车换行"
+    : t.inputBox.placeholder;
+  const ComposerHeader = homeLayout ? "div" : PromptInputHeader;
+  const ComposerFooter = homeLayout ? "div" : PromptInputFooter;
+  const mentionPicker = (
+    <MentionPicker
+      ceceMate={homeLayout}
+      selectedExtensions={inlineReferences(textInput.value)
+        .filter((ref) => ref.kind === "extension")
+        .map((ref) => ref.id)}
+      ref={mentionPickerRef}
+      listId={mentionListId}
+      query={mentionQuery?.query ?? ""}
+      searchInput={mentionButtonOpen}
+      skillsOnly={mentionButtonOpen}
+      skills={mentionSkills}
+      selectedSkills={inlineRefs
+        .filter((ref) => ref.kind === "skill")
+        .map((ref) => ref.id)}
+      references={reconciledConversations.references}
+      capability={conversationCapability}
+      skillsLoading={skillsLoading || skillsFetching}
+      skillsError={skillsError}
+      onRetrySkills={refetchSkills}
+      onActiveOptionChange={setActiveMentionOption}
+      threadId={threadId}
+      projectId={projectId}
+      busy={mentionBusy}
+      error={mentionError}
+      onSelect={(selection) => void selectMention(selection)}
+      onClose={() => {
+        closeMentions();
+        focusComposerAt(mentionQuery?.end ?? textInput.value.length);
+      }}
+    />
+  );
   return (
     <div
       ref={promptRootRef}
@@ -2831,7 +3318,7 @@ export function InputBox({
         <div className="flex items-center justify-center pb-1">
           <div className="flex items-center gap-2">
             {followupsLoading ? (
-              <div className="text-muted-foreground bg-background/80 rounded-full border px-4 py-1.5 text-xs backdrop-blur-sm">
+              <div className="text-muted-foreground rounded-full border bg-white/80 px-4 py-1.5 text-xs backdrop-blur-sm">
                 {t.inputBox.followupLoading}
               </div>
             ) : (
@@ -2859,7 +3346,7 @@ export function InputBox({
           </div>
         </div>
       )}
-      {showMentions && (
+      {showMentions && !showIntegratedSkillPicker && (
         <div
           className={cn(
             "absolute right-0 left-0 z-50 overflow-y-auto px-1",
@@ -2867,35 +3354,7 @@ export function InputBox({
           )}
           style={{ maxHeight: mentionPlacement.maxHeight }}
         >
-          <MentionPicker
-            selectedExtensions={inlineReferences(textInput.value)
-              .filter((ref) => ref.kind === "extension")
-              .map((ref) => ref.id)}
-            ref={mentionPickerRef}
-            listId={mentionListId}
-            query={mentionQuery?.query ?? ""}
-            searchInput={mentionButtonOpen}
-            skillsOnly={mentionButtonOpen}
-            skills={mentionSkills}
-            selectedSkills={inlineRefs
-              .filter((ref) => ref.kind === "skill")
-              .map((ref) => ref.id)}
-            references={reconciledConversations.references}
-            capability={conversationCapability}
-            skillsLoading={skillsLoading || skillsFetching}
-            skillsError={skillsError}
-            onRetrySkills={refetchSkills}
-            onActiveOptionChange={setActiveMentionOption}
-            threadId={threadId}
-            projectId={projectId}
-            busy={mentionBusy}
-            error={mentionError}
-            onSelect={(selection) => void selectMention(selection)}
-            onClose={() => {
-              closeMentions();
-              focusComposerAt(mentionQuery?.end ?? textInput.value.length);
-            }}
-          />
+          {mentionPicker}
         </div>
       )}
       {showCommandSuggestions && !showMentions && (
@@ -2943,22 +3402,22 @@ export function InputBox({
       <PromptInput
         className={cn(
           "cecemate-composer relative z-10 rounded-[14px] border-[1.5px] border-[#dde6fa] bg-white p-[8px_12px_6px] shadow-[0_4px_18px_rgb(20_32_64_/_0.07)] transition-colors duration-200 focus-within:border-[#4f8bff] *:data-[slot='input-group']:rounded-xl",
-          polishingInput &&
-            "shadow-primary/10 ring-primary/25 shadow-lg ring-1",
           className,
         )}
         disabled={composerLocked}
+        data-skill-picker-placement={
+          showIntegratedSkillPicker
+            ? isWelcomeMode
+              ? "bottom"
+              : "top"
+            : undefined
+        }
         globalDrop
         multiple
         onSubmit={handleSubmit}
         {...props}
       >
-        {polishingInput && (
-          <div
-            aria-hidden="true"
-            className="border-primary/30 bg-primary/5 pointer-events-auto absolute inset-0 z-20 animate-pulse cursor-wait rounded-2xl border opacity-80"
-          />
-        )}
+        {showIntegratedSkillPicker && !isWelcomeMode && mentionPicker}
         {extraHeader && (
           <div className="absolute top-0 right-0 left-0 z-10">
             <div className="absolute right-0 bottom-0 left-0 flex items-center justify-center">
@@ -2966,7 +3425,7 @@ export function InputBox({
             </div>
           </div>
         )}
-        <PromptInputHeader className="block px-0 py-0 empty:hidden">
+        <ComposerHeader className="cecemate-composer-header block px-0 py-0 empty:hidden">
           {!!conversationCapability.error &&
             inlineRefs.some((ref) => ref.kind === "conversation") && (
               <div role="alert" className="mb-2 w-full text-xs">
@@ -2985,43 +3444,47 @@ export function InputBox({
             className="flex max-h-24 flex-wrap items-center gap-1.5 overflow-y-auto rounded-[10px] border border-[#e7ebf3] bg-[#fafbfe] px-2 py-1.5 empty:hidden"
             data-testid="composer-attachment-tray"
           >
-            <PromptInputAttachments className="contents p-0">
-              {(attachment) => (
-                <div className="max-w-60">
-                  <PromptInputAttachment data={attachment} />
-                </div>
-              )}
-            </PromptInputAttachments>
-            {projectAttachments
-              .filter((attachment) => !attachment.source_document_id)
-              .map((attachment) => (
-                <div
-                  key={attachment.virtual_path}
-                  className="flex h-7 max-w-full items-center gap-1.5 rounded-md border border-[#dfe7f6] bg-white py-0 pr-1 pl-2 text-xs font-medium text-[#4d5a70] shadow-[0_1px_1px_rgb(20_32_64_/_0.03)]"
-                  data-testid="project-attachment-chip"
-                >
-                  <PaperclipIcon className="size-3 shrink-0 text-[#4f8bff]" />
-                  <span className="max-w-40 truncate">
-                    {attachment.filename}
-                  </span>
-                  <button
-                    aria-label={t.inputBox.removeProjectAttachment}
-                    className="focus-visible:ring-primary/40 -mr-0.5 ml-0.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm transition-colors hover:bg-[#edf3ff] focus-visible:ring-2 focus-visible:outline-none"
-                    type="button"
-                    onClick={() =>
-                      setProjectAttachments((previous) =>
-                        previous.filter(
-                          (candidate) =>
-                            candidate.virtual_path !== attachment.virtual_path,
-                        ),
-                      )
-                    }
+            {!homeLayout && (
+              <PromptInputAttachments className="contents p-0">
+                {(attachment) => (
+                  <div className="max-w-60">
+                    <PromptInputAttachment data={attachment} />
+                  </div>
+                )}
+              </PromptInputAttachments>
+            )}
+            {!homeLayout &&
+              projectAttachments
+                .filter((attachment) => !attachment.source_document_id)
+                .map((attachment) => (
+                  <div
+                    key={attachment.virtual_path}
+                    className="flex h-7 max-w-full items-center gap-1.5 rounded-md border border-[#dfe7f6] bg-white py-0 pr-1 pl-2 text-xs font-medium text-[#4d5a70] shadow-[0_1px_1px_rgb(20_32_64_/_0.03)]"
+                    data-testid="project-attachment-chip"
                   >
-                    <XIcon className="size-3" />
-                  </button>
-                </div>
-              ))}
-            {polishingInput && (
+                    <PaperclipIcon className="size-3 shrink-0 text-[#4f8bff]" />
+                    <span className="max-w-40 truncate">
+                      {attachment.filename}
+                    </span>
+                    <button
+                      aria-label={t.inputBox.removeProjectAttachment}
+                      className="focus-visible:ring-primary/40 -mr-0.5 ml-0.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm transition-colors hover:bg-[#edf3ff] focus-visible:ring-2 focus-visible:outline-none"
+                      type="button"
+                      onClick={() =>
+                        setProjectAttachments((previous) =>
+                          previous.filter(
+                            (candidate) =>
+                              candidate.virtual_path !==
+                              attachment.virtual_path,
+                          ),
+                        )
+                      }
+                    >
+                      <XIcon className="size-3" />
+                    </button>
+                  </div>
+                ))}
+            {polishingInput && !homeLayout && (
               <div
                 aria-live="polite"
                 className="text-primary bg-primary/10 border-primary/20 relative z-30 flex h-7 items-center gap-1.5 rounded-md border py-0 pr-1 pl-2 text-xs font-medium"
@@ -3049,11 +3512,11 @@ export function InputBox({
               />
             )}
           </div>
-        </PromptInputHeader>
-        <div className="max-h-[150px] min-h-6 w-full min-w-0 px-0 py-0">
-          {hasInlineReferences || inlineEditorActive ? (
+        </ComposerHeader>
+        <div className="cecemate-composer-body max-h-[150px] min-h-6 w-full min-w-0 px-0 py-0">
+          {homeLayout || hasInlineReferences || inlineEditorActive ? (
             <div
-              className="max-h-[150px] min-h-6 w-full min-w-0 cursor-text overflow-y-auto text-[13.5px] leading-[1.85] break-words whitespace-pre-wrap"
+              className="cecemate-inline-editor max-h-[150px] min-h-6 w-full min-w-0 cursor-text overflow-y-auto text-[13.5px] leading-[1.85] break-words whitespace-pre-wrap"
               onClick={(event) => {
                 if (event.target === event.currentTarget) {
                   focusContentEditableEnd(inlineSkillTextRef.current);
@@ -3061,11 +3524,12 @@ export function InputBox({
               }}
             >
               <span
-                aria-label={t.inputBox.placeholder}
+                aria-label={placeholder}
                 aria-multiline="true"
+                autoFocus={autoFocus}
                 contentEditable={!composerLocked}
                 data-empty={textInput.value.length === 0}
-                data-placeholder={t.inputBox.placeholder}
+                data-placeholder={placeholder}
                 data-slot="input-group-control"
                 onBlur={() => setTextareaFocused(false)}
                 onCompositionEnd={() => {
@@ -3100,24 +3564,71 @@ export function InputBox({
                 onInput={handleInlineSkillInput}
                 onKeyDown={handleInlineSkillKeyDown}
                 onPaste={handleInlineSkillPaste}
-                aria-placeholder={t.inputBox.placeholder}
+                aria-placeholder={placeholder}
                 ref={inlineSkillTextRef}
                 role="textbox"
                 suppressContentEditableWarning
                 className={cn(
-                  "block min-h-6 outline-none",
+                  "inline min-h-6 outline-none",
                   "before:text-muted-foreground before:pointer-events-none",
                   "data-[empty=true]:before:content-[attr(data-placeholder)]",
+                  textInput.value.length === 0 && "inline-block min-w-full",
                   composerLocked && "cursor-not-allowed opacity-50",
                 )}
                 tabIndex={composerLocked ? -1 : 0}
               />
+              {homeLayout &&
+                (polishingInput ||
+                  canPolishInput(polishableInputText) ||
+                  inputPolishUndoAvailable) &&
+                (polishingInput ? (
+                  <Loader2Icon
+                    aria-label="正在润色"
+                    className="cecemate-inline-polish-loading animate-spin"
+                  />
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        aria-label={
+                          inputPolishUndoAvailable ? "撤回润色" : "AI润色"
+                        }
+                        className="cecemate-inline-polish"
+                        data-testid="polish-input-button"
+                        disabled={inputPolishDisabled}
+                        onClick={
+                          inputPolishUndoAvailable
+                            ? handleUndoInputPolish
+                            : handlePolishInput
+                        }
+                        onMouseDown={(event) => event.preventDefault()}
+                        type="button"
+                      >
+                        <ComposerAssetIcon
+                          name={
+                            inputPolishUndoAvailable
+                              ? "composer-polish-undo.svg"
+                              : "composer-polish.svg"
+                          }
+                          size={18}
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      className="home-nav-tooltip"
+                      side="right"
+                      sideOffset={8}
+                    >
+                      {inputPolishUndoAvailable ? "撤回润色" : "AI润色"}
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
             </div>
           ) : (
             <PromptInputTextarea
               className="max-h-[150px] min-h-6! w-full min-w-0 p-0! text-[13.5px]! leading-[1.85]!"
               disabled={composerLocked}
-              placeholder={t.inputBox.placeholder}
+              placeholder={placeholder}
               autoFocus={autoFocus}
               defaultValue={initialValue}
               onBlur={() => setTextareaFocused(false)}
@@ -3142,101 +3653,141 @@ export function InputBox({
             />
           )}
         </div>
-        <PromptInputFooter className="mt-1 flex flex-col gap-1 border-t border-[#f0f3fa] px-0! pt-1.5 pb-0! sm:flex-row sm:flex-nowrap">
+        <ComposerFooter className="cecemate-composer-footer mt-1 flex flex-col gap-1 border-t border-[#f0f3fa] px-0! pt-1.5 pb-0! sm:flex-row sm:flex-nowrap">
           <PromptInputTools className="w-full min-w-0 flex-wrap gap-1.5 sm:w-auto sm:flex-1">
-            <AddAttachmentsButton
-              className="h-7 rounded-lg border border-[#e7ebf3] bg-[#fafbfe] px-2.5! text-xs text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]"
-              disabled={composerLocked}
-              uploadLimits={uploadLimits}
-            />
-            <PromptInputButton
-              aria-label="技能"
-              className="h-7 gap-1 rounded-lg border border-[#e7ebf3] bg-[#fafbfe] px-2.5 text-xs text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]"
-              data-cecemate-skill-button="true"
-              data-testid="mention-button"
-              disabled={composerLocked}
-              onClick={openMentions}
-              title={t.inputBox.mentionPicker}
-            >
-              <SparklesIcon className="size-4" />
-              <span className="text-xs">技能</span>
-            </PromptInputButton>
-            <PromptInputButton
-              aria-label={
-                inputPolishUndoAvailable
-                  ? t.inputBox.inputPolishUndo
-                  : t.inputBox.inputPolish
-              }
-              className="size-6 rounded-full border border-[#e7ebf3] bg-white p-0! text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]"
-              data-testid="polish-input-button"
-              disabled={inputPolishDisabled}
-              onClick={
-                inputPolishUndoAvailable
-                  ? handleUndoInputPolish
-                  : handlePolishInput
-              }
-              title={
-                polishingInput
-                  ? t.inputBox.inputPolishing
-                  : inputPolishUndoAvailable
-                    ? t.inputBox.inputPolishUndo
-                    : t.inputBox.inputPolish
-              }
-            >
-              {polishingInput ? (
-                <Loader2Icon className="size-3 animate-spin" />
-              ) : inputPolishUndoAvailable ? (
-                <Undo2Icon className="size-3" />
-              ) : (
-                <SparklesIcon className="size-3" />
-              )}
-            </PromptInputButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <PromptInputButton
-                  aria-label="选择任务模式"
-                  aria-pressed={resolvedMode === "pro"}
-                  className={cn(
-                    "h-7 gap-1 rounded-lg border border-[#e7ebf3] bg-[#fafbfe] px-2.5! text-xs text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]",
-                    resolvedMode === "pro" &&
-                      "border-[#c9dcfb] bg-[#edf3ff] text-[#2563eb]",
-                  )}
-                  disabled={composerLocked}
-                >
-                  <GaugeIcon className="size-3.5" />
-                  {selectedModeOption?.label ?? "深度研究"}
-                </PromptInputButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="w-60 rounded-xl border-[#dde6fa] bg-white p-1.5 shadow-[0_8px_24px_rgb(20_32_64_/_0.12)]"
-                sideOffset={6}
-              >
-                {CECE_MATE_MODE_OPTIONS.map((option) => (
-                  <DropdownMenuItem
-                    key={option.value}
-                    className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[#3f4a5e] focus:bg-[#f2f6ff] focus:text-[#2563eb]"
-                    onSelect={() => handleModeSelect(option.value)}
+            {homeLayout ? (
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <PromptInputButton
+                      aria-label="添加"
+                      className="cecemate-add-trigger"
+                      disabled={composerLocked}
+                    >
+                      <ComposerAssetIcon name="composer-add.svg" size={20} />
+                    </PromptInputButton>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="cecemate-add-menu w-[220px]"
+                    side={isWelcomeMode ? "bottom" : "top"}
+                    sideOffset={8}
                   >
-                    <GaugeIcon className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-medium">
-                        {option.label}
-                      </span>
-                      <span className="block text-[11px] text-[#8a94a6]">
-                        {option.description}
-                      </span>
-                    </span>
-                    {option.value === resolvedMode ? (
-                      <CheckIcon className="size-4 shrink-0 text-[#2563eb]" />
-                    ) : null}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    <p className="cecemate-add-menu-title">添加</p>
+                    <DropdownMenuItem
+                      className="cecemate-add-menu-item"
+                      onSelect={openAttachmentDialog}
+                    >
+                      <ComposerAssetIcon name="composer-upload.svg" size={16} />
+                      上传文件或图片
+                    </DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger
+                        className="cecemate-add-menu-item"
+                        disabled={artifacts.length === 0}
+                        title={
+                          artifacts.length === 0
+                            ? "没有产物可以引用"
+                            : undefined
+                        }
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="cecemate-artifact-trigger-icon"
+                          style={{
+                            WebkitMaskImage: `url(${CECE_COMPOSER_ASSET_ROOT}/composer-artifact.svg)`,
+                            maskImage: `url(${CECE_COMPOSER_ASSET_ROOT}/composer-artifact.svg)`,
+                          }}
+                        />
+                        引用产物
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="cecemate-artifact-menu min-w-[292px]">
+                        <p className="cecemate-artifact-menu-title">
+                          当前任务的产物文件
+                        </p>
+                        {artifacts.map((artifact) => (
+                          <DropdownMenuItem
+                            className="cecemate-artifact-menu-item"
+                            key={artifact.handle}
+                            onSelect={() => insertArtifactReference(artifact)}
+                          >
+                            <ComposerAssetIcon
+                              name={composerFileIcon(artifact.display_name)}
+                              size={18}
+                            />
+                            <span className="min-w-0 flex-1 truncate">
+                              {artifact.display_name}
+                            </span>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuItem
+                      className="cecemate-add-menu-item"
+                      onSelect={openMentions}
+                    >
+                      <ComposerAssetIcon name="composer-skill.svg" size={16} />
+                      技能
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : (
+              <>
+                <AddAttachmentsButton
+                  className="h-7 rounded-lg border border-[#e7ebf3] bg-[#fafbfe] px-2.5! text-xs text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]"
+                  disabled={composerLocked}
+                  uploadLimits={uploadLimits}
+                />
+                <PromptInputButton
+                  aria-label="技能"
+                  className="h-7 gap-1 rounded-lg border border-[#e7ebf3] bg-[#fafbfe] px-2.5 text-xs text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]"
+                  data-cecemate-skill-button="true"
+                  data-testid="mention-button"
+                  disabled={composerLocked}
+                  onClick={openMentions}
+                  title={t.inputBox.mentionPicker}
+                >
+                  <SparklesIcon className="size-4" />
+                  <span className="text-xs">技能</span>
+                </PromptInputButton>
+                <PromptInputButton
+                  aria-label={
+                    inputPolishUndoAvailable
+                      ? t.inputBox.inputPolishUndo
+                      : t.inputBox.inputPolish
+                  }
+                  className="size-6 rounded-full border border-[#e7ebf3] bg-white p-0! text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:bg-[#f2f6ff] hover:text-[#2563eb]"
+                  data-testid="polish-input-button"
+                  disabled={inputPolishDisabled}
+                  onClick={
+                    inputPolishUndoAvailable
+                      ? handleUndoInputPolish
+                      : handlePolishInput
+                  }
+                  title={
+                    polishingInput
+                      ? t.inputBox.inputPolishing
+                      : inputPolishUndoAvailable
+                        ? t.inputBox.inputPolishUndo
+                        : t.inputBox.inputPolish
+                  }
+                >
+                  {polishingInput ? (
+                    <Loader2Icon className="size-3 animate-spin" />
+                  ) : inputPolishUndoAvailable ? (
+                    <Undo2Icon className="size-3" />
+                  ) : (
+                    <SparklesIcon className="size-3" />
+                  )}
+                </PromptInputButton>
+              </>
+            )}
+            {!homeLayout && modeMenu}
             {knowledgeScopeControl}
           </PromptInputTools>
           <PromptInputTools className="w-full min-w-0 justify-end gap-1.5 sm:ml-auto sm:w-auto">
+            {contextUsageControl}
             <ModelPicker
               open={modelDialogOpen}
               onOpenChange={setModelDialogOpen}
@@ -3244,7 +3795,10 @@ export function InputBox({
               <ModelPickerTrigger asChild>
                 <PromptInputButton
                   className={cn(
-                    "h-7 max-w-40 min-w-0 rounded-lg border border-[#e7ebf3] !bg-[#fafbfe] px-2.5 text-[#5a6478] shadow-none hover:border-[#4f8bff] hover:!bg-[#f2f6ff] hover:text-[#2563eb] data-[state=open]:!bg-[#f2f6ff] sm:max-w-56",
+                    "h-7 max-w-40 min-w-0 rounded-lg border px-2.5 shadow-none sm:max-w-56",
+                    homeLayout
+                      ? "cecemate-model-trigger max-w-[220px] border-0 shadow-none"
+                      : "border-[#e7ebf3] !bg-[#fafbfe] text-[#5a6478] hover:border-[#4f8bff] hover:!bg-[#f2f6ff] hover:text-[#2563eb] data-[state=open]:!bg-[#f2f6ff]",
                     status === "streaming" &&
                       canSendBusyInput &&
                       "max-sm:max-w-28",
@@ -3252,10 +3806,24 @@ export function InputBox({
                   disabled={composerLocked}
                 >
                   <div className="flex min-w-0 items-center gap-1 text-left">
-                    <CpuIcon className="size-3.5 shrink-0" />
-                    <span className="flex-1 truncate text-left text-xs font-normal">
-                      {selectedModel?.display_name}
+                    {homeLayout ? (
+                      <ComposerAssetIcon
+                        name={composerModelIcon(selectedModel)}
+                        size={16}
+                      />
+                    ) : (
+                      <CpuIcon className="size-3.5 shrink-0" />
+                    )}
+                    <span className="cecemate-model-trigger-label flex-1 truncate text-left font-normal">
+                      {selectedModel?.display_name ?? "模型"}
                     </span>
+                    {homeLayout && (
+                      <ComposerAssetIcon
+                        className="cecemate-model-chevron"
+                        name="chevron-down.svg"
+                        size={12}
+                      />
+                    )}
                   </div>
                 </PromptInputButton>
               </ModelPickerTrigger>
@@ -3264,8 +3832,12 @@ export function InputBox({
                 models={models}
                 selectedModelName={selectedModel?.name}
                 onModelSelect={handleModelSelect}
+                side={isWelcomeMode ? "bottom" : "top"}
+                variant={homeLayout ? "cecemate" : "default"}
               />
             </ModelPicker>
+            {homeLayout && modeMenu}
+
             {status === "streaming" && canSendBusyInput && (
               <PromptInputSubmit
                 aria-label={t.inputBox.runInputSend}
@@ -3276,11 +3848,20 @@ export function InputBox({
               />
             )}
             <PromptInputSubmit
-              className="size-8 rounded-full border-0 bg-linear-to-br from-[#2563eb] to-[#7b5cff] text-white shadow-[0_3px_10px_rgb(57_110_255_/_0.38)] hover:from-[#1d4ed8] hover:to-[#6844ed]"
+              className={cn(
+                "size-8 rounded-full border-0 bg-linear-to-br from-[#2563eb] to-[#7b5cff] text-white shadow-[0_3px_10px_rgb(57_110_255_/_0.38)] hover:from-[#1d4ed8] hover:to-[#6844ed]",
+                homeLayout &&
+                  "cecemate-submit bg-transparent p-0 shadow-none hover:bg-transparent",
+              )}
               disabled={
                 composerLocked ||
                 stopDenied ||
                 sendDenied ||
+                (status !== "streaming" &&
+                  !(textInput.value ?? "").trim() &&
+                  attachmentParts.length === 0 &&
+                  projectAttachments.length === 0 &&
+                  inlineRefs.length === 0) ||
                 (status !== "streaming" && conversationReferencesUnavailable)
               }
               variant="outline"
@@ -3316,20 +3897,23 @@ export function InputBox({
               }}
             />
           </PromptInputTools>
-        </PromptInputFooter>
+        </ComposerFooter>
+        {showIntegratedSkillPicker && isWelcomeMode && mentionPicker}
       </PromptInput>
       {!isWelcomeMode && (
-        <div className="bg-background absolute right-0 -bottom-[17px] left-0 z-0 h-4"></div>
+        <div className="absolute right-0 -bottom-[17px] left-0 z-0 h-4 bg-white"></div>
       )}
 
-      <p
-        className={cn(
-          "text-muted-foreground/67 z-10 px-4 text-center text-[11px] leading-4",
-          !isWelcomeMode && "absolute top-full right-0 left-0",
-        )}
-      >
-        {t.inputBox.disclaimer}
-      </p>
+      {!homeLayout && (
+        <p
+          className={cn(
+            "text-muted-foreground/67 z-10 px-4 text-center text-[11px] leading-4",
+            !isWelcomeMode && "absolute top-full right-0 left-0",
+          )}
+        >
+          {t.inputBox.disclaimer}
+        </p>
+      )}
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>

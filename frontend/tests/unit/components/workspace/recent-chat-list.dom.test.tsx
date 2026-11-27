@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, rs, test } from "@rstest/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 
 const nav = rs.hoisted(() => ({ activeThreadId: null as string | null }));
 
@@ -79,7 +85,12 @@ const THREADS: AgentThread[] = [
 
 const clients: QueryClient[] = [];
 
-function renderList(locale: Locale, activeThreadId: string | null = null) {
+function renderList(
+  locale: Locale,
+  activeThreadId: string | null = null,
+  home = false,
+  threads = THREADS,
+) {
   nav.activeThreadId = activeThreadId;
   document.cookie = `locale=${locale}; path=/`;
   // Cached thread pages never go stale, so the list renders them without a
@@ -91,7 +102,7 @@ function renderList(locale: Locale, activeThreadId: string | null = null) {
   queryClient.setQueryData<InfiniteThreadsData>(
     [...INFINITE_THREADS_QUERY_KEY_PREFIX, { archived: false }],
     {
-      pages: [{ threads: THREADS, hiddenCount: 0, hasMore: false }],
+      pages: [{ threads, hiddenCount: 0, hasMore: false }],
       pageParams: [0],
     },
   );
@@ -106,7 +117,7 @@ function renderList(locale: Locale, activeThreadId: string | null = null) {
         <AuthProvider initialUser={user}>
           <SidebarProvider>
             <ThreadDeleteDialogProvider>
-              <RecentChatList />
+              <RecentChatList home={home} />
             </ThreadDeleteDialogProvider>
           </SidebarProvider>
         </AuthProvider>
@@ -219,4 +230,35 @@ describe("RecentChatList origin markers and unread state", () => {
     expect(container.textContent).not.toContain("feishu");
     expect(container.textContent).not.toContain("channel");
   });
+});
+
+test("the home search replaces its heading, filters recent tasks and closes on Escape", async () => {
+  renderList("zh-CN", null, true);
+  await screen.findByRole("button", { name: "最近任务 (4)" });
+  fireEvent.click(screen.getByRole("button", { name: "搜索任务" }));
+  const field = screen.getByRole("searchbox", { name: "搜索任务" });
+  fireEvent.change(field, { target: { value: "weekly" } });
+  expect(screen.getAllByRole("link")).toHaveLength(1);
+  expect(rowLink(FEISHU_THREAD)).toBeTruthy();
+  fireEvent.keyDown(field, { key: "Escape" });
+  expect(screen.queryByRole("searchbox")).toBeNull();
+  expect(screen.getAllByRole("link")).toHaveLength(4);
+});
+
+test("home rows prioritize thread status and reserve the dot for unread idle threads", async () => {
+  const statuses = ["busy", "interrupted", "error", "idle"] as const;
+  renderList(
+    "zh-CN",
+    null,
+    true,
+    statuses.map((status, index) => ({
+      ...thread(String(index), status, {}, true),
+      status,
+    })),
+  );
+  for (const [index, label] of ["运行中", "已中断", "出错", "未读"].entries()) {
+    expect(
+      await within(rowLink(String(index))).findByRole("img", { name: label }),
+    ).toBeTruthy();
+  }
 });

@@ -7,15 +7,25 @@ import {
 export const MAX_EXPLICIT_SKILLS = 16;
 
 export type InlineReference = {
-  kind: "skill" | "file" | "conversation" | "extension";
+  kind:
+    | "skill"
+    | "file"
+    | "attachment"
+    | "artifact"
+    | "conversation"
+    | "extension";
   id: string;
   label: string;
   start: number;
   end: number;
 };
 
+export type ReferenceImagePreviewResolver = (
+  reference: InlineReference,
+) => string | null;
+
 const pattern =
-  /@\[([^\]]*)\]\(ref:(skill|file|conversation|extension):([^)]*)\)/g;
+  /@\[([^\]]*)\]\(ref:(skill|file|attachment|artifact|conversation|extension):([^)]*)\)/g;
 
 export function referenceToken(
   kind: InlineReference["kind"],
@@ -55,6 +65,14 @@ export function readableReferences(text: string) {
       value.slice(0, reference.start) +
       `@${reference.label}` +
       value.slice(reference.end);
+  }
+  return value;
+}
+
+export function textWithoutReferences(text: string) {
+  let value = text;
+  for (const reference of inlineReferences(text).reverse()) {
+    value = value.slice(0, reference.start) + value.slice(reference.end);
   }
   return value;
 }
@@ -151,12 +169,47 @@ export function focusReferenceAt(root: HTMLElement, offset: number) {
   selection?.addRange(range);
 }
 
-export function renderReferenceEditor(root: HTMLElement, text: string) {
-  if (readReferenceEditor(root) === text) return;
+function referenceFileIcon(label: string) {
+  const extension = label.split(".").pop()?.toLowerCase();
+  if (["doc", "docx"].includes(extension ?? "")) return "file-word.svg";
+  if (extension === "pdf") return "file-pdf.svg";
+  if (["xls", "xlsx", "csv"].includes(extension ?? "")) {
+    return "file-excel.svg";
+  }
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(extension ?? "")) {
+    return "file-image.svg";
+  }
+  if (
+    ["js", "jsx", "ts", "tsx", "html", "css", "json"].includes(extension ?? "")
+  ) {
+    return "file-code.svg";
+  }
+  return "file-generic.svg";
+}
+
+export function renderReferenceEditor(
+  root: HTMLElement,
+  text: string,
+  resolveImagePreview?: ReferenceImagePreviewResolver,
+) {
+  const references = inlineReferences(text);
+  const previewUrls = new Map(
+    references.map((reference) => [
+      `${reference.kind}:${reference.id}`,
+      resolveImagePreview?.(reference) ?? null,
+    ]),
+  );
+  const previewKey = JSON.stringify([...previewUrls]);
+  if (
+    readReferenceEditor(root) === text &&
+    root.dataset.referencePreviewKey === previewKey
+  ) {
+    return;
+  }
   const caret = referenceCaret(root);
   const fragment = document.createDocumentFragment();
   let end = 0;
-  for (const ref of inlineReferences(text)) {
+  for (const ref of references) {
     fragment.append(document.createTextNode(text.slice(end, ref.start)));
     const token = document.createElement("span");
     token.contentEditable = "false";
@@ -165,37 +218,114 @@ export function renderReferenceEditor(root: HTMLElement, text: string) {
     token.dataset.testid =
       ref.kind === "file"
         ? "project-attachment-chip"
-        : ref.kind === "conversation"
-          ? "conversation-reference-chip"
-          : ref.kind === "extension"
-            ? "extension-mention-chip"
-            : "inline-skill-reference";
+        : ref.kind === "attachment"
+          ? "inline-attachment-chip"
+          : ref.kind === "artifact"
+            ? "artifact-reference-chip"
+            : ref.kind === "conversation"
+              ? "conversation-reference-chip"
+              : ref.kind === "extension"
+                ? "extension-mention-chip"
+                : "inline-skill-reference";
     token.className =
-      "inline-flex items-baseline gap-1 align-baseline font-medium select-all " +
+      "cecemate-reference-chip inline-flex items-center gap-1 align-baseline font-medium select-all " +
       (ref.kind === "skill"
         ? "text-blue-600 dark:text-blue-400"
         : ref.kind === "file"
           ? "text-rose-600 dark:text-rose-400"
-          : ref.kind === "extension"
-            ? "text-teal-600 dark:text-teal-400"
-            : "text-violet-600 dark:text-violet-400");
-    const icon = document.createElement("span");
+          : ref.kind === "attachment"
+            ? "text-slate-700 dark:text-slate-300"
+            : ref.kind === "artifact"
+              ? "text-rose-600 dark:text-rose-400"
+              : ref.kind === "extension"
+                ? "text-teal-600 dark:text-teal-400"
+                : "text-violet-600 dark:text-violet-400");
+    const icon = document.createElement("img");
+    icon.alt = "";
     icon.setAttribute("aria-hidden", "true");
-    icon.textContent =
+    icon.className = "cecemate-reference-chip-icon";
+    icon.src =
       ref.kind === "skill"
-        ? "✦"
-        : ref.kind === "file"
-          ? "▤"
-          : ref.kind === "extension"
-            ? "◈"
-            : "◉";
-    token.append(icon, document.createTextNode(ref.label));
+        ? "/images/cecemate-home/file-skill.svg"
+        : `/images/cecemate-home/${
+            ref.kind === "attachment" ||
+            ref.kind === "artifact" ||
+            ref.kind === "file"
+              ? referenceFileIcon(ref.label)
+              : "model-generic.svg"
+          }`;
+    const removable =
+      ref.kind === "skill" ||
+      ref.kind === "file" ||
+      ref.kind === "attachment" ||
+      ref.kind === "artifact";
+    token.dataset.removable = removable ? "true" : "false";
+    token.append(icon);
+    if (removable) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "cecemate-reference-chip-remove";
+      remove.setAttribute("aria-label", `移除${ref.label}`);
+      const removeIcon = document.createElement("img");
+      removeIcon.alt = "";
+      removeIcon.src = "/images/cecemate-home/chip-remove.svg";
+      remove.append(removeIcon);
+      remove.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        token.remove();
+        root.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType: "deleteContentBackward",
+          }),
+        );
+        root.focus();
+      });
+      token.append(remove);
+    }
+    const label = document.createElement("span");
+    label.className = "cecemate-reference-chip-label";
+    label.textContent = ref.label;
+    token.append(label);
+    const previewUrl = previewUrls.get(`${ref.kind}:${ref.id}`);
+    if (previewUrl) {
+      token.dataset.imagePreview = "true";
+      const preview = document.createElement("span");
+      preview.className = "cecemate-reference-image-preview";
+      preview.setAttribute("role", "tooltip");
+      const previewImage = document.createElement("img");
+      previewImage.alt = `${ref.label}预览`;
+      previewImage.src = previewUrl;
+      preview.append(previewImage);
+      const positionImagePreview = () => {
+        const tokenRect = token.getBoundingClientRect();
+        const previewWidth = 280;
+        const previewHeight = 261;
+        const viewportPadding = 8;
+        preview.style.left = `${Math.min(
+          Math.max(viewportPadding, tokenRect.left),
+          Math.max(
+            viewportPadding,
+            window.innerWidth - previewWidth - viewportPadding,
+          ),
+        )}px`;
+        preview.style.top = `${Math.max(
+          viewportPadding,
+          tokenRect.top - previewHeight - 8,
+        )}px`;
+      };
+      token.addEventListener("mouseenter", positionImagePreview);
+      token.addEventListener("focusin", positionImagePreview);
+      token.append(preview);
+    }
     token.setAttribute("aria-label", `@${ref.label}`);
     fragment.append(token);
     end = ref.end;
   }
   fragment.append(document.createTextNode(text.slice(end)));
   root.replaceChildren(fragment);
+  root.dataset.referencePreviewKey = previewKey;
   if (caret !== null) focusReferenceAt(root, Math.min(caret, text.length));
 }
 

@@ -82,12 +82,25 @@ import { PluginArtifactPreview } from "./plugin-artifact-preview";
 import { useArtifactSelection } from "./use-artifact-selection";
 
 const WRITE_FILE_PREVIEW_REFRESH_INTERVAL_MS = 3000;
+const CECE_IMAGE_EXTENSIONS = new Set([
+  "apng",
+  "avif",
+  "bmp",
+  "gif",
+  "ico",
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+]);
 
 export function ArtifactFileDetail({
+  ceceMate = false,
   className,
   filepath: filepathFromProps,
   threadId,
 }: {
+  ceceMate?: boolean;
   className?: string;
   filepath: string;
   threadId: string;
@@ -118,7 +131,8 @@ export function ArtifactFileDetail({
     [filepathFromProps, isWriteFile],
   );
   const filepath = parsedWriteFile?.path ?? filepathFromProps;
-  const { match: pluginPreview } = useArtifactPreviewRenderer(filepath);
+  const { match: pluginPreview, isLoading: pluginPreviewLoading } =
+    useArtifactPreviewRenderer(filepath);
   // Keep these local because ChatBox replaces context artifacts with thread state.
   const [openedPresentedFilepaths, setOpenedPresentedFilepaths] = useState<
     string[]
@@ -180,6 +194,10 @@ export function ArtifactFileDetail({
   const canPreviewInBrowser = useMemo(() => {
     return canBrowserPreviewFile(filepath);
   }, [filepath]);
+  const isCeceImage = useMemo(
+    () => ceceMate && CECE_IMAGE_EXTENSIONS.has(getFileExtension(filepath)),
+    [ceceMate, filepath],
+  );
   const isTabular = getTabularDelimiter(language) !== null;
   const isSupportPreview =
     language === "html" || language === "markdown" || isTabular;
@@ -472,7 +490,12 @@ export function ArtifactFileDetail({
         className,
       )}
     >
-      <ArtifactHeader className="border-b border-[#e5eaf5] bg-[#fbfcff] px-2">
+      <ArtifactHeader
+        className={cn(
+          "border-b border-[#e5eaf5] bg-[#fbfcff] px-2",
+          ceceMate && "hidden",
+        )}
+      >
         <div className="flex items-center gap-2">
           <ArtifactTitle>
             {isWriteFile ? (
@@ -801,9 +824,22 @@ export function ArtifactFileDetail({
                 {visibleContent}
               </pre>
             )}
-          {!isCodeFile && canPreviewInBrowser && (
+          {!isCodeFile && canPreviewInBrowser && isCeceImage && (
+            <div className="cecemate-artifact-image-preview">
+              {/* Generated artifact URLs are dynamic and must render at their natural aspect ratio. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt={getFileName(filepath)}
+                src={urlOfArtifact({ filepath, threadId, isMock })}
+              />
+            </div>
+          )}
+          {!isCodeFile && canPreviewInBrowser && !isCeceImage && (
             <iframe
-              className="size-full"
+              className={cn(
+                "size-full",
+                ceceMate && "cecemate-artifact-browser-preview",
+              )}
               // PDFs render WITHOUT the sandbox attribute: Chromium blocks
               // its built-in PDF viewer inside ``sandbox=""``. This is safe
               // because the endpoint declares ``application/pdf`` and sends
@@ -819,14 +855,26 @@ export function ArtifactFileDetail({
               title={getFileName(filepath)}
             />
           )}
-          {!isCodeFile && !canPreviewInBrowser && (
-            <PluginArtifactPreview
-              filepath={filepath}
-              threadId={threadId}
-              isMock={isMock}
-              isRunning={thread.isLoading}
-            />
-          )}
+          {!isCodeFile &&
+            !canPreviewInBrowser &&
+            (!ceceMate || pluginPreview || pluginPreviewLoading) && (
+              <PluginArtifactPreview
+                filepath={filepath}
+                threadId={threadId}
+                isMock={isMock}
+                isRunning={thread.isLoading}
+              />
+            )}
+          {!isCodeFile &&
+            !canPreviewInBrowser &&
+            ceceMate &&
+            !pluginPreview &&
+            !pluginPreviewLoading && (
+              <div className="cecemate-artifact-unsupported">
+                <span aria-hidden="true" />
+                <p>文件格式不支持预览</p>
+              </div>
+            )}
         </div>
       </ArtifactContent>
     </Artifact>

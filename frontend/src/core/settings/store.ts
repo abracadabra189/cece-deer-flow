@@ -43,7 +43,7 @@ export function activatePreferences(
       context: {
         ...baseSettings.context,
         model_name: value.model_name ?? undefined,
-        mode: value.mode ?? undefined,
+        mode: value.mode ?? DEFAULT_LOCAL_SETTINGS.context.mode,
         reasoning_effort: value.reasoning_effort ?? undefined,
       },
     };

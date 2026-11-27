@@ -14,7 +14,7 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
   },
   context: {
     model_name: undefined,
-    mode: undefined,
+    mode: "thinking",
     reasoning_effort: undefined,
   },
 };

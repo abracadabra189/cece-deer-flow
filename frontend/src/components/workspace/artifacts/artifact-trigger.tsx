@@ -1,4 +1,5 @@
 import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react";
+import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/workspace/tooltip";
@@ -8,7 +9,11 @@ import { useMaybeSidecar } from "../sidecar/context";
 
 import { useArtifacts } from "./context";
 
-export const ArtifactTrigger = () => {
+export const ArtifactTrigger = ({
+  ceceMate = false,
+}: {
+  ceceMate?: boolean;
+}) => {
   const { t } = useI18n();
   const {
     artifacts,
@@ -22,14 +27,19 @@ export const ArtifactTrigger = () => {
     ? t.common.collapseResultArea
     : t.common.showResultArea;
 
-  if (!artifacts || artifacts.length === 0) {
+  if ((!artifacts || artifacts.length === 0) && !ceceMate) {
     return null;
   }
   return (
     <Tooltip content={label}>
       <Button
         aria-label={label}
-        className="border-ring/50 bg-ring hover:bg-ring/90 rounded-xl border text-white shadow-sm hover:text-white"
+        className={
+          ceceMate
+            ? "cecemate-artifact-trigger"
+            : "border-ring/50 bg-ring hover:bg-ring/90 rounded-xl border text-white shadow-sm hover:text-white"
+        }
+        size={ceceMate ? "icon-sm" : "default"}
         variant="ghost"
         data-testid="artifact-trigger"
         onClick={() => {
@@ -42,10 +52,25 @@ export const ArtifactTrigger = () => {
           setArtifactsOpen(true);
         }}
       >
-        {resultAreaOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
-        <span className="hidden sm:inline">
-          {resultAreaOpen ? t.common.collapseResultArea : t.common.resultArea}
-        </span>
+        {ceceMate ? (
+          <Image
+            alt=""
+            aria-hidden="true"
+            className="cecemate-chat-artifact-trigger-icon"
+            height={16}
+            src="/images/cecemate-home/chat-artifacts-toggle.svg"
+            width={16}
+          />
+        ) : (
+          <>
+            {resultAreaOpen ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
+            <span className="hidden sm:inline">
+              {resultAreaOpen
+                ? t.common.collapseResultArea
+                : t.common.resultArea}
+            </span>
+          </>
+        )}
       </Button>
     </Tooltip>
   );

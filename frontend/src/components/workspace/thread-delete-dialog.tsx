@@ -131,6 +131,7 @@ export function ThreadDeleteDialogProvider({
         }}
       >
         <DialogContent
+          className="ce-task-dialog"
           showCloseButton={!isDeleting}
           onOpenAutoFocus={(event) => {
             event.preventDefault();
@@ -154,6 +155,7 @@ export function ThreadDeleteDialogProvider({
           </DialogHeader>
           <DialogFooter>
             <Button
+              className="ce-task-dialog-button ce-task-dialog-button-neutral"
               ref={deleteCancelRef}
               variant="outline"
               onClick={() => setTarget(null)}
@@ -162,6 +164,7 @@ export function ThreadDeleteDialogProvider({
               {t.common.cancel}
             </Button>
             <Button
+              className="ce-task-dialog-button ce-task-dialog-button-danger"
               variant="destructive"
               onClick={() => void handleDelete()}
               disabled={isDeleting}

@@ -28,6 +28,10 @@ export interface Model {
   model: string;
   display_name: string;
   description?: string | null;
+  /** Optional short badge supplied by the model catalog for selector display. */
+  tag?: string | null;
+  /** Optional display badges supplied by the model catalog, in display order. */
+  tags?: string[] | null;
   /** @deprecated derived from `reasoning`; kept for older Gateways. */
   supports_thinking?: boolean;
   /** @deprecated derived from `reasoning`; kept for older Gateways. */

@@ -214,12 +214,14 @@ export async function compactThreadContext(
 /** Gateway extension not forwarded by the LangGraph SDK's search method. */
 export async function searchThreadsByArchive({
   archived,
+  query,
   metadata,
   status,
   limit,
   offset,
 }: {
   archived: boolean;
+  query?: string;
   metadata?: Record<string, unknown>;
   status?: string;
   limit: number;
@@ -230,7 +232,7 @@ export async function searchThreadsByArchive({
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ archived, metadata, status, limit, offset }),
+      body: JSON.stringify({ archived, query, metadata, status, limit, offset }),
     },
   );
   if (!response.ok) {

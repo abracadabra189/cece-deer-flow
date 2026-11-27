@@ -497,14 +497,18 @@ export default function AgentChatPage() {
         context={{ ...settings.context, agent_name }}
         isMock={isMock}
       >
-        <ChatBox threadId={threadId} browserEnabled={browserEnabled}>
-          <div className="relative flex size-full min-h-0 justify-between">
+        <ChatBox
+          threadId={threadId}
+          browserEnabled={browserEnabled}
+          ceceLayout={!isWelcomeMode}
+        >
+          <div className="cece-ui relative flex size-full min-h-0 justify-between bg-white">
             <header
               className={cn(
                 "absolute top-0 right-0 left-0 flex h-12 shrink-0 items-center gap-2 px-2 sm:px-4",
                 isWelcomeMode
-                  ? "bg-background/0 z-40 backdrop-blur-none"
-                  : "bg-background/80 z-30 shadow-xs backdrop-blur",
+                  ? "z-40 bg-transparent backdrop-blur-none"
+                  : "z-30 bg-white/80 shadow-xs backdrop-blur",
               )}
             >
               <WorkspaceSidebarTrigger className="md:hidden" />
@@ -577,7 +581,7 @@ export default function AgentChatPage() {
                 {browserEnabled && <BrowserTrigger />}
                 <ExportTrigger threadId={threadId} />
                 <ThreadExtensionActions threadId={threadId} />
-                <ArtifactTrigger />
+                <ArtifactTrigger ceceMate />
               </div>
             </header>
 
@@ -589,7 +593,10 @@ export default function AgentChatPage() {
                   archiveDownloadsEnabled={
                     isNewThread || isMock || threadMetadata.data != null
                   }
-                  className={cn("size-full", !isWelcomeMode && "pt-10")}
+                  className={cn(
+                    "size-full bg-white",
+                    !isWelcomeMode && "pt-10",
+                  )}
                   testId="main-message-list"
                   threadId={threadId}
                   thread={thread}
@@ -634,7 +641,7 @@ export default function AgentChatPage() {
 
               <div
                 className={cn(
-                  "right-0 bottom-0 left-0 z-30 flex justify-center px-3 sm:px-4",
+                  "right-0 bottom-0 left-0 z-30 flex justify-center bg-white px-3 sm:px-4",
                   isWelcomeMode ? "absolute" : "relative shrink-0 pb-4",
                 )}
               >
@@ -675,7 +682,7 @@ export default function AgentChatPage() {
                         />
                         {hasTodos && (
                           <TodoList
-                            className="bg-background/5"
+                            className="bg-white"
                             todos={thread.values.todos ?? []}
                             hidden={false}
                           />
@@ -699,78 +706,87 @@ export default function AgentChatPage() {
                     canCreate={canCreateRuns}
                     canCancel={canStopStreaming}
                   />
-                  <InputBox
-                    className={cn(
-                      "bg-background/5 w-full",
-                      isWelcomeMode && "-translate-y-2 sm:-translate-y-4",
+                  <div className="chat-composer-shell relative">
+                    {!isWelcomeMode && (
+                      <span
+                        aria-hidden="true"
+                        className="cecemate-chat-composer-avatar"
+                      />
                     )}
-                    isWelcomeMode={isWelcomeMode}
-                    threadId={threadId}
-                    projectId={
-                      !isNewThread && threadMetadata.data
-                        ? projectIdOfThread(threadMetadata.data)
-                        : null
-                    }
-                    draftThreadId={isNewThread ? "new" : threadId}
-                    draftAgentName={agent_name}
-                    agentSkillNames={agent?.skills}
-                    agentSkillsLoading={agentSkillsLoading}
-                    defaultModelName={agent?.model}
-                    knowledgeScopeControl={
-                      selectorVisible && knowledgeScope ? (
-                        <KnowledgeScopeSelector
-                          agentName={agent_name}
-                          disabled={
-                            thread.isLoading ||
-                            isUploading ||
-                            hasPendingApproval
-                          }
-                          selection={knowledgeScope}
-                          unavailableReason={
-                            agentKnowledgeEnabled
-                              ? undefined
-                              : t.knowledge.scope.agentUnavailable
-                          }
-                          onChange={setKnowledgeScope}
-                        />
-                      ) : undefined
-                    }
-                    autoFocus={isWelcomeMode}
-                    status={
-                      thread.error
-                        ? "error"
-                        : thread.isLoading
-                          ? "streaming"
-                          : "ready"
-                    }
-                    context={settings.context}
-                    extraHeader={
-                      isWelcomeMode &&
-                      !hasGoal &&
-                      !hasTodos && (
-                        <AgentWelcome agent={agent} agentName={agent_name} />
-                      )
-                    }
-                    disabled={
-                      env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
-                      isUploading ||
-                      modelControl.busy ||
-                      (selectorVisible && agent === null) ||
-                      (!isNewThread && isHistoryLoading) ||
-                      hasPendingApproval
-                    }
-                    onContextChange={(context, options) => {
-                      if (options?.automatic)
-                        resolveThreadContext(threadId, context);
-                      else setSettings("context", context);
-                    }}
-                    onGoalChange={setLocalGoal}
-                    onSubmit={handleSubmit}
-                    onBusySubmit={canSendInput ? sendInput : undefined}
-                    onStop={handleStop}
-                    canStopStreaming={canStopStreaming}
-                    canCreateRuns={canCreateRuns}
-                  />
+                    <InputBox
+                      className={cn(
+                        "w-full bg-white",
+                        isWelcomeMode && "-translate-y-2 sm:-translate-y-4",
+                      )}
+                      homeLayout
+                      isWelcomeMode={isWelcomeMode}
+                      threadId={threadId}
+                      projectId={
+                        !isNewThread && threadMetadata.data
+                          ? projectIdOfThread(threadMetadata.data)
+                          : null
+                      }
+                      draftThreadId={isNewThread ? "new" : threadId}
+                      draftAgentName={agent_name}
+                      agentSkillNames={agent?.skills}
+                      agentSkillsLoading={agentSkillsLoading}
+                      defaultModelName={agent?.model}
+                      knowledgeScopeControl={
+                        selectorVisible && knowledgeScope ? (
+                          <KnowledgeScopeSelector
+                            agentName={agent_name}
+                            disabled={
+                              thread.isLoading ||
+                              isUploading ||
+                              hasPendingApproval
+                            }
+                            selection={knowledgeScope}
+                            unavailableReason={
+                              agentKnowledgeEnabled
+                                ? undefined
+                                : t.knowledge.scope.agentUnavailable
+                            }
+                            onChange={setKnowledgeScope}
+                          />
+                        ) : undefined
+                      }
+                      autoFocus={isWelcomeMode}
+                      status={
+                        thread.error
+                          ? "error"
+                          : thread.isLoading
+                            ? "streaming"
+                            : "ready"
+                      }
+                      context={settings.context}
+                      extraHeader={
+                        isWelcomeMode &&
+                        !hasGoal &&
+                        !hasTodos && (
+                          <AgentWelcome agent={agent} agentName={agent_name} />
+                        )
+                      }
+                      disabled={
+                        env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ||
+                        isUploading ||
+                        modelControl.busy ||
+                        (selectorVisible && agent === null) ||
+                        (!isNewThread && isHistoryLoading) ||
+                        hasPendingApproval
+                      }
+                      onContextChange={(context, options) => {
+                        if (options?.automatic)
+                          resolveThreadContext(threadId, context);
+                        else setSettings("context", context);
+                      }}
+                      onGoalChange={setLocalGoal}
+                      onSubmit={handleSubmit}
+                      onBusySubmit={canSendInput ? sendInput : undefined}
+                      onStop={handleStop}
+                      canStopStreaming={canStopStreaming}
+                      canCreateRuns={canCreateRuns}
+                    />
+                  </div>
                   {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" && (
                     <div className="text-muted-foreground/67 w-full translate-y-12 text-center text-xs">
                       {t.common.notAvailableInDemoMode}
