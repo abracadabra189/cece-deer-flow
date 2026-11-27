@@ -7,7 +7,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
+COPY *.py ./
 
 # The service only reads; run it unprivileged with a read-only root filesystem
 # (set in compose) and no shell tooling beyond the Python runtime.

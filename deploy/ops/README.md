@@ -46,14 +46,15 @@ The displayed label is always the lowercased code. Personal accounts
 (`@qq.com`, `@163.com`, ...) are never mapped and keep their email, even if
 their prefix happens to look like a code or mobile. If MySQL is unconfigured or unreachable, every user falls back
 to email and the page still works; the code set is cached for
-`OPS_CODE_CACHE_SECONDS` (default 60).
+`OPS_CODE_CACHE_SECONDS` (default 300).
 
 The MySQL account should be read-only. Only `SELECT` on `a_sh_mgr.st_mgr_user`
 is issued; table and column names come from validated identifiers, never from
 request input.
 
-The run list does not touch `run_events`, so the common page is cheap. The
-conversation page reads at most 1,000 message rows for one thread.
+The run list touches `run_events` only for the optional tool summary. The
+conversation page reads at most 1,000 message rows for one thread; the run
+detail page reads one run's events through `(thread_id, run_id)`.
 
 ## Setup
 
@@ -91,39 +92,70 @@ conversation page reads at most 1,000 message rows for one thread.
    docker compose -f docker-compose.ops.yaml up -d --build
    ```
 
-   The container listens on `127.0.0.1:8099` only.
+   The published address is `${OPS_BIND_HOST:-127.0.0.1}:${OPS_PORT:-8099}`.
+   Keep `OPS_BIND_HOST=127.0.0.1` and use a tunnel, or set a LAN IP and restrict
+   the firewall.
 
-4. Open it through a tunnel:
+4. Open it:
 
    ```bash
+   # loopback bind:
    ssh -L 8099:127.0.0.1:8099 <user>@<host>
    # then: http://127.0.0.1:8099
+
+   # LAN bind (OPS_BIND_HOST=192.168.x.y):
+   # http://192.168.x.y:8099
    ```
 
    `GET /healthz` returns `ok` when the database is reachable.
 
 ## Pages
 
-- `/` — recent runs (default 7 days), with user/status/keyword filters and
-  headline counters.
+- `/` — recent runs (default 7 days), with user/status/origin/model/keyword
+  filters, tool summary, error type, duration, token split and trace.
 - `/users` — every user, ranked by runs in the window, with tokens and failures.
+- `/errors` — failure rate, error types (from `run.error` / `llm.error`),
+  daily failures and the most recent failed runs.
+- `/outliers` — largest runs by tokens, duration and model calls, plus stale
+  `pending`/`running` runs and terminal runs longer than 6 hours.
+- `/trends` — daily runs (success/failure), tokens, active users, p50/p95
+  duration, by model and origin.
+- `/skills` — skills actually loaded per run (`skill_usages`), plus explicit
+  `@` references and middleware activations; `/skills/{name}` shows one skill.
+- `/runs/{run_id}` — one run's error, token split, loaded skills and event
+  timeline.
 - `/threads/{thread_id}` — the message timeline: user input, assistant answers,
   and collapsed tool results.
 
+Skill counts use three different signals and should not be mixed:
+
+| Signal | Source | Meaning |
+| --- | --- | --- |
+| Loaded | `llm.ai.response` → `additional_kwargs.skill_usages` | The skill content was actually read in that run |
+| Explicit reference | `llm.human.input` → `additional_kwargs.skill_references` | The user selected the skill with `@` |
+| Activation | `middleware:skill_activation` | The middleware activated a skill |
+| Discovery | `llm.tool.result` containing `describe_skill` | The model only looked up the catalog; not usage |
+
+Loaded counts deduplicate repeated reads inside one run and exclude subagent
+loads.
+
 ## Impact on production
 
-Measured on the 224 database (2026-11-21; 226 runs, ~9,000 events):
+Measured on the 224 database (2026-11-26; 260 runs, ~9,000 events):
 
 | Query | Server time | Plan |
 | --- | ---: | --- |
 | Run list (200 rows) | 2.5 ms | sequential scan of `runs` + sort |
 | Error types | 5.7 ms | scan of `run_events`, 37 matches |
 | Thread page (1,000 messages) | 0.6 ms | bitmap index on `(thread_id, category, seq)` |
+| Outliers / trends | 0.3–0.5 ms | `runs` only |
 | Tool aggregate | ~725 ms | on by default; scans `run_events` and parses JSON. Use `details=0` to hide |
+| Skill aggregate | ~497 ms | scans `run_events` for `skill_usages`; cached 60 s |
+| Per-user tool events | ~223 ms | `user_id` index + JSON parse |
 
 | Concern | Measure |
 | --- | --- |
-| Query load | Only when a page is opened; the expensive tool aggregate needs `details=1` |
+| Query load | Only when a page is opened; tool/skill aggregates are cached 60 s and can be hidden |
 | Slow queries | `statement_timeout=5s` on the connection |
 | Writes | Impossible: read-only role + `default_transaction_read_only` |
 | Locks | Plain `SELECT`; no `FOR UPDATE`, no advisory locks, no blocking of event writes |
@@ -152,8 +184,9 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_runs_first_human_trgm
 
 ## Notes and limits
 
-- **No login.** That is intentional for a single-operator tool. Keep the port
-  bound to `127.0.0.1`; do not publish it on a LAN interface.
+- **No login.** That is intentional for a single-operator tool. `OPS_BIND_HOST`
+  controls the published interface: keep `127.0.0.1` and use an SSH tunnel, or
+  set a LAN IP and restrict the firewall to trusted sources.
 - **Data is live**, not a snapshot: it reads the application database directly.
   A read replica is unnecessary at this query volume; add one only if the page
   becomes multi-user or starts running heavy aggregations.
@@ -161,3 +194,15 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_runs_first_human_trgm
 - The page is Chinese-only and uses the server timezone from `OPS_TZ`.
 - If the deployment sets `database.postgres_schema`, set `OPS_DB_SCHEMA` to the
   same value so the role's `search_path` matches.
+- The event-table aggregates are the only queries that grow with history. They
+  have a 5 s statement timeout, a 60 s cache and a time window; if they become
+  slow, hide the tool column or add the indexes listed above.
+
+## Tests
+
+The tests do not need a database:
+
+```bash
+cd backend
+uv run --no-sync python -m pytest ../deploy/ops/tests -q
+```
