@@ -17,6 +17,7 @@ import type { ArtifactEntry } from "@/core/threads/types";
 import { getFileName } from "@/core/utils/files";
 import { cn } from "@/lib/utils";
 
+import { requestArtifactReference } from "./artifact-reference-event";
 import { useArtifacts } from "./context";
 
 const ASSET_ROOT = "/images/cecemate-home";
@@ -134,6 +135,14 @@ export function CeceMateArtifactPanel({
     return undefined;
   };
 
+  const handleOfArtifact = (file: string) => {
+    const lookupKeys = new Set(artifactLookupKeys(file));
+    const entry = artifactEntries?.find((artifact) =>
+      artifactLookupKeys(artifact.real_ref).some((key) => lookupKeys.has(key)),
+    );
+    return entry?.handle ?? `legacy:${file}`;
+  };
+
   const toggleFile = (file: string) => {
     setSelectedFiles((current) => {
       const next = new Set(current);
@@ -236,7 +245,17 @@ export function CeceMateArtifactPanel({
           <div className="cecemate-artifact-detail-toolbar">
             <span>{getFileName(selectedArtifact).replace(/\.[^.]+$/, "")}</span>
             <div>
-              <button aria-label="引用产物" title="引用产物" type="button">
+              <button
+                aria-label="引用产物"
+                onClick={() =>
+                  requestArtifactReference({
+                    threadId,
+                    artifactHandle: handleOfArtifact(selectedArtifact),
+                  })
+                }
+                title="引用产物"
+                type="button"
+              >
                 <ArtifactActionIcon name="artifact-at.svg" />
               </button>
               <button

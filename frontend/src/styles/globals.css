@@ -2308,7 +2308,8 @@ body:has(.cecemate-theme) {
   border-bottom: 0;
 }
 .cecemate-chat-header [data-sidebar="trigger"],
-.cecemate-chat-header .cecemate-artifact-trigger {
+.cecemate-chat-header .cecemate-artifact-trigger,
+.cecemate-skills-header [data-sidebar="trigger"] {
   display: inline-flex;
   width: 28px;
   height: 28px;
@@ -2324,11 +2325,13 @@ body:has(.cecemate-theme) {
   opacity: 1;
 }
 .cecemate-chat-header [data-sidebar="trigger"]:hover,
-.cecemate-chat-header .cecemate-artifact-trigger:hover {
+.cecemate-chat-header .cecemate-artifact-trigger:hover,
+.cecemate-skills-header [data-sidebar="trigger"]:hover {
   color: #2e3943;
   background: var(--color-gray-grey-200, #f5f8fb);
 }
-.cecemate-chat-header [data-sidebar="trigger"] img {
+.cecemate-chat-header [data-sidebar="trigger"] img,
+.cecemate-skills-header [data-sidebar="trigger"] img {
   display: block;
   width: 16px;
   height: 16px;
@@ -2539,4 +2542,367 @@ body:has(.cecemate-theme) {
 }
 .cecemate-context-tooltip-warning {
   color: #7b838c;
+}
+
+/* CeCeMate skill catalog */
+.cecemate-skills-page {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  color: #282b2e;
+  background: #fff;
+  border-radius: 16px;
+}
+.cecemate-skills-header {
+  display: flex;
+  height: 48px;
+  padding: 0 24px;
+  align-items: center;
+  gap: 8px;
+}
+.cecemate-skills-header h1 {
+  margin: 0;
+  color: #282b2e;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+}
+.cecemate-skills-content {
+  padding: 16px 24px 32px;
+}
+.cecemate-skills-tabs {
+  display: flex;
+  min-height: 28px;
+  margin-bottom: 16px;
+  align-items: center;
+  gap: 20px;
+}
+.cecemate-skills-tabs button {
+  display: inline-flex;
+  height: 28px;
+  padding: 0 8px;
+  color: #7b838c;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cecemate-skills-tabs button:hover,
+.cecemate-skills-tabs button[data-active="true"] {
+  color: #282b2e;
+  background: #f5f8fb;
+}
+.cecemate-skills-tabs button[data-active="true"] {
+  font-weight: 500;
+}
+.cecemate-skills-tab-icon,
+.cecemate-skills-section-icon,
+.cecemate-skill-example-arrow,
+.cecemate-skill-dialog-close > span:first-child,
+.cecemate-skill-create-same > span:first-child {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+.cecemate-skills-tab-icon {
+  width: 14px;
+  height: 14px;
+}
+.cecemate-skills-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.cecemate-skill-card {
+  display: flex;
+  min-width: 0;
+  min-height: 100px;
+  padding: 20px 22px;
+  text-align: left;
+  align-items: center;
+  gap: 18px;
+  background: #fff;
+  border: 1px solid #e0e6eb;
+  border-radius: 16px;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+.cecemate-skill-card:hover,
+.cecemate-skill-card:focus-visible {
+  background: #f5f8fb;
+  border-color: #edf2f8;
+}
+.cecemate-skill-card-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  object-fit: contain;
+}
+.cecemate-skill-card-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+}
+.cecemate-skill-card-copy strong {
+  overflow: hidden;
+  color: #282b2e;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cecemate-skill-card-copy > span {
+  overflow: hidden;
+  color: #7b838c;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cecemate-skills-state {
+  display: flex;
+  min-height: 160px;
+  margin: 0;
+  color: #7b838c;
+  font-size: 14px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.cecemate-skills-state button {
+  height: 28px;
+  padding: 0 12px;
+  color: #016ade;
+  background: #f5f8fb;
+  border: 0;
+  border-radius: 6px;
+}
+
+.cecemate-skill-dialog {
+  display: flex;
+  width: min(640px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 48px);
+  padding: 26px 24px 24px;
+  overflow-y: auto;
+  flex-direction: column;
+  gap: 20px;
+  background: #fff;
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(40, 43, 46, 0.18);
+}
+body:has(.cecemate-skill-dialog) [data-slot="dialog-overlay"] {
+  background: rgba(40, 43, 46, 0.36);
+  backdrop-filter: blur(4px);
+}
+.cecemate-skill-dialog-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  color: #2e3943;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+.cecemate-skill-dialog-close:hover {
+  background: #edf2f8;
+}
+.cecemate-skill-dialog-close > span:first-child {
+  width: 16px;
+  height: 16px;
+}
+.cecemate-skill-dialog-header {
+  display: flex;
+  padding-right: 40px;
+  text-align: left;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+.cecemate-skill-dialog-header > img {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  object-fit: contain;
+}
+.cecemate-skill-dialog-header > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.cecemate-skill-dialog-header [data-slot="dialog-title"] {
+  color: #282b2e;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+}
+.cecemate-skill-dialog-header [data-slot="dialog-description"] {
+  overflow: hidden;
+  color: #7b838c;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cecemate-skill-examples,
+.cecemate-skill-reference-case {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+.cecemate-skill-examples h2,
+.cecemate-skill-reference-title {
+  display: flex;
+  min-height: 22px;
+  margin: 0;
+  color: #282b2e;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 22px;
+  align-items: center;
+  gap: 8px;
+}
+.cecemate-skills-section-icon {
+  width: 16px;
+  height: 16px;
+  color: #2e3943;
+}
+.cecemate-skill-examples > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cecemate-skill-examples button {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  color: #3f4449;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  text-align: left;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #f5f8fb;
+  border: 0;
+  border-radius: 6px;
+}
+.cecemate-skill-examples button:hover {
+  color: #016ade;
+  font-weight: 500;
+}
+.cecemate-skill-examples button > span:first-child {
+  min-width: 0;
+  flex: 1;
+}
+.cecemate-skill-example-arrow {
+  width: 16px;
+  height: 16px;
+}
+.cecemate-skill-reference-title strong {
+  font-weight: 500;
+}
+.cecemate-skill-reference-file {
+  display: inline-flex;
+  min-width: 0;
+  margin-left: 4px;
+  color: #3f4449;
+  font-size: 14px;
+  font-weight: 400;
+  align-items: center;
+  gap: 6px;
+}
+.cecemate-skill-reference-file > svg {
+  flex: 0 0 auto;
+}
+.cecemate-skill-reference-preview {
+  width: 100%;
+  max-height: 400px;
+  padding: 8px;
+  overflow: auto;
+  background: #f4f7fa;
+  border: 1px solid #d3dae1;
+  border-radius: 10px;
+}
+.cecemate-skill-reference-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+.cecemate-skill-create-same {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 4px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: linear-gradient(99deg, #149dff 9.31%, #44d0f0 98.3%);
+  border: 0;
+  border-radius: 12px;
+}
+.cecemate-skill-create-same > span:first-child {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 1200px) {
+  .cecemate-skills-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .cecemate-skills-header,
+  .cecemate-skills-content {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+  .cecemate-skills-tabs {
+    overflow-x: auto;
+    gap: 8px;
+  }
+  .cecemate-skills-tabs button {
+    flex: 0 0 auto;
+  }
+  .cecemate-skills-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cecemate-skill-card {
+    padding: 16px;
+  }
+  .cecemate-skill-dialog {
+    max-height: calc(100vh - 24px);
+    padding: 22px 16px 16px;
+  }
 }

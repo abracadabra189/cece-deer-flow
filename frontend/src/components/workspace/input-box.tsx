@@ -127,6 +127,7 @@ import {
   resolveComposerDraft,
   retireSentComposerDraft,
   type ComposerDraft,
+  type ComposerDraftArtifactReference,
   writeComposerDraft,
 } from "@/core/threads/composer-draft";
 import { useThreadTokenUsage } from "@/core/threads/hooks";
@@ -160,6 +161,10 @@ import { cn } from "@/lib/utils";
 
 import { Suggestion, Suggestions } from "../ai-elements/suggestion";
 
+import {
+  ARTIFACT_REFERENCE_REQUEST_EVENT,
+  type ArtifactReferenceRequest,
+} from "./artifacts/artifact-reference-event";
 import {
   CECE_COMPOSER_ASSET_ROOT,
   ComposerAssetIcon,
@@ -510,6 +515,9 @@ export function InputBox({
   const { models } = useModels();
   const { user } = useAuth();
   const { thread, isMock } = useThread();
+  const [draftArtifactReferences, setDraftArtifactReferences] = useState<
+    ComposerDraftArtifactReference[]
+  >([]);
   const threadTokenUsage = useThreadTokenUsage(threadId, {
     enabled: homeLayout && !isMock,
   });
@@ -536,8 +544,23 @@ export function InputBox({
           display_name: getFileName(filepath),
           real_ref: filepath,
         })),
+      ...draftArtifactReferences
+        .filter(
+          (reference) =>
+            !toolArtifacts.some((artifact) => artifact.handle === reference.id),
+        )
+        .map((reference, index) => ({
+          handle: reference.id,
+          tool_name: "skill_starter",
+          tool_call_id: "",
+          call_index: artifactPaths.length + index,
+          artifact_type: "file",
+          display_name: reference.label,
+          real_ref: reference.path,
+        })),
     ];
   }, [
+    draftArtifactReferences,
     thread.messages,
     thread.values?.artifacts,
     thread.values?.tool_artifacts,
@@ -1070,6 +1093,7 @@ export function InputBox({
         ...draft,
         text: reconciled.text,
         conversationReferences: reconciled.references,
+        artifactReferences: draft.artifactReferences ?? draftArtifactReferences,
       };
       latestDraftRef.current = { key, draft };
       cancelDraftSaveTimer();
@@ -1093,6 +1117,7 @@ export function InputBox({
       draftKey,
       conversationReferences,
       conversationCapability,
+      draftArtifactReferences,
       threadId,
     ],
   );
@@ -1144,6 +1169,7 @@ export function InputBox({
     setTextInput("");
     conversationReferenceCache.current.clear();
     setConversationReferences([]);
+    setDraftArtifactReferences([]);
     setMentionQuery(null);
     setMentionButtonOpen(false);
     setMentionError(null);
@@ -1199,6 +1225,7 @@ export function InputBox({
           ) + (resolvedDraft.text ? ` ${resolvedDraft.text}` : "")
         : resolvedDraft.text;
     setConversationReferences(savedDraft.conversationReferences ?? []);
+    setDraftArtifactReferences(savedDraft.artifactReferences ?? []);
     const existingReferences = inlineReferences(restoredText);
     const legacyReferences = (savedDraft.conversationReferences ?? []).filter(
       (ref) =>
@@ -1235,6 +1262,7 @@ export function InputBox({
     const draft: ComposerDraft = {
       text: textInput.value ?? "",
       skillName: null,
+      artifactReferences: draftArtifactReferences,
     };
     const timer = scheduleDraftSave(draft, draftKey);
     return () => {
@@ -1246,7 +1274,13 @@ export function InputBox({
         draftSaveTimerRef.current = null;
       }
     };
-  }, [draftKey, hydratedDraftKey, scheduleDraftSave, textInput.value]);
+  }, [
+    draftArtifactReferences,
+    draftKey,
+    hydratedDraftKey,
+    scheduleDraftSave,
+    textInput.value,
+  ]);
 
   useEffect(() => {
     const goalRequestState = goalRequestStateRef.current;
@@ -2099,6 +2133,26 @@ export function InputBox({
     [artifacts, focusComposerAt, textInput],
   );
   useEffect(() => {
+    const handleArtifactReferenceRequest = (event: Event) => {
+      if (composerLocked) return;
+      const detail = (event as CustomEvent<ArtifactReferenceRequest>).detail;
+      if (!detail || detail.threadId !== threadId) return;
+      const artifact = artifacts.find(
+        (item) => item.handle === detail.artifactHandle,
+      );
+      if (artifact) insertArtifactReference(artifact);
+    };
+    window.addEventListener(
+      ARTIFACT_REFERENCE_REQUEST_EVENT,
+      handleArtifactReferenceRequest,
+    );
+    return () =>
+      window.removeEventListener(
+        ARTIFACT_REFERENCE_REQUEST_EVENT,
+        handleArtifactReferenceRequest,
+      );
+  }, [artifacts, composerLocked, insertArtifactReference, threadId]);
+  useEffect(() => {
     if (!homeLayout) {
       return;
     }
@@ -2839,6 +2893,12 @@ export function InputBox({
       const refs = inlineReferences(nextText);
       const attachmentIds = new Set(
         refs.filter((ref) => ref.kind === "attachment").map((ref) => ref.id),
+      );
+      const artifactIds = new Set(
+        refs.filter((ref) => ref.kind === "artifact").map((ref) => ref.id),
+      );
+      setDraftArtifactReferences((previous) =>
+        previous.filter((reference) => artifactIds.has(reference.id)),
       );
       for (const attachment of attachmentParts) {
         if (!attachmentIds.has(`local:${attachment.id}`)) {
