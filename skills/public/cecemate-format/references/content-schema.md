@@ -1,7 +1,7 @@
 # CeCeMate content.json
 
-所有 HTML / DOCX / PDF 渲染器只接受这一份结构化输入。不要让模型直接写
-整页 HTML 或 DOCX；渲染器负责固定 Logo、免责声明、版心和样式。
+DOCX / PDF 渲染器只接受这一份结构化输入。HTML 遵循网页规范直接生成完整页面，
+不经过本结构化渲染链路，以便根据内容建立合适的信息层级。不要手写 DOCX。
 
 ## 顶层结构
 
@@ -185,23 +185,10 @@ DOCX 中按普通正文段落输出。
 ] }
 ```
 
-### Web 模块预检
+### Web 模块
 
-`render_web.py` 会在渲染前检查模块约定，不通过则直接失败：
-
-| 模块 | 规则 |
-| --- | --- |
-| M1 hero | 必须是正文第一个内容块；chips 3–5 个 |
-| M2 metrics | 2–4 张卡 |
-| M3 chart_row | 必须同时有 primary 和 secondary |
-| M4 table | 最多 8 列 |
-| M5 conclusion | findings 3–5 条，至少一段正文 |
-| M6 matrix | 4 或 6 张卡（2×2 / 3×2） |
-| M7 timeline | 4–7 个节点 |
-| M8 data_note | **Web 页面必须包含**；source / scope / period 必填 |
-| M9 disclaimer | 模板固定，不在 content 中 |
-
-如果内容属于 Mx 场景，必须用对应 block；用普通段落写指标卡/时间线等不会被识别。
+PDF 打印版支持上述扩展内容块；它们是否使用、使用多少由内容需要决定。HTML 不使用
+这些结构化块，遵循 [`web-spec.md`](web-spec.md) 直接生成页面。
 
 ## 固定项
 

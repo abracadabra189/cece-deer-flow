@@ -15,7 +15,7 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
-import render_web
+import content_blocks
 from naming import output_stem
 from numbering import Numbering
 
@@ -49,7 +49,7 @@ def _meta_html(meta: dict) -> str:
         f"数据口径：{meta.get('scope') or '—'}",
         f"编制单位：{meta.get('author') or '—'}",
     ]
-    return "<br>".join(render_web._esc(line) for line in lines[:4])
+    return "<br>".join(content_blocks._esc(line) for line in lines[:4])
 
 
 def _numbered_blocks(blocks: list[dict], mode: str) -> list[dict]:
@@ -79,21 +79,21 @@ def render(content_path: Path, out_dir: Path, config_path: Path, template_path: 
     shutil.copyfile(ROOT / "assets" / "logo.png", assets / "logo.png")
 
     blocks = _numbered_blocks(content.get("blocks") or [], str(meta.get("numbering") or "chapter"))
-    blocks, toc_entries = render_web.prepare_toc(blocks)
-    body = render_web._blocks(blocks, content_path.parent, out_dir, config, toc_entries)
+    blocks, toc_entries = content_blocks.prepare_toc(blocks)
+    body = content_blocks._blocks(blocks, content_path.parent, out_dir, config, toc_entries)
 
     template = template_path.read_text(encoding="utf-8")
     doc_name = _css_string(str(meta.get("header_title") or meta["title"])[:40])
     values = {
         "{{PRINT_VARS}}": _print_vars(config),
-        "{{TITLE}}": render_web._esc(meta["title"]),
-        "{{SUBTITLE}}": render_web._esc(meta.get("subtitle") or ""),
+        "{{TITLE}}": content_blocks._esc(meta["title"]),
+        "{{SUBTITLE}}": content_blocks._esc(meta.get("subtitle") or ""),
         "{{META}}": _meta_html(meta),
-        "{{DATE}}": render_web._esc(meta["date"]),
-        "{{VERSION}}": render_web._esc(meta.get("version") or "v1.0"),
+        "{{DATE}}": content_blocks._esc(meta["date"]),
+        "{{VERSION}}": content_blocks._esc(meta.get("version") or "v1.0"),
         "{{DOC_NAME}}": doc_name,
         "{{CONTENT}}": body,
-        "{{DISCLAIMER}}": render_web._esc(config["doc"]["disclaimer"]["text"]),
+        "{{DISCLAIMER}}": content_blocks._esc(config["doc"]["disclaimer"]["text"]),
         "{{LOGO_SRC}}": "assets/logo.png",
     }
     for key, value in values.items():

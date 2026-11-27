@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""按需渲染 CeCeMate 产物，不默认生成三件套。
+"""按需渲染 CeCeMate 文档产物。
 
 用法：
     python scripts/render.py content.json --out OUT                 # 默认只出 DOCX
     python scripts/render.py content.json --out OUT --formats docx
-    python scripts/render.py content.json --out OUT --formats docx,html
-    python scripts/render.py content.json --out OUT --formats html,docx,pdf  # 仅明确要求时
+    python scripts/render.py content.json --out OUT --formats docx,pdf
+
+HTML 由模型按网页规范直接生成，不经过此结构化渲染器。
 """
 
 from __future__ import annotations
@@ -16,9 +17,8 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-FORMATS = ("html", "docx", "pdf")
+FORMATS = ("docx", "pdf")
 SCRIPTS = {
-    "html": "render_web.py",
     "docx": "render_docx.py",
     "pdf": "render_pdf.py",
 }
@@ -27,7 +27,7 @@ SCRIPTS = {
 def parse_formats(raw: str) -> list[str]:
     requested = [item.strip().lower() for item in raw.split(",") if item.strip()]
     if not requested:
-        raise ValueError("--formats 至少选择一个：html、docx、pdf")
+        raise ValueError("--formats 至少选择一个：docx、pdf；HTML 请按网页规范直接生成")
     unknown = sorted(set(requested) - set(FORMATS))
     if unknown:
         raise ValueError(f"未知格式：{', '.join(unknown)}")
@@ -35,13 +35,13 @@ def parse_formats(raw: str) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="按需渲染 CeCeMate HTML / DOCX / PDF")
+    parser = argparse.ArgumentParser(description="按需渲染 CeCeMate DOCX / PDF")
     parser.add_argument("content", type=Path, help="content.json")
     parser.add_argument("--out", type=Path, required=True, help="输出目录")
     parser.add_argument(
         "--formats",
         default="docx",
-        help="逗号分隔：html、docx、pdf；默认只生成 docx",
+        help="逗号分隔：docx、pdf；默认只生成 docx；HTML 请直接生成完整页面",
     )
     parser.add_argument("--skip-check", action="store_true")
     args = parser.parse_args()

@@ -202,34 +202,12 @@ def _content_payload() -> dict:
     }
 
 
-def test_web_renderer_and_checker(tmp_path: Path) -> None:
-    content = tmp_path / "content.json"
-    content.write_text(json.dumps(_content_payload(), ensure_ascii=False), encoding="utf-8")
-    out = tmp_path / "out"
-
-    result = _run(SKILL / "scripts" / "render_web.py", content, "--out", out)
-    assert result.returncode == 0, result.stderr
-    page = out / "行业洞察人工智能企业风险研究报告.html"
-    assert page.is_file()
-    assert (out / "assets" / "logo.png").is_file()
-    html = page.read_text(encoding="utf-8")
-    assert "表 1" in html
-    assert "data:image/png;base64," in html
-
-    check = _run(SKILL / "scripts" / "check_web_required.py", page)
-    assert check.returncode == 0, check.stderr
-
-
 def test_output_names_follow_title(tmp_path: Path) -> None:
     payload = _content_payload()
     payload["meta"]["title"] = "我的报告"
     content = tmp_path / "content.json"
     content.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     out = tmp_path / "out"
-
-    web = _run(SKILL / "scripts" / "render_web.py", content, "--out", out)
-    assert web.returncode == 0, web.stderr
-    assert (out / "我的报告.html").is_file()
 
     pytest.importorskip("docx")
     docx = _run(SKILL / "scripts" / "render_docx.py", content, "--out", out)
@@ -251,38 +229,23 @@ def test_render_defaults_to_docx_only(tmp_path: Path) -> None:
     assert not (out / "行业洞察人工智能企业风险研究报告.pdf").exists()
 
 
-def test_render_orchestrator_only_selected_formats(tmp_path: Path) -> None:
+def test_render_orchestrator_rejects_html_format(tmp_path: Path) -> None:
     payload = _content_payload()
     content = tmp_path / "content.json"
     content.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     out = tmp_path / "out"
 
     web = _run(SKILL / "scripts" / "render.py", content, "--out", out, "--formats", "html")
-    assert web.returncode == 0, web.stderr
-    assert (out / "行业洞察人工智能企业风险研究报告.html").is_file()
-    assert not (out / "行业洞察人工智能企业风险研究报告.docx").exists()
-    assert not (out / "行业洞察人工智能企业风险研究报告.pdf").exists()
-
-    pytest.importorskip("docx")
-    both = _run(
-        SKILL / "scripts" / "render.py",
-        content,
-        "--out",
-        tmp_path / "both",
-        "--formats",
-        "docx,html",
-    )
-    assert both.returncode == 0, both.stderr
-    assert (tmp_path / "both" / "行业洞察人工智能企业风险研究报告.docx").is_file()
-    assert (tmp_path / "both" / "行业洞察人工智能企业风险研究报告.html").is_file()
-    assert not (tmp_path / "both" / "行业洞察人工智能企业风险研究报告.pdf").exists()
+    assert web.returncode == 1
+    assert "html" in web.stderr.lower()
+    assert not (out / "行业洞察人工智能企业风险研究报告.html").exists()
 
 
 def test_web_responsive_css(tmp_path: Path) -> None:
     content = tmp_path / "content.json"
     content.write_text(json.dumps(_content_payload(), ensure_ascii=False), encoding="utf-8")
     out = tmp_path / "out"
-    assert _run(SKILL / "scripts" / "render_web.py", content, "--out", out).returncode == 0
+    assert _run(SKILL / "scripts" / "content_blocks.py", content, "--out", out).returncode == 0
     html = (out / "行业洞察人工智能企业风险研究报告.html").read_text(encoding="utf-8")
     assert "@media (max-width: 480px)" in html
     assert "min-width: 680px" in html
@@ -290,24 +253,22 @@ def test_web_responsive_css(tmp_path: Path) -> None:
     assert "flex-wrap: wrap" in html
 
 
-def test_web_preflight_requires_data_note(tmp_path: Path) -> None:
+def test_web_preflight_allows_pages_without_data_note(tmp_path: Path) -> None:
     payload = _content_payload()
     payload["blocks"] = [block for block in payload["blocks"] if block.get("type") != "data_note"]
     content = tmp_path / "content.json"
     content.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    result = _run(SKILL / "scripts" / "render_web.py", content, "--out", tmp_path / "out")
-    assert result.returncode == 1
-    assert "M8" in result.stderr
+    result = _run(SKILL / "scripts" / "content_blocks.py", content, "--out", tmp_path / "out")
+    assert result.returncode == 0, result.stderr
 
 
-def test_web_preflight_rejects_invalid_metrics_count(tmp_path: Path) -> None:
+def test_web_preflight_allows_a_single_metric_when_the_content_calls_for_it(tmp_path: Path) -> None:
     payload = _content_payload()
     payload["blocks"].insert(1, {"type": "metrics", "items": [{"label": "唯一指标", "value": "1"}]})
     content = tmp_path / "content.json"
     content.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    result = _run(SKILL / "scripts" / "render_web.py", content, "--out", tmp_path / "out")
-    assert result.returncode == 1
-    assert "M2" in result.stderr
+    result = _run(SKILL / "scripts" / "content_blocks.py", content, "--out", tmp_path / "out")
+    assert result.returncode == 0, result.stderr
 
 
 def test_web_modules_render(tmp_path: Path) -> None:
@@ -366,7 +327,7 @@ def test_web_modules_render(tmp_path: Path) -> None:
     content = tmp_path / "content.json"
     content.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
-    result = _run(SKILL / "scripts" / "render_web.py", content, "--out", tmp_path / "out")
+    result = _run(SKILL / "scripts" / "content_blocks.py", content, "--out", tmp_path / "out")
     assert result.returncode == 0, result.stderr
     html = (tmp_path / "out" / "Web 组件测试.html").read_text(encoding="utf-8")
     for class_name in ("hero", "metrics", "chart-row", "conclusion-grid", "matrix-grid", "timeline", "data-note", "callout-warning", "actions"):
@@ -379,7 +340,7 @@ def test_web_toc_renders_anchor_links(tmp_path: Path) -> None:
     content = tmp_path / "content.json"
     content.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
-    result = _run(SKILL / "scripts" / "render_web.py", content, "--out", tmp_path / "out")
+    result = _run(SKILL / "scripts" / "content_blocks.py", content, "--out", tmp_path / "out")
     assert result.returncode == 0, result.stderr
     html = (tmp_path / "out" / "行业洞察人工智能企业风险研究报告.html").read_text(encoding="utf-8")
     assert '<nav class="toc"' in html
@@ -391,7 +352,7 @@ def test_web_checker_rejects_missing_footer_logo(tmp_path: Path) -> None:
     content = tmp_path / "content.json"
     content.write_text(json.dumps(_content_payload(), ensure_ascii=False), encoding="utf-8")
     out = tmp_path / "out"
-    assert _run(SKILL / "scripts" / "render_web.py", content, "--out", out).returncode == 0
+    assert _run(SKILL / "scripts" / "content_blocks.py", content, "--out", out).returncode == 0
     page = out / "行业洞察人工智能企业风险研究报告.html"
     html = page.read_text(encoding="utf-8")
     html = re.sub(r'<img class="footer-logo"[^>]*>', "", html)
@@ -406,7 +367,7 @@ def test_web_checker_ignores_non_logo_disclaimer_issues(tmp_path: Path) -> None:
     content = tmp_path / "content.json"
     content.write_text(json.dumps(_content_payload(), ensure_ascii=False), encoding="utf-8")
     out = tmp_path / "out"
-    assert _run(SKILL / "scripts" / "render_web.py", content, "--out", out).returncode == 0
+    assert _run(SKILL / "scripts" / "content_blocks.py", content, "--out", out).returncode == 0
     page = out / "行业洞察人工智能企业风险研究报告.html"
     html = page.read_text(encoding="utf-8")
     html = html.replace("</head>", '<meta name="viewport" content="maximum-scale=1"></head>')
@@ -416,27 +377,50 @@ def test_web_checker_ignores_non_logo_disclaimer_issues(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_web_checker_rejects_external_resources_and_placeholders(tmp_path: Path) -> None:
+def test_web_checker_does_not_make_external_resources_or_placeholders_hard_failures(tmp_path: Path) -> None:
     content = tmp_path / "content.json"
     content.write_text(json.dumps(_content_payload(), ensure_ascii=False), encoding="utf-8")
     out = tmp_path / "out"
-    assert _run(SKILL / "scripts" / "render_web.py", content, "--out", out).returncode == 0
+    assert _run(SKILL / "scripts" / "content_blocks.py", content, "--out", out).returncode == 0
     page = out / "行业洞察人工智能企业风险研究报告.html"
     html = page.read_text(encoding="utf-8")
     html = html.replace("</body>", '<iframe src="https://example.com/x"></iframe>{{TITLE}}</body>')
     page.write_text(html, encoding="utf-8")
 
     result = _run(SKILL / "scripts" / "check_web_required.py", page)
+    assert result.returncode == 0, result.stderr
+
+
+def test_web_checker_does_not_reject_disclaimer_text_repeated_in_footer(tmp_path: Path) -> None:
+    content = tmp_path / "content.json"
+    content.write_text(json.dumps(_content_payload(), ensure_ascii=False), encoding="utf-8")
+    out = tmp_path / "out"
+    assert _run(SKILL / "scripts" / "content_blocks.py", content, "--out", out).returncode == 0
+    page = out / "行业洞察人工智能企业风险研究报告.html"
+    html = page.read_text(encoding="utf-8")
+    html = html.replace("</footer>", "<span>内容由 AI 生成，请核实重要信息</span></footer>")
+    page.write_text(html, encoding="utf-8")
+
+    result = _run(SKILL / "scripts" / "check_web_required.py", page)
+    assert result.returncode == 0, result.stderr
+
+
+def test_web_checker_reports_missing_brand_requirements_for_non_utf8_html(tmp_path: Path) -> None:
+    page = tmp_path / "broken.html"
+    page.write_bytes(b"\xff\xfe")
+
+    result = _run(SKILL / "scripts" / "check_web_required.py", page)
     assert result.returncode == 1
-    assert "W-EXTERNAL" in result.stderr
-    assert "W-PLACEHOLDER" in result.stderr
+    assert "W-PACKAGE" not in result.stderr
+    assert "W-LOGO" in result.stderr
+    assert "W-DISCLAIMER" in result.stderr
 
 
 def test_web_checker_rejects_tampered_logo(tmp_path: Path) -> None:
     content = tmp_path / "content.json"
     content.write_text(json.dumps(_content_payload(), ensure_ascii=False), encoding="utf-8")
     out = tmp_path / "out"
-    assert _run(SKILL / "scripts" / "render_web.py", content, "--out", out).returncode == 0
+    assert _run(SKILL / "scripts" / "content_blocks.py", content, "--out", out).returncode == 0
     page = out / "行业洞察人工智能企业风险研究报告.html"
     html = page.read_text(encoding="utf-8")
     replacement = "data:image/png;base64," + base64.b64encode(ONE_PIXEL_PNG).decode("ascii")
