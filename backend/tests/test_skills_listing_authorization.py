@@ -184,6 +184,10 @@ def test_list_skills_returns_display_name(monkeypatch):
             "display_name": "企业风险分析",
             "description": "Skill enterprise-risk-analysis",
             "example_queries": [],
+            "catalog_category": None,
+            "reference_cases": [],
+            "starter_prompt": None,
+            "starter_references": [],
             "display_description": None,
             "icon_path": None,
             "license": None,
@@ -208,6 +212,28 @@ def test_list_skills_returns_example_queries(monkeypatch):
     assert response.json()["skills"][0]["example_queries"] == ["Query one", "Query two"]
     assert response.json()["skills"][0]["display_description"] == "Card summary"
     assert response.json()["skills"][0]["icon_path"] == "/images/skills/example.svg"
+
+
+def test_catalog_metadata_round_trips_from_markdown(monkeypatch, tmp_path):
+    from deerflow.skills.parser import parse_skill_file
+
+    path = tmp_path / "SKILL.md"
+    path.write_text(
+        "---\nname: demo\ndescription: Demo\ncatalog_category: business_scenario\nreference_cases:\n  - title: Example\n    preview_image_path: /images/skills/demo/case.png\nstarter_prompt: ' Make a report '\nstarter_references: []\n---\n",
+        encoding="utf-8",
+    )
+    skill = parse_skill_file(path, SkillCategory.PUBLIC)
+    assert skill is not None
+    _stub_user(monkeypatch, _user())
+    _stub_storage(monkeypatch, _FakeStorage([skill]))
+    with TestClient(_make_skills_app(_make_app_config())) as client:
+        listing = client.get("/api/skills").json()["skills"][0]
+        detail = client.get("/api/skills/demo").json()
+    assert listing == detail
+    assert listing["catalog_category"] == "business_scenario"
+    assert listing["starter_prompt"] == "Make a report"
+    assert listing["starter_references"] == []
+    assert listing["reference_cases"] == [{"title": "Example", "preview_image_path": "/images/skills/demo/case.png", "artifact_name": None, "artifact_path": None}]
 
 
 def test_list_skills_anonymous_user_returns_all(monkeypatch):

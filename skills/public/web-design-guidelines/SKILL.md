@@ -1,5 +1,9 @@
 ---
 name: web-design-guidelines
+catalog_category: general_tool
+reference_cases: []
+starter_prompt: 请审查我提供的网页界面，从布局、一致性、可访问性和易用性方面提出改进建议。
+starter_references: []
 display_description: display_description_web-design-guidelines_ABC
 example_queries:
   - web-design-guidelines_query1

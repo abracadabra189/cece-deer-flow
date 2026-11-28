@@ -1,6 +1,10 @@
 ---
 name: deep-research
-display_description: display_description_deep-research_ABC
+catalog_category: general_tool
+reference_cases: []
+starter_prompt: 请围绕我指定的主题开展深度研究，对比多方资料，给出有据可查的结论及不确定性。
+starter_references: []
+display_description: 对指定对象展开深度研究与研判，输出结论、研究报告与图表
 example_queries:
   - deep-research_query1
   - deep-research_query2

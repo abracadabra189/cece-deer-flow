@@ -1,5 +1,9 @@
 ---
 name: consulting-analysis
+catalog_category: general_tool
+reference_cases: []
+starter_prompt: 请围绕我指定的行业撰写咨询分析报告，包含核心结论、市场格局、关键驱动与风险。
+starter_references: []
 display_description: display_description_consulting-analysis_ABC
 example_queries:
   - consulting-analysis_query1

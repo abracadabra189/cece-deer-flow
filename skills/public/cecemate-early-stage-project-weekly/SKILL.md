@@ -1,5 +1,9 @@
 ---
 name: cecemate-early-stage-project-weekly
+catalog_category: business_scenario
+reference_cases: []
+starter_prompt: 请生成最近一周早期科技项目投资周报，整理融资事件、重点项目与待核实信息。
+starter_references: []
 display_description: display_description_cecemate-early-stage-project-weekly_ABC
 example_queries:
   - cecemate-early-stage-project-weekly_query1

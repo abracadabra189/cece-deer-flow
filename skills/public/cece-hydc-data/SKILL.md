@@ -1,5 +1,9 @@
 ---
 name: cece-hydc-data
+catalog_category: general_tool
+reference_cases: []
+starter_prompt: 请检索指定企业的基本信息、融资动态和主要经营风险，并注明数据来源。
+starter_references: []
 display_description: display_description_cece-hydc-data_ABC
 example_queries:
   - cece-hydc-data_query1

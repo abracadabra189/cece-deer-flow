@@ -44,6 +44,7 @@ from deerflow.runtime.user_context import get_effective_user_id
 from deerflow.skills import Skill
 from deerflow.skills.diagnostics import SkillLoadDiagnostic
 from deerflow.skills.export import SkillExportError, build_skill_export, export_manifest
+from deerflow.skills.frontmatter import ReferenceCase, StarterReference
 from deerflow.skills.installer import SkillAlreadyExistsError, SkillSecurityScanError
 from deerflow.skills.security_scanner import scan_skill_content
 from deerflow.skills.security_static_scanner import (
@@ -107,6 +108,10 @@ class SkillResponse(BaseModel):
     example_queries: list[str] = Field(default_factory=list, description="Optional example prompts shown for the skill")
     display_description: str | None = Field(None, description="Optional user-facing skill summary")
     icon_path: str | None = Field(None, description="Optional frontend static image path")
+    catalog_category: Literal["business_scenario", "general_tool"] | None = None
+    reference_cases: list[ReferenceCase] = Field(default_factory=list)
+    starter_prompt: str | None = None
+    starter_references: list[StarterReference] = Field(default_factory=list)
     license: str | None = Field(None, description="License information")
     category: SkillCategory = Field(..., description="Category of the skill (public, custom, or legacy)")
     enabled: bool = Field(default=True, description="Whether this skill is enabled")
@@ -267,6 +272,10 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
         example_queries=list(skill.example_queries),
         display_description=skill.display_description,
         icon_path=skill.icon_path,
+        catalog_category=skill.catalog_category,
+        reference_cases=list(skill.reference_cases),
+        starter_prompt=skill.starter_prompt,
+        starter_references=list(skill.starter_references),
         license=skill.license,
         category=skill.category,
         enabled=skill.enabled,

@@ -1,6 +1,10 @@
 ---
 name: data-analysis
-display_description: display_description_data-analysis_ABC
+catalog_category: general_tool
+reference_cases: []
+starter_prompt: 请分析我上传的表格，检查数据质量、汇总关键指标，并整理主要发现。
+starter_references: []
+display_description: 完成数据清洗、整合、可视化与对比计算，输出可解读的图表
 example_queries:
   - data-analysis_query1
   - data-analysis_query2

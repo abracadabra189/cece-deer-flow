@@ -1,12 +1,16 @@
 ---
 name: chart-visualization
-display_description: display_description_chart-visualization_ABC
+catalog_category: general_tool
+reference_cases: []
+starter_prompt: 请根据我提供的数据选择合适的图表，清晰展示趋势和对比，并注明单位及统计口径。
+starter_references: []
+display_description: 依据数据按需定制可视化图表，并生成可复用的 JavaScript 脚本
 example_queries:
   - chart-visualization_query1
   - chart-visualization_query2
   - chart-visualization_query3
 icon_path: /images/skills/chart-visualization.svg
-display_name: 图表可视化
+display_name: 数据可视化
 description: This skill should be used when the user wants to visualize data. It intelligently selects the most suitable chart type from 26 available options, extracts parameters based on detailed specifications, and generates a chart image using a JavaScript script.
 compatibility:
   nodejs: ">=18.0.0"

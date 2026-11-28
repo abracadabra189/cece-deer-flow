@@ -4,6 +4,8 @@ from pathlib import Path
 
 from deerflow.constants import DEFAULT_SKILLS_CONTAINER_PATH
 
+from .frontmatter import ReferenceCase, StarterReference
+
 SKILL_MD_FILE = "SKILL.md"
 
 
@@ -52,6 +54,10 @@ class Skill:
     example_queries: tuple[str, ...] = field(default_factory=tuple, kw_only=True)
     display_description: str | None = field(default=None, kw_only=True)
     icon_path: str | None = field(default=None, kw_only=True)
+    catalog_category: str | None = field(default=None, kw_only=True)
+    reference_cases: tuple[ReferenceCase, ...] = field(default_factory=tuple, kw_only=True)
+    starter_prompt: str | None = field(default=None, kw_only=True)
+    starter_references: tuple[StarterReference, ...] = field(default_factory=tuple, kw_only=True)
     allowed_tools: tuple[str, ...] | None = None
     enabled: bool = False  # Whether this skill is enabled
     required_secrets: tuple[SecretRequirement, ...] = field(default_factory=tuple)

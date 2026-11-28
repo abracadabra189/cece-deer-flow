@@ -8,9 +8,57 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import yaml
+from pydantic import BaseModel, ConfigDict, field_validator
+
+
+class ReferenceCase(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+    title: str
+    preview_image_path: str
+    artifact_name: str | None = None
+    artifact_path: str | None = None
+
+    @field_validator("title", "preview_image_path")
+    @classmethod
+    def nonempty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value.strip()
+
+
+class StarterReference(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+    id: str | None = None
+    name: str
+    path: str
+
+    @field_validator("name", "path")
+    @classmethod
+    def nonempty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value.strip()
+
+
+class SkillCatalogMetadata(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+    catalog_category: Literal["business_scenario", "general_tool"] | None = None
+    reference_cases: list[ReferenceCase] = []
+    starter_prompt: str | None = None
+    starter_references: list[StarterReference] = []
+
+    @field_validator("starter_prompt")
+    @classmethod
+    def normalize_prompt(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
+def parse_catalog_metadata(metadata: dict[str, Any]) -> SkillCatalogMetadata:
+    return SkillCatalogMetadata.model_validate({key: metadata[key] for key in SkillCatalogMetadata.model_fields if key in metadata})
+
 
 ALLOWED_FRONTMATTER_PROPERTIES = {
     "name",
@@ -18,6 +66,10 @@ ALLOWED_FRONTMATTER_PROPERTIES = {
     "display_description",
     "icon_path",
     "example_queries",
+    "catalog_category",
+    "reference_cases",
+    "starter_prompt",
+    "starter_references",
     "description",
     "license",
     "allowed-tools",

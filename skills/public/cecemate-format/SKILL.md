@@ -1,5 +1,9 @@
 ---
 name: cecemate-format
+catalog_category: general_tool
+reference_cases: []
+starter_prompt: 请将我提供的内容整理为 CeCeMate 风格的正式报告，保留原始事实与数据口径。
+starter_references: []
 display_description: display_description_cecemate-format_ABC
 example_queries:
   - cecemate-format_query1

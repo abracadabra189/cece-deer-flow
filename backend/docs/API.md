@@ -1152,6 +1152,17 @@ only: these endpoints do not fetch or serve the referenced image.
 
 #### Get Skill Details
 
+Skill list and metadata detail responses also return `catalog_category`
+(`business_scenario`, `general_tool`, or null), `reference_cases` (default `[]`),
+`starter_prompt` (default null), and `starter_references` (default `[]`).
+Configure them in SKILL.md frontmatter. Each reference case requires `title`
+and `preview_image_path`, with optional nullable `artifact_name` and
+`artifact_path`. Current cases display images from `/images/skills/<skill>/`;
+artifact fields are reserved for future previews. Each starter reference requires
+`name` and Agent-readable `path`, with optional nullable `id`. Browser image URLs
+are not Agent file references. Current skills leave starter references empty;
+the API only returns metadata and does not import files into a thread sandbox.
+
 Return one skill's metadata. The response does not include `content`; read a
 custom skill's `SKILL.md` with [Get Custom Skill Content](#get-custom-skill-content).
 When authorization is enabled, a skill hidden from the caller's role returns
