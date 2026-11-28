@@ -1,6 +1,7 @@
 "use client";
 
 import { PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
+import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -9,8 +10,9 @@ import { cn } from "@/lib/utils";
 export function WorkspaceSidebarTrigger({
   className,
   onClick,
+  ceceMate = false,
   ...props
-}: React.ComponentProps<typeof Button>) {
+}: React.ComponentProps<typeof Button> & { ceceMate?: boolean }) {
   const { isMobile, open, openMobile, toggleSidebar } = useSidebar();
   const expanded = isMobile ? openMobile : open;
 
@@ -33,7 +35,19 @@ export function WorkspaceSidebarTrigger({
         toggleSidebar();
       }}
     >
-      {expanded ? <PanelLeftCloseIcon /> : <PanelLeftOpenIcon />}
+      {ceceMate ? (
+        <Image
+          alt=""
+          aria-hidden="true"
+          height={16}
+          src={`/images/cecemate-home/sidebar-${expanded ? "collapse" : "expand"}.svg`}
+          width={16}
+        />
+      ) : expanded ? (
+        <PanelLeftCloseIcon />
+      ) : (
+        <PanelLeftOpenIcon />
+      )}
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );

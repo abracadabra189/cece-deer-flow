@@ -661,6 +661,7 @@ export function buildVisibleHistoryMessages(
       additional_kwargs: {
         ...message.content.additional_kwargs,
         [MESSAGE_SEQ_KEY]: message.seq,
+        deerflow_created_at: message.created_at,
       },
     })),
   ]);
@@ -4079,7 +4080,7 @@ export const INFINITE_THREADS_QUERY_KEY_PREFIX = [
 type InfiniteThreadsParams = Omit<
   NonNullable<Parameters<ThreadsClient["search"]>[0]>,
   "limit" | "offset"
-> & { archived?: boolean };
+> & { archived?: boolean; query?: string };
 
 type InfiniteThreadsSearchClient = {
   threads: {

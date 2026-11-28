@@ -28,10 +28,12 @@ import {
   collectThreadArtifactPaths,
 } from "@/core/artifacts/utils";
 import { useI18n } from "@/core/i18n/hooks";
+import { extractPresentFilesFromMessage } from "@/core/messages/utils";
 import { env } from "@/env";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
+import { CeceMateArtifactPanel } from "../artifacts/cecemate-artifact-panel";
 import { useArtifacts } from "../artifacts/context";
 import { useMaybeBrowserView } from "../browser-view/context";
 import {
@@ -95,6 +97,7 @@ interface ChatBoxProps {
   children: React.ReactNode;
   threadId: string;
   browserEnabled?: boolean;
+  ceceLayout?: boolean;
 }
 
 function ChatBox(props: ChatBoxProps) {
@@ -118,6 +121,7 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
   children,
   threadId,
   browserEnabled = true,
+  ceceLayout = false,
 }) => {
   const { t } = useI18n();
   const messageDetails = useMaybeMessageDetails();
@@ -145,6 +149,18 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
   // A reopened thread's values carry no `artifacts` (see
   // collectThreadArtifactPaths); recover them from its present_files calls.
   const stateArtifacts = thread.values.artifacts;
+  const toolArtifacts = thread.values.tool_artifacts;
+  const presentedArtifactCreatedAt = useMemo(() => {
+    const createdAtByPath = new Map<string, string>();
+    for (const message of thread.messages) {
+      const createdAt = message.additional_kwargs?.deerflow_created_at;
+      if (typeof createdAt !== "string" || !createdAt) continue;
+      for (const filepath of extractPresentFilesFromMessage(message)) {
+        createdAtByPath.set(filepath, createdAt);
+      }
+    }
+    return createdAtByPath;
+  }, [thread.messages]);
   const threadArtifactPaths = useMemo(
     () =>
       collectThreadArtifactPaths(
@@ -374,6 +390,26 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
       return <SidecarPanel />;
     }
     if (renderedRightPanel === "artifacts") {
+      if (ceceLayout) {
+        return (
+          <CeceMateArtifactPanel
+            artifacts={artifacts}
+            artifactEntries={toolArtifacts}
+            artifactCreatedAtFallback={presentedArtifactCreatedAt}
+            onClose={() => setArtifactsOpen(false)}
+            renderDetail={(filepath) => (
+              <ArtifactFileDetail
+                ceceMate
+                className="size-full"
+                filepath={filepath}
+                threadId={threadId}
+              />
+            )}
+            selectedArtifact={selectedArtifact}
+            threadId={threadId}
+          />
+        );
+      }
       return (
         <div className="border-border bg-card relative flex size-full flex-col overflow-hidden rounded-xl border">
           <header className="border-border flex h-12 shrink-0 items-center border-b px-4">
@@ -434,6 +470,9 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
     selectedArtifact,
     threadId,
     artifacts,
+    toolArtifacts,
+    presentedArtifactCreatedAt,
+    ceceLayout,
     setArtifactsOpen,
     t,
   ]);
@@ -494,6 +533,7 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
       onLayoutChanged={handlePanelGroupLayoutChanged}
       className={cn(
         "[container-type:inline-size] size-full min-h-0",
+        ceceLayout && "cecemate-chat-panel-group",
         // The sized flex item is the library's own `[data-panel]` element, not
         // the child `className` lands on, so the open/close transition has to be
         // addressed from here.
@@ -506,7 +546,13 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
         minSize="30%"
         className="relative min-h-0 min-w-0"
       >
-        <div className="relative size-full min-h-0 min-w-0" id="chat">
+        <div
+          className={cn(
+            "relative size-full min-h-0 min-w-0",
+            ceceLayout && "cecemate-chat-surface",
+          )}
+          id="chat"
+        >
           {children}
         </div>
       </ResizablePanel>
@@ -516,6 +562,10 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
         disabled={!rightPanelOpen}
         className={cn(
           "bg-[#e5eaf5] opacity-60 transition-opacity duration-200 ease-out hover:opacity-100 motion-reduce:transition-none",
+          ceceLayout &&
+            (rightPanelOpen
+              ? "cecemate-chat-panel-gap"
+              : "cecemate-chat-panel-gap-closed"),
           !rightPanelOpen && "pointer-events-none opacity-0",
         )}
       />
@@ -533,6 +583,7 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
           aria-hidden={!rightPanelOpen}
           className={cn(
             "size-full min-h-0 min-w-0 overflow-hidden border-l border-[#e5eaf5] bg-[#f5f7fa] transition-opacity duration-[280ms] ease-out motion-reduce:transition-none",
+            ceceLayout && "cecemate-artifact-surface",
             rightPanelOpen ? "opacity-100" : "pointer-events-none opacity-0",
           )}
           id="artifacts"
@@ -540,7 +591,7 @@ const ChatBoxContent: React.FC<ChatBoxProps> = ({
           <div
             className={cn(
               "ml-auto h-full",
-              renderedRightPanel === "artifacts" ? "p-4" : "p-0",
+              renderedRightPanel === "artifacts" && !ceceLayout ? "p-4" : "p-0",
             )}
             style={
               pinnedContentWidth === null

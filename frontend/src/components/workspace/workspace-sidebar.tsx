@@ -1,21 +1,10 @@
 "use client";
 
-import {
-  type Sidebar,
-  SidebarHeader,
-  SidebarContent,
-  SidebarFooter,
-  SidebarRail,
-  useSidebar,
-} from "@/components/ui/sidebar";
+import { type Sidebar } from "@/components/ui/sidebar";
 import { useThreadActivity } from "@/core/threads/activity";
 
-import { ProjectsSection } from "./projects-section";
-import { RecentChatList } from "./recent-chat-list";
+import { HomeNavigation } from "./cecemate/home-navigation";
 import { ThreadDeleteDialogProvider } from "./thread-delete-dialog";
-import { WorkspaceHeader } from "./workspace-header";
-import { WorkspaceNavChatList } from "./workspace-nav-chat-list";
-import { WorkspaceNavMenu } from "./workspace-nav-menu";
 import { WorkspaceSidebarFrame } from "./workspace-sidebar-frame";
 
 export function WorkspaceSidebar({
@@ -30,38 +19,11 @@ export function WorkspaceSidebar({
       <WorkspaceSidebarFrame
         variant="sidebar"
         collapsible="icon"
-        className="border-[#e7ebf3] [--sidebar-width:248px]"
+        className="cece-home-sidebar"
         {...props}
       >
-        <WorkspaceSidebarContents />
+        <HomeNavigation />
       </WorkspaceSidebarFrame>
     </ThreadDeleteDialogProvider>
-  );
-}
-
-function WorkspaceSidebarContents() {
-  const { isMobile } = useSidebar();
-  return (
-    <>
-      <SidebarHeader className="gap-0 p-0">
-        <WorkspaceHeader />
-      </SidebarHeader>
-      <SidebarContent className="gap-0 overflow-hidden px-2 pt-0">
-        <WorkspaceNavChatList />
-        <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
-          <ProjectsSection />
-          <RecentChatList />
-        </div>
-      </SidebarContent>
-      <SidebarFooter className="border-sidebar-border border-t p-2">
-        <WorkspaceNavMenu />
-      </SidebarFooter>
-      {!isMobile && (
-        <SidebarRail
-          className="cursor-default hover:after:bg-transparent"
-          title=""
-        />
-      )}
-    </>
   );
 }

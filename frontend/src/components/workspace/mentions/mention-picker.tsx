@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   CheckIcon,
   FileIcon,
@@ -36,6 +37,8 @@ import { agentNameOfThread, titleOfThread } from "@/core/threads/utils";
 import { isCompositionConfirmEnter, isIMEComposing } from "@/lib/ime";
 import { cn } from "@/lib/utils";
 
+import { ComposerAssetIcon } from "../cecemate/composer-assets";
+
 import { MAX_EXPLICIT_SKILLS } from "./inline-references";
 
 export type MentionSelection =
@@ -55,6 +58,24 @@ type Option = {
   disabled?: boolean;
   selected?: boolean;
 };
+
+function SkillCatalogIcon({ skill }: { skill: Skill }) {
+  const iconPath = skill.icon_path?.trim();
+  if (!iconPath) {
+    return <ComposerAssetIcon name="file-skill.svg" size={16} />;
+  }
+  return (
+    <Image
+      alt=""
+      aria-hidden="true"
+      className="cecemate-skill-icon shrink-0 object-contain"
+      height={16}
+      src={iconPath}
+      unoptimized
+      width={16}
+    />
+  );
+}
 
 export function MentionPicker({
   ref,
@@ -77,6 +98,7 @@ export function MentionPicker({
   onSelect,
   onClose,
   listId,
+  ceceMate = false,
 }: {
   ref?: Ref<MentionPickerHandle>;
   query: string;
@@ -105,6 +127,7 @@ export function MentionPicker({
   onSelect: (selection: MentionSelection) => void;
   onClose: () => void;
   listId: string;
+  ceceMate?: boolean;
 }) {
   const { t } = useI18n();
   const labels = t.inputBox;
@@ -307,11 +330,21 @@ export function MentionPicker({
   return (
     <div
       ref={rootRef}
-      className="rounded-xl border border-[#dfe6f3] bg-white p-2 text-[#26324a] shadow-[0_8px_24px_rgb(20_32_64_/_0.12)]"
+      className={cn(
+        "rounded-xl border border-[#dfe6f3] bg-white p-2 text-[#26324a] shadow-[0_8px_24px_rgb(20_32_64_/_0.12)]",
+        ceceMate && "cecemate-skill-picker",
+      )}
       data-testid="mention-picker"
     >
-      <div className="flex items-center gap-2 px-2 pb-2">
-        {searchInput ? (
+      <div
+        className={cn(
+          "flex items-center gap-2 px-2 pb-2",
+          ceceMate && skillsOnly && "cecemate-skill-picker-heading",
+        )}
+      >
+        {ceceMate && skillsOnly ? (
+          <span>技能</span>
+        ) : searchInput ? (
           <input
             aria-label={labels.mentionSearch}
             autoFocus
@@ -337,13 +370,15 @@ export function MentionPicker({
             {labels.mentionPicker}
           </span>
         )}
-        <button
-          type="button"
-          aria-label={labels.mentionClose}
-          onClick={onClose}
-        >
-          <XIcon className="size-4" />
-        </button>
+        {!(ceceMate && skillsOnly) && (
+          <button
+            type="button"
+            aria-label={labels.mentionClose}
+            onClick={onClose}
+          >
+            <XIcon className="size-4" />
+          </button>
+        )}
       </div>
       <div
         id={listId}
@@ -351,7 +386,10 @@ export function MentionPicker({
         aria-multiselectable="true"
         aria-label={labels.mentionPicker}
         aria-busy={busy || loading}
-        className="max-h-72 overflow-y-auto"
+        className={cn(
+          "max-h-72 overflow-y-auto",
+          ceceMate && skillsOnly && "cecemate-skill-list",
+        )}
       >
         {groups.map(({ kind, title, Icon }) => {
           const items = options.filter(
@@ -363,8 +401,14 @@ export function MentionPicker({
               key={kind}
               role="group"
               aria-label={title ?? labels.mentionUpload}
+              className={cn(
+                ceceMate &&
+                  skillsOnly &&
+                  kind === "skill" &&
+                  "cecemate-skill-group",
+              )}
             >
-              {title && (
+              {title && !(ceceMate && skillsOnly) && (
                 <div className="text-muted-foreground px-2 py-1 text-xs">
                   {title}
                 </div>
@@ -383,19 +427,34 @@ export function MentionPicker({
                   onClick={() => choose(option)}
                   className={cn(
                     "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm disabled:opacity-40",
-                    active?.id === option.id && "bg-[#eef3ff] text-[#2563eb]",
+                    ceceMate && option.selection.kind === "skill"
+                      ? "cecemate-skill-option"
+                      : active?.id === option.id &&
+                          "bg-[#eef3ff] text-[#2563eb]",
                   )}
+                  data-active={active?.id === option.id ? "true" : undefined}
                 >
-                  <Icon className="size-4 shrink-0" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{option.label}</span>
+                  {ceceMate && option.selection.kind === "skill" ? (
+                    <SkillCatalogIcon skill={option.selection.skill} />
+                  ) : (
+                    <Icon className="size-4 shrink-0" />
+                  )}
+                  <span className="cecemate-skill-copy min-w-0 flex-1">
+                    <span className="cecemate-skill-title block truncate">
+                      {option.label}
+                    </span>
                     {option.description && (
-                      <span className="text-muted-foreground block truncate text-xs">
+                      <span className="cecemate-skill-description block truncate">
                         {option.description}
                       </span>
                     )}
                   </span>
-                  {option.selected && <CheckIcon className="size-4 shrink-0" />}
+                  {option.selected &&
+                    (ceceMate ? (
+                      <ComposerAssetIcon name="composer-check.svg" size={14} />
+                    ) : (
+                      <CheckIcon className="size-4 shrink-0" />
+                    ))}
                 </button>
               ))}
             </div>
@@ -454,9 +513,11 @@ export function MentionPicker({
           {labels.mentionNoProject}
         </p>
       )}
-      <p className="text-muted-foreground px-2 py-1 text-xs">
-        {labels.mentionMultipleSkills}
-      </p>
+      {!(ceceMate && skillsOnly) && (
+        <p className="text-muted-foreground px-2 py-1 text-xs">
+          {labels.mentionMultipleSkills}
+        </p>
+      )}
       {!skillsOnly && capability.enabled && (
         <p className="text-muted-foreground px-2 py-1 text-xs">
           {labels.referenceConversationsLimit(capability.maxReferences)}

@@ -10,6 +10,13 @@ export type ComposerDraft = {
   text: string;
   skillName: string | null;
   conversationReferences?: ConversationReference[];
+  artifactReferences?: ComposerDraftArtifactReference[];
+};
+
+export type ComposerDraftArtifactReference = {
+  id: string;
+  label: string;
+  path: string;
 };
 
 export type ComposerDraftStorage = Pick<
@@ -63,6 +70,7 @@ export function readComposerDraft(
       text?: unknown;
       skillName?: unknown;
       conversationReferences?: unknown;
+      artifactReferences?: unknown;
     };
     if (
       parsed.version !== COMPOSER_DRAFT_VERSION ||
@@ -87,8 +95,20 @@ export function readComposerDraft(
           ),
         })
       : [];
+    const artifactReferences = Array.isArray(parsed.artifactReferences)
+      ? parsed.artifactReferences.flatMap((item: unknown) => {
+          if (!item || typeof item !== "object") return [];
+          const value = item as Record<string, unknown>;
+          return typeof value.id === "string" &&
+            typeof value.label === "string" &&
+            typeof value.path === "string"
+            ? [{ id: value.id, label: value.label, path: value.path }]
+            : [];
+        })
+      : [];
     return {
       ...(references.length ? { conversationReferences: references } : {}),
+      ...(artifactReferences.length ? { artifactReferences } : {}),
       text: parsed.text,
       skillName: parsed.skillName,
     };
@@ -109,7 +129,8 @@ export function writeComposerDraft(
     if (
       !draft.text &&
       !draft.skillName &&
-      !draft.conversationReferences?.length
+      !draft.conversationReferences?.length &&
+      !draft.artifactReferences?.length
     ) {
       storage.removeItem(key);
       return;
@@ -123,6 +144,9 @@ export function writeComposerDraft(
         skillName: draft.skillName,
         ...(draft.conversationReferences?.length
           ? { conversationReferences: draft.conversationReferences }
+          : {}),
+        ...(draft.artifactReferences?.length
+          ? { artifactReferences: draft.artifactReferences }
           : {}),
       }),
     );

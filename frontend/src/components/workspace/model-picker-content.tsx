@@ -23,6 +23,13 @@ import { type Model } from "@/core/models/types";
 import { useModelFavorites } from "@/core/models/use-model-favorites";
 import { cn } from "@/lib/utils";
 
+import {
+  CECE_COMPOSER_ASSET_ROOT,
+  ComposerAssetIcon,
+  composerModelIcon,
+  composerModelTags,
+} from "./cecemate/composer-assets";
+
 export const ModelPicker = PopoverPrimitive.Root;
 export const ModelPickerTrigger = PopoverPrimitive.Trigger;
 
@@ -31,6 +38,8 @@ export interface ModelPickerContentProps {
   models: readonly Model[];
   selectedModelName?: string;
   onModelSelect: (name: string) => void;
+  side?: "top" | "bottom";
+  variant?: "default" | "cecemate";
 }
 
 type FocusedControl = {
@@ -54,6 +63,8 @@ export function ModelPickerContent({
   models,
   selectedModelName,
   onModelSelect,
+  side = "top",
+  variant = "default",
 }: ModelPickerContentProps) {
   const { t } = useI18n();
   const { user, isLoading } = useAuth();
@@ -303,6 +314,76 @@ export function ModelPickerContent({
       </section>
     );
   };
+
+  if (variant === "cecemate") {
+    return (
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          align="end"
+          aria-label="模型选择"
+          className="cecemate-model-picker z-50 max-h-[min(24rem,var(--radix-popover-content-available-height))] w-[264px] max-w-[calc(100vw-16px)] overflow-y-auto outline-none"
+          collisionPadding={8}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            focusInitialModel();
+          }}
+          role="dialog"
+          side={side}
+          sideOffset={8}
+        >
+          <p className="cecemate-model-picker-title">模型选择</p>
+          <ul className="cecemate-model-picker-list">
+            {models.map((model) => {
+              const isCurrent = model.name === selectedModelName;
+              const tags = composerModelTags(model);
+              return (
+                <li key={model.name}>
+                  <button
+                    aria-current={isCurrent ? "true" : undefined}
+                    aria-label={model.display_name}
+                    className="cecemate-model-option"
+                    data-current-model={isCurrent ? "true" : undefined}
+                    data-model-picker-option="true"
+                    onClick={() => {
+                      if (!isLoading)
+                        rememberModel(user?.id ?? null, model.name);
+                      onModelSelect(model.name);
+                    }}
+                    onKeyDown={(event) => handleRowKeyDown(event, model.name)}
+                    ref={(node) => {
+                      if (node) modelButtonRefs.current.set(model.name, node);
+                      else modelButtonRefs.current.delete(model.name);
+                    }}
+                    type="button"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="cecemate-model-option-icon"
+                      style={{
+                        WebkitMaskImage: `url(${CECE_COMPOSER_ASSET_ROOT}/${composerModelIcon(model)})`,
+                        maskImage: `url(${CECE_COMPOSER_ASSET_ROOT}/${composerModelIcon(model)})`,
+                      }}
+                    />
+                    <span className="cecemate-model-option-label">
+                      {model.display_name}
+                    </span>
+                    {tags.map((tag) => (
+                      <span className="cecemate-model-tag" key={tag}>
+                        {tag}
+                      </span>
+                    ))}
+                    {isCurrent ? (
+                      <ComposerAssetIcon name="composer-check.svg" size={14} />
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    );
+  }
 
   return (
     <PopoverPrimitive.Portal>

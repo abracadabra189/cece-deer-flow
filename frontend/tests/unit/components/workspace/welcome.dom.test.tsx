@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, rs } from "@rstest/core";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { Welcome } from "@/components/workspace/welcome";
+import { Welcome, WelcomeExamples } from "@/components/workspace/welcome";
 import { DEFAULT_LOCALE } from "@/core/i18n";
 import { I18nProvider } from "@/core/i18n/context";
 
@@ -12,22 +12,20 @@ rs.mock("next/navigation", () => ({
 afterEach(cleanup);
 
 describe("Welcome", () => {
-  it("shows the regional industry risk description on the first task card", () => {
+  it("starts the selected example task", () => {
+    const start = rs.fn(async () => undefined);
     render(
       <I18nProvider initialLocale={DEFAULT_LOCALE}>
-        <Welcome onStartTask={async () => undefined} />
+        <Welcome />
+        <WelcomeExamples onStartTask={start} />
       </I18nProvider>,
     );
 
-    expect(
-      screen.getByText(
-        "区域产业风险识别 + 企业排查 + 风险研判，输出可溯源报告",
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.queryByText(
-        "跨城市产业风险识别 + 企业排查 + 风险研判，输出可溯源报告",
-      ),
-    ).toBeNull();
+    expect(screen.getByRole("heading", { name: /CeCeMate/ })).toBeTruthy();
+    expect(screen.getAllByRole("button")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: /商机清单/ }));
+    expect(start).toHaveBeenCalledWith(
+      "上海人工智能产业有哪些重点企业？主要分布在哪些园区？",
+    );
   });
 });

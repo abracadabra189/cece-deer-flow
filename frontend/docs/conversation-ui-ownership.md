@@ -28,3 +28,30 @@ This expands the ownership index in `frontend/src/AGENTS.md`.
   frame, publishes through `useSyncExternalStore` at most once per animation
   frame, and owns object-URL revocation. Keep the Gateway's legacy JSON/base64
   frame path for older clients.
+
+## CeCeMate 首页素材
+
+新任务首页使用 `public/images/cecemate-home/` 下的素材。下载设计稿素材后按下表覆盖同名文件，尺寸为页面上的 CSS 像素。PNG 可以按两倍或三倍尺寸导出，保持宽高比即可。
+
+| 位置                                                   | 文件名                                                                                                                                        | 显示尺寸         |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 首页人物                                               | `cecemate-avatar.png`                                                                                                                         | 120 × 146        |
+| “Hi, 我是”标题                                         | `greeting-hi-im.svg`                                                                                                                          | 129 × 32         |
+| “CeCeMate”标题                                         | `greeting-cecemate.svg`                                                                                                                       | 190 × 32         |
+| 产业分析一页纸                                         | `card-industry.png`                                                                                                                           | 260 × 140        |
+| 商机清单                                               | `card-opportunities.png`                                                                                                                      | 260 × 140        |
+| 企业风险扫描                                           | `card-risk.png`                                                                                                                               | 260 × 140        |
+| 开启新任务图标、文字                                   | `new-task-icon.svg`、`new-task-label.svg`                                                                                                     | 20 × 20、80 × 22 |
+| 技能、MCP 服务                                         | `nav-skills.svg`、`nav-mcp.svg`                                                                                                               | 各 16 × 16       |
+| 运行中、中断、错误、未读                               | `task-busy.svg`、`task-interrupted.svg`、`task-error.svg`、`task-unread.svg`                                                                  | 各 10 × 10       |
+| 折叠、展开侧栏                                         | `sidebar-collapse.svg`、`sidebar-expand.svg`                                                                                                  | 各 16 × 16       |
+| 搜索、下拉箭头                                         | `search.svg`、`chevron-down.svg`                                                                                                              | 14–16、12–14     |
+| 输入框添加、上传、引用产物、技能                       | `composer-add.svg`、`composer-upload.svg`、`composer-artifact.svg`、`composer-skill.svg`                                                      | 18、16、16、16   |
+| 润色、撤销润色                                         | `composer-polish.svg`、`composer-polish-undo.svg`                                                                                             | 各 16 × 16       |
+| 选中、胶囊移除                                         | `composer-check.svg`、`chip-remove.svg`                                                                                                       | 14、12           |
+| 快速响应、思考模式、深度研究                           | `mode-fast.svg`、`mode-thinking.svg`、`mode-research.svg`                                                                                     | 各 16 × 16       |
+| DeepSeek、Qwen、GLM、通用模型                          | `model-deepseek.svg`、`model-qwen.svg`、`model-glm.svg`、`model-generic.svg`                                                                  | 各 16 × 16       |
+| Word、PDF、Excel、图片、代码、通用文件                 | `file-word.svg`、`file-pdf.svg`、`file-excel.svg`、`file-image.svg`、`file-code.svg`、`file-generic.svg`                                      | 各 16–18 × 16–18 |
+| 企业风险、深度研究、数据分析、数据可视化、报告撰写技能 | `skill-enterprise-risk.svg`、`skill-deep-research.svg`、`skill-data-analysis.svg`、`skill-data-visualization.svg`、`skill-report-writing.svg` | 各 18 × 18       |
+
+任务列表使用会话的 `status` 字段。运行中、中断和错误优先展示对应图标。空闲且未读时显示蓝点，空闲且已读时留空。搜索按任务标题匹配，Esc 退出搜索。
